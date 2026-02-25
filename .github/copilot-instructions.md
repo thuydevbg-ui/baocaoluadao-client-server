@@ -2,44 +2,54 @@
 
 Purpose: help AI coding agents be productive quickly by describing the project architecture, conventions, and key integration points.
 
-**Big Picture**
-- **Framework:** Next.js 14 using the App Router (server + client components). See [src/app/layout.tsx](src/app/layout.tsx) and [src/app/providers.tsx](src/app/providers.tsx).
+## Big Picture
+- **Framework:** Next.js 14 (App Router) with TypeScript; production spec in [SPEC.md](../SPEC.md), admin features in [ADMIN_FEATURES.md](../ADMIN_FEATURES.md).
 - **Major areas:**
-  - UI: [src/components](src/components) (layout, ui primitives, admin).
-  - Pages & routes: [src/app](src/app) using file-based App Router and server components by default.
-  - APIs: serverless routes under [src/app/api](src/app/api) (e.g., AI analysis at [src/app/api/ai/analyze/route.ts](src/app/api/ai/analyze/route.ts)).
-  - Utilities & types: [src/lib/utils.ts](src/lib/utils.ts) (shared types, helpers like `cn`, `sanitizeHTML`).
-  - i18n: simple provider in [src/contexts/I18nContext.tsx](src/contexts/I18nContext.tsx) with JSON files in [src/locales](src/locales).
+  - UI: [src/components](../src/components) (public components, admin shell with theme support).
+  - Pages & routes: [src/app](../src/app) using file-based App Router, server components by default.
+  - APIs: serverless routes under [src/app/api](../src/app/api) organized by feature (auth, ai, report, stats, phishtank, etc.).
+  - Utilities & types: [src/lib/utils.ts](../src/lib/utils.ts) (type definitions like `RiskLevel`, `SearchResult`; helpers `cn()`, `debounce()`, `formatDate()`, `getRiskColor()`).
+  - i18n: [src/contexts/I18nContext.tsx](../src/contexts/I18nContext.tsx) with JSON locales in [src/locales](../src/locales) (en, vi).
 
-**Dev & run commands**
-- Start dev server: `npm run dev` (uses `next dev`).
-- Build: `npm run build`; Start production: `npm run start`.
+## Theme & Admin UI
+- **Theme management:** Admin layout in [src/components/admin/AdminLayout.tsx](../src/components/admin/AdminLayout.tsx) manages light/dark theme via `localStorage` (`adminTheme` key) and passes `theme` prop to Sidebar and Header.
+- **Theme-aware colors:** All admin components use conditional Tailwind classes: `theme === 'dark' ? 'dark-colors' : 'light-colors'` (see [Sidebar.tsx](../src/components/admin/Sidebar.tsx) and [Header.tsx](../src/components/admin/Header.tsx)).
+- **Admin UI animations:** Uses `framer-motion` (AnimatePresence, motion.div, etc.) and `lucide-react` icons. Sidebar collapse is driven by `isCollapsed` state + `usePathname()` checks.
+
+## Dev & run commands
+- Start: `npm run dev` (Next.js on 3000, or 3001 if port in use).
+- Build: `npm run build`; Run: `npm run start`.
 - Lint: `npm run lint`.
-- Tests: Playwright is included in devDependencies but no test harness is present by default—check package.json and add tests as needed.
+- Tests: Playwright in devDependencies but no harness configured; add test script in package.json if needed.
 
-**Environment & integrations**
-- `OPENAI_API_KEY` toggles OpenAI usage in [src/app/api/ai/analyze/route.ts](src/app/api/ai/analyze/route.ts). If missing, the code falls back to a local pattern-based analysis.
-- The analyze route uses an in-memory rate limiter (development-only). Do NOT assume persistence for production.
-- Images domains are configured in [next.config.js](next.config.js).
+## Environment & integrations
+- Admin auth: [src/app/api/auth](../src/app/api/auth) handles login/logout with cookie-based sessions. Client-side auth check in AdminLayout calls `/api/auth/verify`.
+- Scam analysis: [src/app/api/ai](../src/app/api/ai) (OpenAI optional; falls back to local pattern matching if `OPENAI_API_KEY` missing).
+- Rate limiting: In-memory limiter (dev-only; replace with Redis for production).
+- Images: Domains configured in [next.config.js](../next.config.js).
 
-**Project-specific conventions**
-- Path alias: code uses `@/` imports (e.g., `import { I18nProvider } from '@/contexts/I18nContext'`). Keep imports aligned to tsconfig/next settings.
-- Styling: Tailwind CSS utility classes everywhere; prefer `cn(...)` from [src/lib/utils.ts](src/lib/utils.ts) when composing classnames.
-- Client vs Server: components with `use client` at top are client components (e.g., [src/components/admin/Sidebar.tsx](src/components/admin/Sidebar.tsx)). Avoid adding `use client` unless the component uses hooks or browser APIs.
-- Fonts: next/font usage is in [src/app/layout.tsx](src/app/layout.tsx); be conservative when changing global fonts.
+## Code conventions
+- **Imports:** Use `@/` alias (e.g., `import { cn } from '@/lib/utils'`).
+- **Styling:** Tailwind CSS; compose classes with `cn(...)`. Avoid hardcoded color strings—use Tailwind tokens.
+- **Client vs Server:** Add `'use client'` only if component uses hooks (useState, useEffect) or browser APIs (localStorage, usePathname).
+- **Type safety:** Define types in [src/lib/utils.ts](../src/lib/utils.ts) or component files (e.g., `RiskLevel`, `SearchResult`, `SidebarProps`).
+- **Localization:** All UI copy in [src/locales/*.json](../src/locales/); use `I18nContext` to consume.
 
-**API patterns & examples**
-- AI route returns structured JSON with `probability`, `verdict`, `indicators`, and `patterns`. Follow that shape when creating downstream consumers. See the prompt and parsing logic in [src/app/api/ai/analyze/route.ts](src/app/api/ai/analyze/route.ts).
-- When adding routes under `src/app/api`, prefer server components / runtime-safe code and avoid client-only APIs.
+## API route patterns
+- Structure: `src/app/api/[feature]/[action]/route.ts` (e.g., `/api/auth/login`, `/api/ai/analyze`, `/api/report/submit`).
+- Returns: JSON with status codes (200 success, 400 bad request, 401 unauthorized, 500 error).
+- Scam AI response shape: `{ probability, verdict, indicators, patterns, riskScore }`.
 
-**Admin UI patterns**
-- Admin UI uses `framer-motion` for animations and `lucide-react` for icons. Sidebar state is driven by `isCollapsed` prop and `usePathname()` routing checks in [src/components/admin/Sidebar.tsx](src/components/admin/Sidebar.tsx).
+## Production safety notes
+- **Auth:** Cookie-based sessions with client-side + middleware verification (see [src/middleware.ts](../src/middleware.ts)).
+- **Rate limiting:** Replace in-memory limiter with Redis/Upstash before production.
+- **Input sanitization:** Use DOMPurify (not current naive sanitizer) for user-generated HTML.
+- **Secrets:** `OPENAI_API_KEY` and DB credentials in `.env.local` (never committed).
 
-**Safety / production notes agents should surface**
-- The in-memory rate limiter and naive HTML sanitizer in [src/lib/utils.ts](src/lib/utils.ts) are acceptable for prototype/dev only—flag these for improvement (use Redis/Upstash for rate limits and DOMPurify for sanitization).
-- OpenAI calls are proxied directly from the server route; ensure `OPENAI_API_KEY` is stored securely in environment configuration when deploying.
+## Common tasks
+- **Add admin menu item:** Edit `menuItems` in [Sidebar.tsx](../src/components/admin/Sidebar.tsx); add route handler in [src/app/admin/[page]](../src/app/admin).
+- **Change theme colors:** Update Tailwind config or override in component classes (ensure light/dark pair).
+- **Add locale strings:** Add keys to [en.json](../src/locales/en.json) and [vi.json](../src/locales/vi.json), use `useI18n()` in component.
+- **Debug admin auth:** Check `/api/auth/verify` response and middleware rules in [src/middleware.ts](../src/middleware.ts).
 
-**Where to change translations and copy**
-- Locale JSON: [src/locales/en.json](src/locales/en.json) and [src/locales/vi.json](src/locales/vi.json). Use `I18nContext` for access.
-
-If anything in this file is unclear or you'd like more detail (deployment notes, tests, or additional file links), tell me which area to expand. 
+If anything is unclear, flag the section for expansion. 

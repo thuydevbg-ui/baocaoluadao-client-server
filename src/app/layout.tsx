@@ -38,6 +38,13 @@ export default function RootLayout({
   return (
     <html lang="vi" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} min-h-screen bg-bg-main text-text-main antialiased font-body`}>
+        {/* Ensure admin pages default to light before React hydrates to avoid flash */}
+        <script
+          // Runs early in the page load to remove unwanted .dark class for admin
+          dangerouslySetInnerHTML={{
+            __html: `try{ if(location && location.pathname && location.pathname.startsWith('/admin')){ const a=localStorage.getItem('adminTheme'); if(a!=='dark'){ document.documentElement.classList.remove('dark'); } } }catch(e){};`
+          }}
+        />
         <Providers>
           {children}
         </Providers>

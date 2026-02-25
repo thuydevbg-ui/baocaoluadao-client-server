@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { AdminThemeProvider } from '@/contexts/AdminThemeContext';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -24,46 +25,79 @@ const pageTitles: Record<string, string> = {
   '/admin/settings': 'Cài đặt'
 };
 
-interface AdminAuth {
-  email: string;
-  role: string;
-  name: string;
-  loginTime?: string;
-}
-
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // Defense-in-depth: Client-side check in addition to middleware
+  // Middleware handles most protection, but this is a fallback for edge cases
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const pathname = usePathname();
   const router = useRouter();
 
-  // SECURITY FIX: Check authentication on mount
+  // Initialize theme from localStorage on mount
   useEffect(() => {
-    const checkAuth = () => {
+    const savedTheme = localStorage.getItem('adminTheme');
+    // Default admin UI to light unless user explicitly chose dark
+    const initialTheme: 'light' | 'dark' = savedTheme === 'dark' ? 'dark' : 'light';
+
+    setTheme(initialTheme);
+    document.documentElement.classList.toggle('dark', initialTheme === 'dark');
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('adminTheme', nextTheme);
+    document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+  };
+
+  // Defense-in-depth: Client-side check in addition to middleware
+  // Middleware handles most protection, but this is a fallback for edge cases
+  useEffect(() => {
+    const checkAuth = async () => {
       try {
-        const authData = localStorage.getItem('adminAuth');
-        if (authData) {
-          const auth: AdminAuth = JSON.parse(authData);
-          // Verify auth data exists and has required fields
-          if (auth.email && auth.role && auth.name) {
-            setIsAuthorized(true);
-          } else {
-            throw new Error('Invalid auth data');
-          }
+        // Create abort controller with timeout - increased for reliability
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        
+        // Try to verify auth with server-side check
+        const response = await fetch('/api/auth/verify', { 
+          method: 'POST',
+          credentials: 'include', // Include cookies
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setIsAuthorized(data.authenticated || false);
         } else {
-          throw new Error('No auth data');
+          // Server error - fail closed for security
+          setIsAuthorized(false);
         }
-      } catch {
-        // Not authenticated - redirect to login
-        router.push('/admin/login');
+      } catch (error) {
+        // Network error, timeout, or server unavailable
+        // If it's an abort (timeout), fail closed for security
+        console.error('Auth verification failed:', error);
+        // Don't auto-fail on network errors - let middleware handle protection
+        // Just set loading to false and let user see the content if middleware allowed
+        setIsAuthorized(false); // Fail closed for security
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAuth();
-  }, [router]);
+  }, []);
+
+  // Redirect if not authorized
+  useEffect(() => {
+    if (!isLoading && !isAuthorized) {
+      router.push('/admin/login');
+    }
+  }, [isAuthorized, isLoading, router]);
 
   // Get page title
   const getTitle = () => {
@@ -83,30 +117,42 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
 
-  // Don't render if not authorized (will redirect)
+  // Don't render if not authorized - show redirecting message instead of blank page
   if (!isAuthorized) {
-    return null;
+    return (
+      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
+        <div className="text-gray-400">Đang chuyển hướng đến trang đăng nhập...</div>
+      </div>
+    );
   }
 
+  // Theme-aware background classes - White for light mode
+  // Keep light mode main transparent so inner cards control white surface width
+  const bgMain = theme === 'dark' ? 'bg-[#0B1120]' : 'bg-transparent';
+  const textMain = theme === 'dark' ? 'text-white' : 'text-gray-900';
+
   return (
-    <div className="flex min-h-screen bg-[#0B1120]">
-      {/* Sidebar */}
-      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+    <AdminThemeProvider theme={theme}>
+      <div className={`flex min-h-screen ${bgMain}`}>
+        {/* Sidebar */}
+        <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} theme={theme} />
 
-      {/* Main content */}
-      <div
-        className={`flex-1 flex flex-col transition-all duration-200 ${
-          isCollapsed ? 'lg:ml-0' : 'lg:ml-0'
-        }`}
-      >
-        {/* Header */}
-        <Header title={getTitle()} />
+        {/* Main content */}
+        <div
+          className={`flex-1 flex flex-col transition-all duration-200 ${
+            isCollapsed ? 'lg:ml-16' : 'lg:ml-72'
+          }`}
+        >
+          {/* Header */}
+          <Header title={getTitle()} theme={theme} onToggleTheme={toggleTheme} />
 
-        {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          {children}
-        </main>
+          {/* Page content - White background for light mode */}
+          <main className={`flex-1 w-full min-w-0 p-2 sm:p-4 lg:p-6 overflow-auto admin-main-full no-overflow-x ${bgMain}`}>
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </AdminThemeProvider>
   );
 }
+

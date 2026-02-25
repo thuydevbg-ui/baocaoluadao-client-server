@@ -5,3 +5,4 @@ export { Skeleton, CardSkeleton, SearchResultSkeleton, DetailSkeleton } from './
 export { Badge, RiskBadge } from './Badge';
 export { ToastProvider, useToast } from './Toast';
 export { Card, GlassCard } from './Card';
+export { FiIcon } from './FiIcon';

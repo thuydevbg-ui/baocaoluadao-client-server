@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,6 +28,7 @@ import {
 interface SidebarProps {
   isCollapsed: boolean;
   setIsCollapsed: (value: boolean) => void;
+  theme?: 'light' | 'dark';
 }
 
 const menuItems = [
@@ -89,10 +91,38 @@ const menuItems = [
   }
 ];
 
-export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
+export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }: SidebarProps) {
   const pathname = usePathname();
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  // Close mobile sidebar when viewport becomes desktop-sized to avoid
+  // leaving the mobile overlay open after resizing (e.g. F12 toggling).
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) {
+        setIsMobileOpen(false);
+      }
+    };
+    // Initial check
+    if (mq.matches) setIsMobileOpen(false);
+    // Add listener
+    if ('addEventListener' in mq) {
+      mq.addEventListener('change', handler as any);
+    } else {
+      // Safari fallback
+      (mq as any).addListener(handler as any);
+    }
+    return () => {
+      if ('removeEventListener' in mq) {
+        mq.removeEventListener('change', handler as any);
+      } else {
+        (mq as any).removeListener(handler as any);
+      }
+    };
+  }, []);
 
   const toggleSubmenu = (title: string) => {
     if (isCollapsed) {
@@ -107,9 +137,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   };
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
+    <div className={`flex flex-col h-full overflow-visible ${theme === 'dark' ? 'bg-[#0F172A]' : 'bg-white'}`}>
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
+      <div className={`flex items-center justify-between h-16 px-4 border-b ${theme === 'dark' ? 'border-gray-800' : 'border-gray-100'}`}>
         <Link href="/admin" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
             <Shield className="w-6 h-6 text-white" />
@@ -120,7 +150,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
-                className="font-bold text-lg text-white whitespace-nowrap"
+                className={`font-bold text-lg whitespace-nowrap ${
+                  theme === 'dark' ? 'text-white' : 'text-gray-900'
+                }`}
               >
                 Admin Panel
               </motion.span>
@@ -128,10 +160,14 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           </AnimatePresence>
         </Link>
         
-        {/* Mobile close button */}
+        {/* Mobile close button - visible on mobile only */}
         <button
           onClick={() => setIsMobileOpen(false)}
-          className="lg:hidden text-gray-400 hover:text-white"
+          className={`lg:hidden p-1 ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:text-white'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
         >
           <X className="w-5 h-5" />
         </button>
@@ -155,7 +191,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                         active
                           ? 'bg-blue-600/20 text-blue-400'
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                          : theme === 'dark'
+                          ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                       }`}
                     >
                       <Icon className="w-5 h-5 flex-shrink-0" />
@@ -195,7 +233,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                                 className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
                                   pathname === child.href
                                     ? 'bg-blue-600/20 text-blue-400'
-                                    : 'text-gray-500 hover:text-white hover:bg-gray-800'
+                                    : theme === 'dark'
+                                    ? 'text-gray-500 hover:text-white hover:bg-gray-800'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                                 }`}
                                 onClick={() => setIsMobileOpen(false)}
                               >
@@ -214,7 +254,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                       active
                         ? 'bg-blue-600/20 text-blue-400'
-                        : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                        : theme === 'dark'
+                        ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                     }`}
                   >
                     <Icon className="w-5 h-5 flex-shrink-0" />
@@ -247,10 +289,14 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-gray-800 p-3">
+      <div className={`border-t p-3 ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
         <Link
           href="/"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          }`}
         >
           <LogOut className="w-5 h-5" />
           <AnimatePresence>
@@ -271,7 +317,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       {/* Collapse button - Desktop only */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 bg-gray-800 border border-gray-700 rounded-full items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+        className={`hidden lg:flex absolute -right-5 top-20 w-8 h-8 rounded-full items-center justify-center transition-colors z-50 shadow-lg ${
+          theme === 'dark'
+            ? 'bg-blue-600 border-gray-700 text-white hover:bg-blue-700'
+            : 'bg-blue-600 border-gray-300 text-white hover:bg-blue-700'
+        } border`}
       >
         {isCollapsed ? (
           <ChevronRight className="w-4 h-4" />
@@ -284,41 +334,57 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile menu button */}
+      {/* Mobile menu button - visible below lg breakpoint */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-gray-800 rounded-lg text-white"
+        className={`lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg ${
+          theme === 'dark'
+            ? 'bg-gray-800 text-white'
+            : 'bg-gray-100 text-gray-900'
+        }`}
       >
         <Menu className="w-6 h-6" />
       </button>
 
-      {/* Mobile overlay */}
-      <AnimatePresence>
-        {isMobileOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+      {/* Mobile overlay + sidebar (portal to body to avoid transformed parents) */}
+      {isMobileOpen && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <>
+          <div
             onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden fixed inset-0 bg-black/50 z-40"
+            className="lg:hidden fixed inset-0 z-40 bg-black/50"
           />
-        )}
-      </AnimatePresence>
 
-      {/* Sidebar */}
-      <motion.aside
-        initial={false}
-        animate={{
-          width: isCollapsed ? 80 : 280,
-          x: isMobileOpen ? 0 : (typeof window !== 'undefined' && window.innerWidth < 1024 ? -280 : 0)
-        }}
-        transition={{ duration: 200 }}
-        className={`fixed lg:sticky top-0 left-0 h-screen bg-[#0B1120] border-r border-gray-800 z-50 lg:z-auto ${
-          isMobileOpen ? 'translate-x-0' : ''
+          <motion.aside
+            initial={{ x: -288 }}
+            animate={{ x: 0 }}
+            exit={{ x: -288 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className={`lg:hidden fixed top-0 left-0 h-screen w-72 border-r z-50 ${
+              theme === 'dark'
+                ? 'bg-[#0B1120] border-gray-800'
+                : 'bg-white border-gray-200'
+            }`}
+          >
+            <SidebarContent />
+          </motion.aside>
+        </>,
+        document.body
+      )}
+
+      {/* Desktop Sidebar - hidden on mobile, sticky on desktop */}
+      <aside
+        className={`hidden lg:block fixed lg:sticky top-0 left-0 h-screen border-r z-40 transition-all duration-200 ${
+          isCollapsed ? 'w-16' : 'w-72'
+        } ${
+          theme === 'dark'
+            ? 'bg-[#0B1120] border-gray-800'
+            : 'bg-white border-gray-200'
         }`}
       >
         <SidebarContent />
-      </motion.aside>
+      </aside>
+
+      {/* (Mobile sidebar rendered via portal above) */}
     </>
   );
 }

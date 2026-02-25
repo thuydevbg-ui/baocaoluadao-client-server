@@ -28,12 +28,9 @@ import {
   ExternalLink,
   Link2,
   Activity,
-  CircleCheck,
-  CircleX,
-  CircleAlert,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Card, Button, Input } from '@/components/ui';
+import { Card, Button, Input, FiIcon } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
@@ -62,6 +59,7 @@ interface ScanResult {
   found: boolean;
   name: string;
   icon?: string;
+  organizationIcon?: string;
   organization?: string;
   description: string;
   reports: number;
@@ -130,7 +128,7 @@ function analyzeMessage(message: string): AnalysisResult {
         matched = /\b(trúng|thưởng|giải thưởng|lottery|prize|won|winner|inheritance|di sản)\b/i.test(lowerMessage);
         break;
       case 'authority':
-        matched = /\b(công an|ngân hàng|police|bank|tòa|tcourt|chính phủ|government|viện kiểm|sở)\b/i.test(lowerMessage);
+        matched = /\b(công an|ngân hàng|police|bank|tòa|court|chính phủ|government|viện kiểm|sở)\b/i.test(lowerMessage);
         break;
       case 'otp':
         matched = /\b(otp|mã|xác minh|verify|code|pin|password|mật khẩu)\b/i.test(lowerMessage);
@@ -142,7 +140,7 @@ function analyzeMessage(message: string): AnalysisResult {
         matched = /\b(chuyển tiền|transfer|money|tiền|vnd|dola|thanh toán|payment|ngân lượng)\b/i.test(lowerMessage);
         break;
       case 'personal':
-        matched = /\b(cmnd|cccd|cccd|số tài khoản|account|stk|tk|thông tin cá nhân)\b/i.test(lowerMessage);
+        matched = /\b(cmnd|cccd|số tài khoản|account|stk|tk|thông tin cá nhân)\b/i.test(lowerMessage);
         break;
       case 'threat':
         matched = /\b(khóa|tước|bắt|phạt|jail|arrest|prison|banned|block)\b/i.test(lowerMessage);
@@ -173,10 +171,10 @@ function analyzeMessage(message: string): AnalysisResult {
   const verdict = probability >= 50 ? 'scam' : probability >= 25 ? 'suspicious' : 'safe';
   
   const recommendation = verdict === 'scam' 
-    ? '⚠️ Cảnh báo: Tin nhắn này có nhiều dấu hiệu lừa đảo. KHÔNG cung cấp thông tin cá nhân hoặc chuyển tiền.'
+    ? 'Cảnh báo: Tin nhắn này có nhiều dấu hiệu lừa đảo. KHÔNG cung cấp thông tin cá nhân hoặc chuyển tiền.'
     : verdict === 'suspicious'
-    ? '⚡ Cẩn thận: Tin nhắn có một số dấu hiệu đáng ngờ. Hãy xác minh kỹ trước khi hành động.'
-    : '✅ Tin nhắn này có vẻ an toàn nhưng vẫn nên cảnh giác với các yêu cầu đáng ngờ.';
+    ? 'Cẩn thận: Tin nhắn có một số dấu hiệu đáng ngờ. Hãy xác minh kỹ trước khi hành động.'
+    : 'Tin nhắn này có vẻ an toàn nhưng vẫn nên cảnh giác với các yêu cầu đáng ngờ.';
     
   return { probability, verdict, indicators, patterns, recommendation };
 }
@@ -185,6 +183,16 @@ export default function AIPage() {
   const { t } = useI18n();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<AITabKey>('analyzer');
+
+  const repairMojibake = (value: string): string => {
+    if (!value) return '';
+    if (!/[ÃÂÄÅ]/.test(value)) return value;
+    try {
+      return decodeURIComponent(escape(value));
+    } catch {
+      return value;
+    }
+  };
   
   // Analyzer state
   const [message, setMessage] = useState('');
@@ -249,14 +257,18 @@ export default function AIPage() {
   const handleScan = async () => {
     if (!url.trim()) return;
     
-    // Validate URL format
+    // Validate URL format - accept domain-only or full URL
     let cleanUrl = url.trim();
-    if (!cleanUrl.startsWith('http')) {
+    const isFullUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl);
+    
+    if (!isFullUrl) {
+      // User entered domain only - add https:// prefix for validation
       cleanUrl = 'https://' + cleanUrl;
     }
     
-    if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}(\/.*)?$/.test(cleanUrl)) {
-      showToast('warning', 'Vui lòng nhập URL hợp lệ (bao gồm https://)');
+    // More permissive regex that accepts: domain.com, www.domain.com, sub.domain.com, http://domain.com, https://domain.com
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+(\/.*)?$/.test(cleanUrl)) {
+      showToast('warning', 'Vui lòng nhập domain hợp lệ (ví dụ: shopee.com.vn hoặc https://shopee.com.vn)');
       return;
     }
     
@@ -279,6 +291,7 @@ export default function AIPage() {
       }
       
       const data = await response.json();
+      const apiChecks = Array.isArray(data.securityChecks) ? data.securityChecks : [];
       
       // Parse API response with new fields
       const riskScore = data.risk_score || data.riskScore || data.score || 0;
@@ -289,8 +302,9 @@ export default function AIPage() {
         found: data.found || false,
         name: data.name || data.domain || cleanUrl,
         icon: data.icon || '',
-        organization: data.organization || '',
-        description: data.description || '',
+        organizationIcon: data.organization_icon || data.organizationIcon || '',
+        organization: repairMojibake(data.organization || ''),
+        description: repairMojibake(data.description || ''),
         reports: data.reports || 0,
         date: data.date || new Date().toISOString(),
         status: data.status || (isScam ? 'suspected' : 'safe'),
@@ -308,12 +322,18 @@ export default function AIPage() {
           fakeDomain: data.fake_domain || data.details?.fakeDomain || false,
           redirectCount: data.redirects || data.details?.redirectCount || 0,
         },
-        securityChecks: data.securityChecks || [
+        securityChecks: (apiChecks.length > 0
+          ? apiChecks.map((check: { name?: string; status?: 'pass' | 'fail' | 'warning'; details?: string }) => ({
+              name: repairMojibake(check?.name || ''),
+              status: check?.status || 'warning',
+              details: repairMojibake(check?.details || ''),
+            }))
+          : [
           { name: 'SSL Certificate', status: data.ssl_valid ? 'pass' : 'fail', details: data.ssl_valid ? 'Chứng chỉ SSL hợp lệ' : 'Không có SSL hoặc không hợp lệ' },
           { name: 'Domain Age', status: data.domain_age === 'New' ? 'fail' : 'pass', details: data.domain_age || 'Không xác định' },
           { name: 'Phishing Detection', status: isScam ? 'fail' : 'pass', details: isScam ? 'Phát hiện lừa đảo' : 'Không phát hiện lừa đảo' },
           { name: 'Reputation', status: riskScore > 70 ? 'fail' : riskScore > 30 ? 'warning' : 'pass', details: `Risk score: ${riskScore}%` },
-        ]
+          ]),
       });
       
       showToast('success', `Đã quét ${cleanUrl} - Kết quả: ${riskScore}% rủi ro`);
@@ -329,6 +349,7 @@ export default function AIPage() {
         found: isScam,
         name: cleanUrl,
         icon: '',
+        organizationIcon: '',
         organization: '',
         description: isScam ? `Cảnh báo: Domain "${cleanUrl}" có dấu hiệu lừa đảo` : 'Website an toàn',
         reports: isScam ? 5 : 0,
@@ -477,7 +498,7 @@ export default function AIPage() {
               {t('ai.ai_powered')} - Advanced Detection
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-text-main mb-2">
-              🔍 {t('ai.title')}
+              {t('ai.title')}
             </h1>
             <p className="text-text-secondary max-w-2xl mx-auto">
               Sử dụng AI để phân tích tin nhắn, website, số điện thoại và phát hiện các dấu hiệu lừa đảo
@@ -487,11 +508,11 @@ export default function AIPage() {
           {/* Tabs */}
           <div className="flex gap-2 mb-6 p-1 bg-bg-card rounded-button overflow-x-auto">
             {([
-              { key: 'analyzer', label: 'Phân tích tin nhắn', iconClass: 'fi-br-messages' },
-              { key: 'scanner', label: 'Quét Website', iconClass: 'fi-br-globe' },
-              { key: 'phone', label: 'Số điện thoại', iconClass: 'fi-br-phone' },
-              { key: 'heatmap', label: 'Bản đồ', iconClass: 'fi-br-map' },
-            ] as const).map(({ key, label, iconClass }) => (
+              { key: 'analyzer', label: 'Phân tích tin nhắn', icon: 'br-messages' },
+              { key: 'scanner', label: 'Quét website', icon: 'br-globe' },
+              { key: 'phone', label: 'Số điện thoại', icon: 'br-phone' },
+              { key: 'heatmap', label: 'Bản đồ', icon: 'br-map' },
+            ] as const).map(({ key, label, icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key as typeof activeTab)}
@@ -502,7 +523,11 @@ export default function AIPage() {
                     : 'text-text-muted hover:text-text-main hover:bg-bg-cardHover'
                 )}
               >
-                <i className={cn(iconClass, 'text-base')}></i>
+                <FiIcon
+                  name={icon}
+                  effect={activeTab === key ? 'pulse' : 'hover'}
+                  className="text-base"
+                />
                 {label}
               </button>
             ))}
@@ -517,7 +542,7 @@ export default function AIPage() {
               <Card className="mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-text-main flex items-center gap-2">
-                    <i className="fi fi-br-messages text-primary"></i>
+                    <FiIcon name="br-messages" effect="float" className="text-primary" />
                     {t('ai.message_analyzer')}
                   </h2>
                   <div className="flex items-center gap-2 text-xs text-text-muted">
@@ -612,7 +637,7 @@ export default function AIPage() {
                             ) : analysisResult.verdict === 'suspicious' ? (
                               <AlertTriangle className="w-8 h-8 text-warning" />
                             ) : (
-                              <i className="fi fi-br-shield-check text-success text-xl"></i>
+                              <FiIcon name="br-shield-check" effect="pulse" className="text-success text-xl" />
                             )}
                             <span className={cn(
                               'text-xl font-bold',
@@ -689,11 +714,11 @@ export default function AIPage() {
               <Card className="mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-text-main flex items-center gap-2">
-                    <i className="fi fi-br-globe text-green-500 text-lg"></i>
+                    <FiIcon name="br-globe" effect="float" className="text-green-500 text-lg" />
                     {t('ai.website_scanner')}
                   </h2>
                   <div className="flex items-center gap-2 text-xs text-text-muted">
-                    <i className="fi fi-br-shield-check text-xs"></i>
+                    <FiIcon name="br-shield-check" effect="pulse" className="text-xs" />
                     Security Check
                   </div>
                 </div>
@@ -706,11 +731,13 @@ export default function AIPage() {
                   />
                   <Button 
                     variant="primary" 
+                    size="sm"
                     onClick={handleScan}
                     isLoading={scanning}
                     disabled={!url.trim()}
+                    className="h-10 w-[138px] px-3 whitespace-nowrap shrink-0"
                   >
-                    {scanning ? t('ai.analyzing') : t('ai.scan')}
+                    {scanning ? 'Đang quét...' : t('ai.scan')}
                   </Button>
                 </div>
               </Card>
@@ -728,8 +755,8 @@ export default function AIPage() {
                       'border-success/50 bg-success/5'
                     )}>
                       {/* Domain Header */}
-                      <div className="flex items-center justify-between mb-4 pb-4 border-b border-bg-border">
-                        <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-between gap-3 mb-4 pb-4 border-b border-bg-border">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           {scanResult.icon ? (
                             <img 
                               src={scanResult.icon} 
@@ -740,36 +767,57 @@ export default function AIPage() {
                               }}
                             />
                           ) : scanResult.verdict === 'scam' ? (
-                            <i className="fi fi-br-warning text-danger text-2xl"></i>
+                            <FiIcon name="br-warning" effect="pulse" className="text-danger text-2xl" />
                           ) : (
-                            <i className="fi fi-br-shield-check text-success text-2xl"></i>
+                            <FiIcon name="br-shield-check" effect="pulse" className="text-success text-2xl" />
                           )}
-                          <div>
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <i className="fi fi-br-globe text-text-muted"></i>
-                              <span className="text-lg font-bold text-text-main">{scanResult.domain}</span>
+                              <FiIcon name="br-globe" effect="hover" className="text-text-muted" />
+                              <span className="text-lg font-bold text-text-main truncate">{scanResult.domain}</span>
                               <button 
                                 onClick={() => copyToClipboard(scanResult.domain)}
                                 className="p-1 hover:bg-bg-cardHover rounded transition-colors"
                                 title="Sao chép"
                               >
-                                <i className="fi fi-br-copy text-text-muted"></i>
+                                <FiIcon name="br-copy" effect="hover" className="text-text-muted" />
                               </button>
                             </div>
                             {scanResult.organization && (
-                              <p className="text-warning text-sm font-medium"><i className="fi fi-br-warning text-warning"></i> Mạo danh: {scanResult.organization}</p>
+                              <p className="text-warning text-sm font-medium truncate">
+                                Mạo danh: {scanResult.organization}
+                              </p>
                             )}
                           </div>
                         </div>
+                        {(scanResult.organizationIcon || scanResult.organization) && (
+                          <div className="hidden md:flex items-center gap-2 min-w-[180px] max-w-[260px] shrink-0">
+                            {scanResult.organizationIcon && (
+                              <img
+                                src={scanResult.organizationIcon}
+                                alt={scanResult.organization || scanResult.domain}
+                                className="w-8 h-8 rounded-full object-cover shrink-0"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            )}
+                            {scanResult.organization && (
+                              <span className="text-base font-semibold text-text-main truncate">
+                                {scanResult.organization}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className={cn(
                           'px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-1',
                           scanResult.status === 'confirmed' ? 'bg-danger text-white' :
                           scanResult.status === 'suspected' ? 'bg-warning text-black' :
                           'bg-success text-white'
                         )}>
-                          {scanResult.status === 'confirmed' ? <><i className="fi fi-br-cross"></i> Đã xác nhận</> :
-                           scanResult.status === 'suspected' ? <><i className="fi fi-br-arrows-rotate"></i> Đang xử lý</> :
-                           <><i className="fi fi-br-check"></i> An toàn</>}
+                          {scanResult.status === 'confirmed' ? <><FiIcon name="br-cross" effect="pulse" /> Đã xác thực</> :
+                           scanResult.status === 'suspected' ? <><FiIcon name="br-arrows-rotate" effect="ring" /> Đang xử lý</> :
+                           <><FiIcon name="br-check" effect="pulse" /> An toàn</>}
                         </div>
                       </div>
 
@@ -797,13 +845,13 @@ export default function AIPage() {
                         </div>
                         <div className="text-center p-3 bg-bg-cardHover rounded-lg">
                           <p className="text-2xl font-bold text-text-main">
-                            {scanResult.source === 'local_detection' ? <i className="fi fi-br-robot"></i> : <i className="fi fi-br-search"></i>}
+                            {scanResult.source === 'local_detection' ? <FiIcon name="br-robot" effect="float" /> : <FiIcon name="br-search" effect="hover" />}
                           </p>
                           <p className="text-xs text-text-muted">Nguồn</p>
                         </div>
                         <div className="text-center p-3 bg-bg-cardHover rounded-lg">
                           <p className="text-2xl font-bold text-text-main">
-                            {scanResult.sslStatus === 'Valid' ? <i className="fi fi-br-lock"></i> : <i className="fi fi-br-warning"></i>}
+                            {scanResult.sslStatus === 'Valid' ? <FiIcon name="br-lock" effect="pulse" /> : <FiIcon name="br-warning" effect="pulse" />}
                           </p>
                           <p className="text-xs text-text-muted">SSL</p>
                         </div>
@@ -822,11 +870,11 @@ export default function AIPage() {
                             )}
                           >
                             {check.status === 'pass' ? (
-                              <i className="fi fi-br-check text-success"></i>
+                              <FiIcon name="br-check" effect="pulse" className="text-success" />
                             ) : check.status === 'fail' ? (
-                              <i className="fi fi-br-cross text-danger"></i>
+                              <FiIcon name="br-cross" effect="pulse" className="text-danger" />
                             ) : (
-                              <i className="fi fi-br-warning text-warning"></i>
+                              <FiIcon name="br-warning" effect="pulse" className="text-warning" />
                             )}
                             <div>
                               <p className={cn(
@@ -858,7 +906,7 @@ export default function AIPage() {
               <Card className="mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-text-main flex items-center gap-2">
-                    <i className="fi fi-br-phone text-blue-500"></i>
+                    <FiIcon name="br-phone" effect="float" className="text-blue-500" />
                     Phân tích số điện thoại
                   </h2>
                   <div className="flex items-center gap-2 text-xs text-text-muted">
@@ -904,7 +952,7 @@ export default function AIPage() {
                           ) : phoneResult.verdict === 'suspicious' ? (
                             <AlertTriangle className="w-10 h-10 text-warning" />
                           ) : (
-                            <i className="fi fi-br-shield-check text-success text-2xl"></i>
+                            <FiIcon name="br-shield-check" effect="pulse" className="text-success text-2xl" />
                           )}
                           <div>
                             <p className={cn(
@@ -916,8 +964,8 @@ export default function AIPage() {
                               {phoneResult.riskScore}% Rủi ro
                             </p>
                             <p className="text-text-muted text-sm">
-                              {phoneResult.verdict === 'scam' ? '⚠️ Số điện thoại lừa đảo!' : 
-                               phoneResult.verdict === 'suspicious' ? '⚡ Cẩn thận' : '✅ Số điện thoại an toàn'}
+                              {phoneResult.verdict === 'scam' ? 'Số điện thoại lừa đảo!' : 
+                               phoneResult.verdict === 'suspicious' ? 'Cẩn thận' : 'Số điện thoại an toàn'}
                             </p>
                           </div>
                         </div>
@@ -1042,3 +1090,4 @@ export default function AIPage() {
     </div>
   );
 }
+

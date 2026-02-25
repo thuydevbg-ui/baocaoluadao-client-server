@@ -28,27 +28,26 @@ export default function AdminLoginPage() {
     setError('');
     setIsLoading(true);
 
-    // Simulate API call
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Use secure API route that sets HttpOnly cookies
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, rememberMe }),
+      });
 
-      // SECURITY FIX: Use environment variables instead of hardcoded credentials
-      // TODO: Replace with proper authentication API (e.g., NextAuth, Auth.js)
-      const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'demo@scamguard.vn';
-      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'demo123';
+      const data = await response.json();
 
-      if (email === adminEmail && password === adminPassword) {
-        // Store mock session
-        localStorage.setItem('adminAuth', JSON.stringify({
-          email,
-          role: 'admin',
-          name: 'Admin User',
-          loginTime: new Date().toISOString()
-        }));
-        router.push('/admin');
-      } else {
-        setError('Email hoặc mật khẩu không đúng');
+      if (!response.ok) {
+        setError(data.error || 'Đăng nhập thất bại');
+        setIsLoading(false);
+        return;
       }
+
+      // HttpOnly cookie is set by the server - no localStorage needed
+      router.push('/admin');
     } catch {
       setError('Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
@@ -193,16 +192,7 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
-          {/* Demo credentials */}
-          <div className="mt-6 p-4 bg-gray-800/50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-2">Demo credentials:</p>
-            <p className="text-sm text-gray-400">
-              Email: <span className="text-white">admin@scamguard.vn</span>
-            </p>
-            <p className="text-sm text-gray-400">
-              Password: <span className="text-white">admin123</span>
-            </p>
-          </div>
+
         </motion.div>
 
         {/* Back to home */}

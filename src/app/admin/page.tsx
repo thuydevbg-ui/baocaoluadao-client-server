@@ -16,8 +16,10 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import StatsCard from '@/components/admin/StatsCard';
+import { useAdminTheme } from '@/contexts/AdminThemeContext';
 
 export default function AdminDashboard() {
+  const { theme } = useAdminTheme();
   const stats = [
     {
       title: 'Tổng báo cáo',
@@ -149,12 +151,22 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.4 }}
-          className="lg:col-span-2 bg-gray-900/50 border border-gray-800 rounded-2xl overflow-hidden"
+          className={`lg:col-span-2 border rounded-2xl overflow-hidden ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-800'
+              : 'bg-white border-gray-200'
+          }`}
         >
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
+          <div className={`flex items-center justify-between p-6 border-b ${
+            theme === 'dark' ? 'border-gray-800' : 'border-gray-200'
+          }`}>
             <div>
-              <h3 className="text-lg font-semibold text-white">Báo cáo gần đây</h3>
-              <p className="text-sm text-gray-400 mt-1">Danh sách báo cáo mới nhất</p>
+              <h3 className={`text-lg font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>Báo cáo gần đây</h3>
+              <p className={`text-sm mt-1 ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              }`}>Danh sách báo cáo mới nhất</p>
             </div>
             <a
               href="/admin/reports"
@@ -165,26 +177,42 @@ export default function AdminDashboard() {
             </a>
           </div>
 
-          <div className="divide-y divide-gray-800">
+          <div className={`divide-y ${
+            theme === 'dark' ? 'divide-gray-800' : 'divide-gray-200'
+          }`}>
             {recentReports.map((report) => (
               <div
                 key={report.id}
-                className="flex items-center justify-between p-4 hover:bg-gray-800/50 transition-colors"
+                className={`flex items-center justify-between p-4 transition-colors ${
+                  theme === 'dark'
+                    ? 'hover:bg-gray-800/50'
+                    : 'hover:bg-gray-50'
+                }`}
               >
                 <div className="flex items-center gap-4">
                   <span className="text-2xl">{getTypeIcon(report.type)}</span>
                   <div>
-                    <h4 className="text-sm font-medium text-white">{report.title}</h4>
+                    <h4 className={`text-sm font-medium ${
+                      theme === 'dark' ? 'text-white' : 'text-gray-900'
+                    }`}>{report.title}</h4>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{report.reporter}</span>
-                      <span className="text-gray-600">•</span>
-                      <span className="text-xs text-gray-500">{report.date}</span>
+                      <span className={`text-xs ${
+                        theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                      }`}>{report.reporter}</span>
+                      <span className={theme === 'dark' ? 'text-gray-600' : 'text-gray-300'}>•</span>
+                      <span className={`text-xs ${
+                        theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                      }`}>{report.date}</span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {getStatusBadge(report.status)}
-                  <button className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
+                  <button className={`p-2 rounded-lg transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-500 hover:text-white hover:bg-gray-800'
+                      : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'
+                  }`}>
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
                 </div>
@@ -198,12 +226,20 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.5 }}
-          className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6"
+          className={`border rounded-2xl p-6 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-800'
+              : 'bg-white border-gray-200'
+          }`}
         >
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-white">Danh mục lừa đảo</h3>
-              <p className="text-sm text-gray-400 mt-1">Phân bố theo loại</p>
+              <h3 className={`text-lg font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>Danh mục lừa đảo</h3>
+              <p className={`text-sm mt-1 ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              }`}>Phân bố theo loại</p>
             </div>
           </div>
 
@@ -211,12 +247,18 @@ export default function AdminDashboard() {
             {categories.map((category, index) => (
               <div key={category.name}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-300">{category.name}</span>
-                  <span className="text-sm font-medium text-white">
+                  <span className={`text-sm ${
+                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  }`}>{category.name}</span>
+                  <span className={`text-sm font-medium ${
+                    theme === 'dark' ? 'text-white' : 'text-gray-900'
+                  }`}>
                     {category.count.toLocaleString()}
                   </span>
                 </div>
-                <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className={`h-2 rounded-full overflow-hidden ${
+                  theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'
+                }`}>
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${category.percentage}%` }}
@@ -237,15 +279,23 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.6 }}
-          className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6"
+          className={`border rounded-2xl p-6 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-800'
+              : 'bg-white border-gray-200'
+          }`}
         >
           <div className="flex items-center gap-3 mb-4">
             <div className="p-3 bg-yellow-500/10 rounded-xl">
               <Clock className="w-6 h-6 text-yellow-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-white">Chờ duyệt</h4>
-              <p className="text-2xl font-bold text-white">234</p>
+              <h4 className={`font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>Chờ duyệt</h4>
+              <p className={`text-2xl font-bold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>234</p>
             </div>
           </div>
           <a
@@ -261,15 +311,23 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.7 }}
-          className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6"
+          className={`border rounded-2xl p-6 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-800'
+              : 'bg-white border-gray-200'
+          }`}
         >
           <div className="flex items-center gap-3 mb-4">
             <div className="p-3 bg-green-500/10 rounded-xl">
               <Shield className="w-6 h-6 text-green-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-white">Đã xác minh hôm nay</h4>
-              <p className="text-2xl font-bold text-white">89</p>
+              <h4 className={`font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>Đã xác minh hôm nay</h4>
+              <p className={`text-2xl font-bold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>89</p>
             </div>
           </div>
           <a
@@ -285,15 +343,23 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.8 }}
-          className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6"
+          className={`border rounded-2xl p-6 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-800'
+              : 'bg-white border-gray-200'
+          }`}
         >
           <div className="flex items-center gap-3 mb-4">
             <div className="p-3 bg-purple-500/10 rounded-xl">
               <Eye className="w-6 h-6 text-purple-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-white">Lượt xem hôm nay</h4>
-              <p className="text-2xl font-bold text-white">12,456</p>
+              <h4 className={`font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>Lượt xem hôm nay</h4>
+              <p className={`text-2xl font-bold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>12,456</p>
             </div>
           </div>
           <div className="flex items-center gap-1 text-sm text-green-400">

@@ -10,6 +10,87 @@ import { Card, SearchResultSkeleton, RiskBadge } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type SearchResult } from '@/lib/utils';
 
+interface CategoryApiItem {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  count_report?: string;
+  status?: string;
+  created_at?: string;
+  organization?: string;
+  organization_icon?: string;
+  icon?: string;
+  link?: string;
+}
+
+interface CategoryApiResponse {
+  success: boolean;
+  items: CategoryApiItem[];
+  source?: string;
+  mode?: string;
+  category?: string;
+}
+
+interface SearchResultView extends SearchResult {
+  sourceStatus?: string;
+  sourceDescription?: string;
+  sourceOrganization?: string;
+  sourceOrganizationIcon?: string;
+  sourceLink?: string;
+  sourceIcon?: string;
+  sourceCategory?: string;
+  sourceMode?: string;
+}
+
+type CategoryKey = 'organizations' | 'websites' | 'devices' | 'systems' | 'apps';
+
+const SEARCH_CATEGORIES: CategoryKey[] = ['organizations', 'websites', 'devices', 'systems', 'apps'];
+
+function repairMojibake(value: string): string {
+  if (!value) return '';
+  if (!/[ÃÂÄÅ]/.test(value)) return value;
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+}
+
+function normalizeSearchKey(input: string): string {
+  return repairMojibake(input || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function slugifySearchKey(input: string): string {
+  return normalizeSearchKey(input)
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function getMatchScore(queryKey: string, querySlug: string, item: CategoryApiItem): number {
+  const nameKey = normalizeSearchKey(item.name || '');
+  const link = (item.link || '').toLowerCase();
+  let score = 0;
+
+  if (!queryKey) return 0;
+  if (nameKey === queryKey) score = Math.max(score, 120);
+  if (nameKey.startsWith(queryKey) || queryKey.startsWith(nameKey)) score = Math.max(score, 100);
+  if (nameKey.includes(queryKey) || queryKey.includes(nameKey)) score = Math.max(score, 80);
+  if (querySlug && link.includes(`/${querySlug}`)) score = Math.max(score, 130);
+  if (querySlug && link.includes(querySlug)) score = Math.max(score, 110);
+
+  return score;
+}
+
 function SearchPageContent() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
@@ -18,9 +99,75 @@ function SearchPageContent() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<SearchResultView[]>([]);
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const mapCategoryType = (key: string): SearchResult['type'] => {
+    switch (key) {
+      case 'websites': return 'website';
+      case 'organizations': return 'bank';
+      case 'devices': return 'phone';
+      case 'systems': return 'website';
+      case 'apps': return 'crypto';
+      default: return 'website';
+    }
+  };
+
+  const mapCategoryRisk = (status?: string): SearchResult['risk'] => {
+    if (!status) return 'safe';
+    const lowered = status.toLowerCase();
+    if (lowered === 'confirmed' || lowered === 'scam') return 'scam';
+    if (lowered === 'suspected' || lowered === 'warning') return 'suspicious';
+    return 'safe';
+  };
+
+  const mapApiItemToResult = (
+    item: CategoryApiItem,
+    index: number,
+    categoryKey: string,
+    mode?: string
+  ): SearchResultView => {
+    const reports = Number.parseInt(item.count_report || '0', 10) || 0;
+    const firstSeen = item.created_at || 'Không rõ';
+
+    return {
+      id: item.id || `${categoryKey}-${index}`,
+      type: mapCategoryType(categoryKey),
+      value: item.name,
+      risk: mapCategoryRisk(item.status),
+      reports,
+      firstSeen,
+      lastReported: firstSeen,
+      sourceStatus: item.status,
+      sourceDescription: item.description,
+      sourceOrganization: item.organization,
+      sourceOrganizationIcon: item.organization_icon,
+      sourceLink: item.link,
+      sourceIcon: item.icon,
+      sourceCategory: categoryKey,
+      sourceMode: mode,
+    };
+  };
+
+  const buildDetailHref = (result: SearchResultView): string => {
+    const params = new URLSearchParams();
+    params.set('reports', String(result.reports || 0));
+    if (result.firstSeen) params.set('firstSeen', result.firstSeen);
+    if (result.lastReported) params.set('lastReported', result.lastReported);
+    if (result.sourceStatus) params.set('status', result.sourceStatus);
+    if (result.sourceDescription) params.set('description', result.sourceDescription);
+    if (result.sourceOrganization) params.set('organization', result.sourceOrganization);
+    if (result.sourceOrganizationIcon) params.set('organizationIcon', result.sourceOrganizationIcon);
+    if (result.sourceLink) params.set('sourceLink', result.sourceLink);
+    if (result.sourceCategory) params.set('sourceCategory', result.sourceCategory);
+    if (result.sourceMode) params.set('sourceMode', result.sourceMode);
+    if (result.sourceIcon) params.set('sourceIcon', result.sourceIcon);
+
+    const queryString = params.toString();
+    const base = `/detail/${result.type}/${encodeURIComponent(result.value)}`;
+    return queryString ? `${base}?${queryString}` : base;
+  };
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -28,38 +175,82 @@ function SearchPageContent() {
       setError(null);
 
       try {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 400));
 
         if (query) {
-          setResults([
-            { id: 1, type: 'phone', value: query, risk: 'scam', reports: 23, firstSeen: '2024-01-15', lastReported: '2024-02-20' },
-            { id: 2, type: 'bank', value: `VCB ${query.slice(-6)}`, risk: 'suspicious', reports: 5, firstSeen: '2024-02-01', lastReported: '2024-02-18' },
-          ]);
-        } else if (category) {
-          const categoryMap: Record<string, SearchResult[]> = {
-            websites: [
-              { id: 101, type: 'website', value: 'fakestore-vn.com', risk: 'scam', reports: 156, firstSeen: '2024-01-10', lastReported: '2024-02-20' },
-              { id: 102, type: 'website', value: 'shop-sale-0dong.net', risk: 'suspicious', reports: 48, firstSeen: '2024-02-01', lastReported: '2024-02-18' },
-            ],
-            organizations: [
-              { id: 201, type: 'bank', value: 'To chuc tai chinh gia mao A', risk: 'scam', reports: 89, firstSeen: '2024-01-12', lastReported: '2024-02-21' },
-              { id: 202, type: 'bank', value: 'Don vi mao danh B', risk: 'suspicious', reports: 34, firstSeen: '2024-01-30', lastReported: '2024-02-17' },
-            ],
-            devices: [
-              { id: 301, type: 'phone', value: 'Thiet bi Android nhiem ma doc', risk: 'scam', reports: 27, firstSeen: '2024-01-25', lastReported: '2024-02-19' },
-              { id: 302, type: 'phone', value: 'Thiet bi truy cap trai phep', risk: 'suspicious', reports: 12, firstSeen: '2024-02-05', lastReported: '2024-02-16' },
-            ],
-            systems: [
-              { id: 401, type: 'website', value: 'He thong bi canh bao tan cong', risk: 'scam', reports: 19, firstSeen: '2024-01-18', lastReported: '2024-02-20' },
-              { id: 402, type: 'website', value: 'Cong dich vu co dau hieu gia mao', risk: 'suspicious', reports: 9, firstSeen: '2024-02-08', lastReported: '2024-02-18' },
-            ],
-            apps: [
-              { id: 501, type: 'crypto', value: 'Ung dung vi gia mao', risk: 'scam', reports: 73, firstSeen: '2024-01-20', lastReported: '2024-02-21' },
-              { id: 502, type: 'crypto', value: 'App dau tu lai suat cao bat thuong', risk: 'suspicious', reports: 41, firstSeen: '2024-02-03', lastReported: '2024-02-19' },
-            ],
-          };
+          const queryKey = normalizeSearchKey(query);
+          const querySlug = slugifySearchKey(query);
 
-          setResults(categoryMap[category] || []);
+          if (!queryKey) {
+            setResults([]);
+            return;
+          }
+
+          const settled = await Promise.allSettled(
+            SEARCH_CATEGORIES.map(async (categoryKey) => {
+              const response = await fetch('/api/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category: categoryKey, page: 1 }),
+              });
+
+              if (!response.ok) {
+                throw new Error(`Fetch failed for category ${categoryKey}`);
+              }
+
+              const data: CategoryApiResponse = await response.json();
+              return { categoryKey, data };
+            })
+          );
+
+          const scored: Array<{ item: SearchResultView; score: number }> = [];
+
+          settled.forEach((entry) => {
+            if (entry.status !== 'fulfilled') return;
+            const { categoryKey, data } = entry.value;
+
+            (data.items || []).forEach((item, index) => {
+              const score = getMatchScore(queryKey, querySlug, item);
+              if (score <= 0) return;
+              scored.push({
+                item: mapApiItemToResult(item, index, categoryKey, data.mode),
+                score,
+              });
+            });
+          });
+
+          const deduped = new Map<string, { item: SearchResultView; score: number }>();
+          scored.forEach((entry) => {
+            const key = normalizeSearchKey(entry.item.value);
+            const existing = deduped.get(key);
+            if (!existing || entry.score > existing.score) {
+              deduped.set(key, entry);
+            }
+          });
+
+          const mapped = Array.from(deduped.values())
+            .sort((a, b) => b.score - a.score || b.item.reports - a.item.reports)
+            .slice(0, 30)
+            .map((entry) => entry.item);
+
+          setResults(mapped);
+        } else if (category) {
+          const response = await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category, page: 1 }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch category data');
+          }
+
+          const data: CategoryApiResponse = await response.json();
+          const mapped: SearchResultView[] = (data.items || [])
+            .slice(0, 30)
+            .map((item, index) => mapApiItemToResult(item, index, category, data.mode));
+
+          setResults(mapped);
         } else {
           setResults([]);
         }
@@ -109,7 +300,7 @@ function SearchPageContent() {
             )}
             {!query && category && (
               <p className="text-text-secondary">
-                Danh muc: <span className="text-primary font-medium">{category}</span>
+                Danh mục: <span className="text-primary font-medium">{category}</span>
               </p>
             )}
           </div>
@@ -137,18 +328,46 @@ function SearchPageContent() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
                   >
-                    <Link href={`/detail/${result.type}/${encodeURIComponent(result.value)}`}>
+                    <Link href={buildDetailHref(result)}>
                       <Card hover className="flex items-center gap-4">
                         <div className={cn(
-                          'w-12 h-12 rounded-xl flex items-center justify-center',
+                          'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden',
                           result.risk === 'scam' ? 'bg-danger/10 text-danger' :
                           result.risk === 'suspicious' ? 'bg-warning/10 text-warning' :
                           'bg-success/10 text-success'
                         )}>
-                          <Icon className="w-6 h-6" />
+                          {result.sourceIcon ? (
+                            <img
+                              src={result.sourceIcon}
+                              alt={result.value}
+                              className="w-10 h-10 rounded-lg object-cover"
+                              onError={(e) => {
+                                e.currentTarget.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                              }}
+                            />
+                          ) : (
+                            <Icon className="w-6 h-6" />
+                          )}
                         </div>
                         <div className="flex-1">
                           <p className="font-medium text-text-main text-lg">{result.value}</p>
+                          {result.sourceOrganization && (
+                            <p className="text-warning text-sm mt-1 inline-flex items-center gap-1.5">
+                              {result.sourceOrganizationIcon ? (
+                                <img
+                                  src={result.sourceOrganizationIcon}
+                                  alt={result.sourceOrganization}
+                                  className="w-4 h-4 rounded-full object-cover border border-white/20"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <Building2 className="w-4 h-4" />
+                              )}
+                              <span className="truncate">{result.sourceOrganization}</span>
+                            </p>
+                          )}
                           <div className="flex items-center gap-4 text-sm text-text-muted mt-1">
                             <span className="flex items-center gap-1">
                               <AlertTriangle className="w-4 h-4" />

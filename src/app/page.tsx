@@ -9,8 +9,6 @@ import {
   Shield,
   AlertTriangle,
   CheckCircle,
-  TrendingUp,
-  Users,
   Phone,
   Building2,
   Globe,
@@ -31,13 +29,11 @@ import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import {
-  mockStats,
   mockPopularSearches,
   mockTrendingScams,
   mockSafetyTips,
   mockRecentAlerts,
   mockSearchHistory,
-  mockCategories,
 } from '@/lib/mockData';
 
 interface CategoryData {
@@ -115,8 +111,9 @@ export default function HomePage() {
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
 
-  const [categories, setCategories] = useState<CategoryData[]>(mockCategories);
+  const [categories, setCategories] = useState<CategoryData[]>([]);
   const [dataSource, setDataSource] = useState<string>('fallback');
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const searchBoxRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +128,8 @@ export default function HomePage() {
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
+      } finally {
+        setStatsLoading(false);
       }
     }
     fetchData();
@@ -151,6 +150,9 @@ export default function HomePage() {
     activeFilter === 'all'
       ? mockRecentAlerts
       : mockRecentAlerts.filter((alert) => alert.type === activeFilter);
+
+  const getCategoryCount = (slug: string) => categories.find((category) => category.slug === slug)?.count ?? 0;
+  const hasLiveData = dataSource === 'tinnhiemmang.vn';
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,29 +211,36 @@ export default function HomePage() {
       description: 'Kiểm tra số điện thoại, website, tài khoản ngân hàng chỉ trong vài giây.',
       href: '/search',
       icon: Search,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
     },
     {
       title: 'Báo cáo cộng đồng',
       description: 'Gửi báo cáo kèm bằng chứng để cảnh báo sớm cho cộng đồng.',
       href: '/report',
       icon: FileText,
-      color: 'from-rose-500 to-red-500',
+      color: 'linear-gradient(135deg, #f43f5e 0%, #ef4444 100%)',
     },
     {
       title: 'AI Scanner',
       description: 'Phân tích tin nhắn, website nghi ngờ bằng mô hình AI hỗ trợ.',
       href: '/ai',
       icon: Zap,
-      color: 'from-emerald-500 to-green-500',
+      color: 'linear-gradient(135deg, #10b981 0%, #22c55e 100%)',
     },
     {
       title: 'Hướng dẫn an toàn',
       description: 'Quy trình xử lý khi gặp lừa đảo và cách bảo vệ tài khoản.',
       href: '/report-guide',
       icon: BarChart3,
-      color: 'from-purple-500 to-indigo-500',
+      color: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
     },
+  ];
+
+  const overviewCards = [
+    { slug: 'websites', label: 'Website', icon: Globe, tone: 'bg-blue-500/10 text-blue-600' },
+    { slug: 'organizations', label: 'Tổ chức', icon: Building2, tone: 'bg-green-500/10 text-green-600' },
+    { slug: 'devices', label: 'Thiết bị', icon: Phone, tone: 'bg-purple-500/10 text-purple-600' },
+    { slug: 'systems', label: 'Hệ thống', icon: Shield, tone: 'bg-amber-500/10 text-amber-600' },
   ];
 
   return (
@@ -343,12 +352,16 @@ export default function HomePage() {
               >
                 {featureCards.map((feature) => (
                   <Link key={feature.title} href={feature.href}>
-                    <Card hover className="h-full p-4">
-                      <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br mb-3 flex items-center justify-center text-white shadow-lg', feature.color)}>
-                        <feature.icon className="w-5 h-5" />
+                    <Card hover className="h-full p-4 text-center flex flex-col items-center">
+                      <p className="w-full text-center font-semibold text-text-main text-sm md:text-base leading-tight min-h-[2.5rem] flex items-end justify-center">
+                        {feature.title}
+                      </p>
+                      <div
+                        style={{ background: feature.color }}
+                        className="w-[72%] max-w-[7.25rem] h-14 rounded-2xl my-2 mx-auto flex items-center justify-center text-white shadow-lg"
+                      >
+                        <feature.icon className="w-8 h-8" />
                       </div>
-                      <p className="font-semibold text-text-main text-sm md:text-base">{feature.title}</p>
-                      <p className="text-xs md:text-sm text-text-secondary mt-1 line-clamp-2">{feature.description}</p>
                     </Card>
                   </Link>
                 ))}
@@ -359,71 +372,27 @@ export default function HomePage() {
 
         <section className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="text-center p-4 md:p-5">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 mx-auto mb-3 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
-                <AnimatedCounter value={mockStats.totalReports} />
-              </p>
-              <p className="text-sm text-text-secondary mt-1">{t('home.reports')}</p>
-            </Card>
-
-            <Card className="text-center p-4 md:p-5">
-              <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-600 mx-auto mb-3 flex items-center justify-center">
-                <CheckCircle className="w-5 h-5" />
-              </div>
-              <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
-                <AnimatedCounter value={mockStats.verifiedCases} />
-              </p>
-              <p className="text-sm text-text-secondary mt-1">{t('home.verified')}</p>
-            </Card>
-
-            <Card className="text-center p-4 md:p-5">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 mx-auto mb-3 flex items-center justify-center">
-                <Users className="w-5 h-5" />
-              </div>
-              <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
-                <AnimatedCounter value={mockStats.totalMembers} />
-              </p>
-              <p className="text-sm text-text-secondary mt-1">{t('home.members')}</p>
-            </Card>
-
-            <Card className="text-center p-4 md:p-5">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 mx-auto mb-3 flex items-center justify-center">
-                <Shield className="w-5 h-5" />
-              </div>
-              <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
-                <AnimatedCounter value={mockStats.protectedAmount} />
-              </p>
-              <p className="text-sm text-text-secondary mt-1">{t('home.protected')}</p>
-            </Card>
-          </div>
-        </section>
-
-        <section className="bg-bg-card/65 border-y border-bg-border">
-          <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
-            <SectionHeader
-              title="Tính năng chính"
-              subtitle="Sắp xếp theo luồng sử dụng: kiểm tra nhanh, báo cáo, phân tích AI và hướng dẫn xử lý."
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {featureCards.map((feature) => (
-                <Link key={feature.title} href={feature.href}>
-                  <Card hover className="h-full p-5">
-                    <div className={cn('w-12 h-12 rounded-xl bg-gradient-to-br mb-3 flex items-center justify-center text-white', feature.color)}>
-                      <feature.icon className="w-6 h-6" />
-                    </div>
-                    <p className="text-base font-semibold text-text-main">{feature.title}</p>
-                    <p className="text-sm text-text-secondary mt-2">{feature.description}</p>
-                    <span className="inline-flex items-center gap-1 text-primary text-sm mt-3">
-                      Mở tính năng <ArrowRight className="w-4 h-4" />
-                    </span>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+            {overviewCards.map((stat) => {
+              const Icon = stat.icon;
+              const value = getCategoryCount(stat.slug);
+              return (
+                <Card key={stat.slug} className="text-center p-4 md:p-5">
+                  <div className={cn('w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center', stat.tone)}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
+                    {statsLoading ? (
+                      <span className="text-text-muted">...</span>
+                    ) : hasLiveData ? (
+                      <AnimatedCounter value={value.toLocaleString('vi-VN')} />
+                    ) : (
+                      <span className="text-text-muted">--</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-text-secondary mt-1">{stat.label}</p>
+                </Card>
+              );
+            })}
           </div>
         </section>
 
@@ -444,7 +413,7 @@ export default function HomePage() {
                     </div>
                     <p className="font-semibold text-text-main">{category.name}</p>
                     <p className="text-2xl font-mono font-bold text-primary mt-1">
-                      {category.count > 0 ? category.count.toLocaleString('vi-VN') : '0'}
+                      {hasLiveData ? category.count.toLocaleString('vi-VN') : '--'}
                     </p>
                     <p className="text-xs text-text-muted mt-1 line-clamp-2">
                       {category.description || 'Dữ liệu được cập nhật thường xuyên'}

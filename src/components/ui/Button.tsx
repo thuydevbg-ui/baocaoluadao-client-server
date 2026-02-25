@@ -3,6 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { FiIcon } from './FiIcon';
 
 interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -29,6 +30,8 @@ export function Button({
   onClick,
   type = 'button',
 }: ButtonProps) {
+  const isDisabled = disabled || isLoading;
+
   const variants = {
     primary: 'bg-primary hover:bg-primary-hover text-white shadow-lg shadow-primary/25',
     secondary: 'bg-bg-card hover:bg-bg-cardHover text-text-main border border-bg-border',
@@ -44,8 +47,8 @@ export function Button({
 
   return (
     <motion.button
-      whileHover={{ y: -2 }}
-      whileTap={{ scale: 0.96 }}
+      whileHover={isDisabled ? undefined : { y: -2 }}
+      whileTap={isDisabled ? undefined : { scale: 0.96 }}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-button font-medium transition-all duration-normal',
         'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg-dark',
@@ -54,14 +57,14 @@ export function Button({
         sizes[size],
         className
       )}
-      disabled={disabled || isLoading}
+      disabled={isDisabled}
       type={type}
       onClick={onClick}
       aria-label={isLoading ? 'Loading' : undefined}
       aria-busy={isLoading}
     >
       {isLoading ? (
-        <i className="fi fi-rr-loading animate-spin"></i>
+        <FiIcon name="rr-loading" effect="none" className="animate-spin text-sm" />
       ) : (
         leftIcon
       )}

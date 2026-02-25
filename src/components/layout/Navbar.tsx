@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Bell, User, Shield, ChevronDown, Smartphone, Building2, Globe, Sun, Moon } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn } from '@/lib/utils';
@@ -15,6 +16,7 @@ interface NavbarProps {}
 export function Navbar({}: NavbarProps) {
   const { t, locale, setLocale } = useI18n();
   const router = useRouter();
+  const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -47,7 +49,8 @@ export function Navbar({}: NavbarProps) {
 
   useEffect(() => {
     // FIX: Prevent hydration mismatch by only applying theme after mount
-    const savedTheme = window.localStorage.getItem('theme');
+    const storageKey = pathname && pathname.startsWith('/admin') ? 'adminTheme' : 'theme';
+    const savedTheme = window.localStorage.getItem(storageKey);
     const nextTheme: 'light' | 'dark' = savedTheme === 'dark' ? 'dark' : 'light';
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
     setTheme(nextTheme);
@@ -97,7 +100,8 @@ export function Navbar({}: NavbarProps) {
   const toggleTheme = () => {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
-    window.localStorage.setItem('theme', nextTheme);
+    const storageKey = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin') ? 'adminTheme' : 'theme';
+    window.localStorage.setItem(storageKey, nextTheme);
     setTheme(nextTheme);
   };
 

@@ -17,36 +17,36 @@ export function Footer() {
             </span>
           </Link>
 
-          <span className="text-text-muted shrink-0">|</span>
+          <span className="text-[#6a737c] shrink-0">|</span>
 
-          <div className="flex items-center gap-2 md:gap-3 shrink-0 text-text-secondary">
-            <Link href="/" className="hover:text-primary transition-colors">Trang chủ</Link>
-            <Link href="/search" className="hover:text-primary transition-colors">Tra cứu</Link>
-            <Link href="/report" className="hover:text-primary transition-colors hidden sm:inline">Báo cáo</Link>
-            <Link href="/faq" className="hover:text-primary transition-colors hidden md:inline">FAQ</Link>
-            <Link href="/privacy" className="hover:text-primary transition-colors hidden md:inline">Bảo mật</Link>
+          <div className="flex items-center gap-2 md:gap-3 shrink-0 text-[#3c4043]">
+            <Link href="/" className="hover:text-[#0a95ff] transition-colors">Trang chủ</Link>
+            <Link href="/search" className="hover:text-[#0a95ff] transition-colors">Tra cứu</Link>
+            <Link href="/report" className="hover:text-[#0a95ff] transition-colors hidden sm:inline">Báo cáo</Link>
+            <Link href="/faq" className="hover:text-[#0a95ff] transition-colors hidden md:inline">FAQ</Link>
+            <Link href="/privacy" className="hover:text-[#0a95ff] transition-colors hidden md:inline">Bảo mật</Link>
           </div>
 
-          <span className="text-text-muted shrink-0 hidden sm:inline">|</span>
+          <span className="text-[#6a737c] shrink-0 hidden sm:inline">|</span>
 
-          <a href="tel:1900xxxx" className="hidden sm:flex items-center gap-1.5 text-text-secondary hover:text-primary transition-colors shrink-0">
-            <Phone className="w-3.5 h-3.5 text-primary" />
+          <a href="tel:1900xxxx" className="hidden sm:flex items-center gap-1.5 text-[#3c4043] hover:text-[#0a95ff] transition-colors shrink-0">
+            <Phone className="w-3 h-3 text-[#0a95ff]" />
             1900-xxxx
           </a>
 
-          <a href="mailto:support@scamguard.vn" className="hidden md:flex items-center gap-1.5 text-text-secondary hover:text-primary transition-colors shrink-0">
-            <Mail className="w-3.5 h-3.5 text-primary" />
+          <a href="mailto:support@scamguard.vn" className="hidden md:flex items-center gap-1.5 text-[#3c4043] hover:text-[#0a95ff] transition-colors shrink-0">
+            <Mail className="w-3 h-3 text-[#0a95ff]" />
             support@scamguard.vn
           </a>
 
-          <div className="hidden lg:flex items-center gap-1.5 text-text-secondary shrink-0">
-            <MapPin className="w-3.5 h-3.5 text-primary" />
+          <div className="hidden lg:flex items-center gap-1.5 text-[#3c4043] shrink-0">
+            <MapPin className="w-3 h-3 text-[#0a95ff]" />
             Hà Nội, Việt Nam
           </div>
 
-          <span className="text-text-muted shrink-0 hidden lg:inline">|</span>
+          <span className="text-[#6a737c] shrink-0 hidden lg:inline">|</span>
 
-          <p className="text-text-muted truncate min-w-0 ml-auto">
+          <p className="text-[#6a737c] truncate min-w-0 ml-auto">
             © 2025 ScamGuard.
           </p>
         </div>
