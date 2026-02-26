@@ -30,6 +30,16 @@ interface CategoryConfig {
 }
 
 const BASE_URL = 'https://tinnhiemmang.vn';
+const DEBUG_CACHE_DIR = '.cache/tinnhiem';
+const ENABLE_DEBUG_DUMP = process.env.TINNHIEM_DEBUG_DUMP === '1';
+
+const DEBUG_HTML_FILENAME: Record<TinnhiemCategory, string> = {
+  websites: 'tm_website-tin-nhiem.html',
+  organizations: 'tm_to-chuc-tin-nhiem.html',
+  devices: 'tm_thiet-bi-tin-nhiem.html',
+  systems: 'tm_he-thong-tin-nhiem.html',
+  apps: 'tm_ung-dung-tin-nhiem.html',
+};
 
 // SSRF Protection: Whitelist of allowed domains
 // This prevents attacks that try to access internal/private networks
@@ -80,11 +90,19 @@ function isUrlAllowed(urlString: string): boolean {
 }
 
 const CATEGORY_CONFIG: Record<TinnhiemCategory, CategoryConfig> = {
-  websites: { path: '/website-lua-dao', mode: 'scam' },
+  websites: { path: '/website-tin-nhiem', mode: 'trusted' },
   organizations: { path: '/to-chuc-tin-nhiem', mode: 'trusted' },
   devices: { path: '/thiet-bi-tin-nhiem', mode: 'trusted' },
   systems: { path: '/he-thong-tin-nhiem', mode: 'trusted' },
   apps: { path: '/ung-dung-tin-nhiem', mode: 'trusted' },
+};
+
+const CATEGORY_FILTER_TYPE: Record<TinnhiemCategory, string> = {
+  organizations: 'org',
+  websites: 'web',
+  devices: 'iot',
+  systems: 'sys',
+  apps: 'app',
 };
 
 const REQUEST_HEADERS: HeadersInit = {
@@ -93,6 +111,24 @@ const REQUEST_HEADERS: HeadersInit = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
 };
+
+async function writeDebugHtmlSnapshot(fileName: string, html: string): Promise<void> {
+  if (!ENABLE_DEBUG_DUMP || !html || typeof process === 'undefined') return;
+
+  try {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const safeName = fileName.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase();
+    const rootDir = process.cwd();
+    const cacheDir = path.resolve(rootDir, DEBUG_CACHE_DIR);
+    const targetPath = path.join(cacheDir, safeName.endsWith('.html') ? safeName : `${safeName}.html`);
+
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(targetPath, html, 'utf8');
+  } catch {
+    // Ignore debug snapshot errors to avoid impacting runtime.
+  }
+}
 
 function cleanText(input: string): string {
   return input
@@ -392,20 +428,49 @@ export function getTinnhiemCategoryConfig(category: TinnhiemCategory): CategoryC
 
 export async function fetchCategoryDirectory(
   category: TinnhiemCategory,
-  page: number = 1
+  page: number = 1,
+  query: string = ''
 ): Promise<TinnhiemDirectoryResult> {
   const config = CATEGORY_CONFIG[category];
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-  const pageSuffix = safePage > 1 ? `?page=${safePage}` : '';
-  const firstTryUrl = `${BASE_URL}${config.path}${pageSuffix}`;
+  const trimmedQuery = cleanText(query || '').slice(0, 120);
+
+  const firstTryUrl = (() => {
+    if (!trimmedQuery) {
+      const pageSuffix = safePage > 1 ? `?page=${safePage}` : '';
+      return `${BASE_URL}${config.path}${pageSuffix}`;
+    }
+
+    const params = new URLSearchParams();
+    params.set('name_obj', trimmedQuery);
+    params.set('type', CATEGORY_FILTER_TYPE[category]);
+    if (safePage > 1) {
+      params.set('page', String(safePage));
+    }
+    return `${BASE_URL}/filterObj?${params.toString()}`;
+  })();
 
   let html = await fetchHtml(firstTryUrl);
+  await writeDebugHtmlSnapshot(DEBUG_HTML_FILENAME[category], html);
+  if (category === 'organizations') {
+    await writeDebugHtmlSnapshot('tm_org.html', html);
+  }
   let items = parseDirectoryHtml(html, category, config.mode);
 
   // Some pages return an anti-bot/interstitial-like response when forcing ?page.
   // Fallback to page 1 to ensure we still return useful data.
   if (safePage > 1 && items.length === 0) {
-    html = await fetchHtml(`${BASE_URL}${config.path}`);
+    const fallbackUrl = trimmedQuery
+      ? `${BASE_URL}/filterObj?${new URLSearchParams({
+          name_obj: trimmedQuery,
+          type: CATEGORY_FILTER_TYPE[category],
+        }).toString()}`
+      : `${BASE_URL}${config.path}`;
+    html = await fetchHtml(fallbackUrl);
+    await writeDebugHtmlSnapshot(DEBUG_HTML_FILENAME[category], html);
+    if (category === 'organizations') {
+      await writeDebugHtmlSnapshot('tm_org.html', html);
+    }
     items = parseDirectoryHtml(html, category, config.mode);
   }
 

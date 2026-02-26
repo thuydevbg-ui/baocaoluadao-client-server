@@ -1,0 +1,558 @@
+openapi: 3.0.0
+info:
+  title: ScamGuard API
+  description: Comprehensive scam detection and prevention API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Authentication
+  - name: Categories
+  - name: Report
+  - name: Stats
+  - name: AI
+  - name: Admin
+  - name: PhishTank
+  - name: Feedback
+paths:
+  /api/categories:
+    get:
+      tags: [Categories]
+      summary: Get categories
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Categories]
+      summary: Fetch category data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category]
+              properties:
+                category: {type: string}
+                page: {type: integer}
+      responses:
+        200:
+          description: OK
+  /api/stats:
+    get:
+      tags: [Stats]
+      summary: Get statistics
+      responses:
+        200:
+          description: OK
+  /api/report:
+    post:
+      tags: [Report]
+      summary: Submit scam report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, content]
+              properties:
+                type: {type: string}
+                content: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/scan:
+    post:
+      tags: [AI]
+      summary: Scan content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/ai/analyze:
+    post:
+      tags: [AI]
+      summary: AI analyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string}
+                password: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      responses:
+        200:
+          description: OK
+  /api/auth/verify:
+    get:
+      tags: [Authentication]
+      summary: Verify token
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: OK
+  /api/detail-feedback:
+    get:
+      tags: [Feedback]
+      summary: Get feedback
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: id
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/phishtank:
+    get:
+      tags: [PhishTank]
+      summary: Get PhishTank data
+      parameters:
+        - name: url
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/admin/overview:
+    get:
+      tags: [Admin]
+      summary: Get admin overview
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: OK
+  /api/admin/categories:
+    get:
+      tags: [Admin]
+      summary: Get all categories
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Admin]
+      summary: Create category
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                icon: {type: string}
+      responses:
+        200:
+          description: OK
+    put:
+      tags: [Admin]
+      summary: Update category
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: {type: string}
+                name: {type: string}
+                slug: {type: string}
+                icon: {type: string}
+      responses:
+        200:
+          description: OK
+    delete:
+      tags: [Admin]
+      summary: Delete category
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/admin/scams:
+    get:
+      tags: [Admin]
+      summary: Get all scams
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Admin]
+      summary: Create scam
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: {type: string}
+                content: {type: string}
+                description: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/admin/scams/{id}:
+    get:
+      tags: [Admin]
+      summary: Get scam by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+    patch:
+      tags: [Admin]
+      summary: Update scam
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: {type: string}
+                description: {type: string}
+      responses:
+        200:
+          description: OK
+    delete:
+      tags: [Admin]
+      summary: Delete scam
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/admin/reports:
+    get:
+      tags: [Admin]
+      summary: Get reports
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Admin]
+      summary: Create report
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: {type: string}
+                content: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/admin/reports/{id}:
+    get:
+      tags: [Admin]
+      summary: Get report by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+    patch:
+      tags: [Admin]
+      summary: Update report status
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: {type: string}
+      responses:
+        200:
+          description: OK
+    delete:
+      tags: [Admin]
+      summary: Delete report
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      summary: Get all users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Admin]
+      summary: Create user
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: {type: string}
+                password: {type: string}
+                name: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/admin/users/{id}:
+    get:
+      tags: [Admin]
+      summary: Get user by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+    patch:
+      tags: [Admin]
+      summary: Update user
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                email: {type: string}
+                role: {type: string}
+      responses:
+        200:
+          description: OK
+    delete:
+      tags: [Admin]
+      summary: Delete user
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+  /api/admin/settings:
+    get:
+      tags: [Admin]
+      summary: Get settings
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: OK
+    put:
+      tags: [Admin]
+      summary: Update settings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: OK
+  /api/admin/support:
+    get:
+      tags: [Admin]
+      summary: Get support tickets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+    post:
+      tags: [Admin]
+      summary: Create support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, message]
+              properties:
+                subject: {type: string}
+                message: {type: string}
+                email: {type: string}
+      responses:
+        200:
+          description: OK
+  /api/admin/logs:
+    get:
+      tags: [Admin]
+      summary: Get system logs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: OK
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

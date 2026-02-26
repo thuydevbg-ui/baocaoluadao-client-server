@@ -22,7 +22,8 @@ import {
   MessageSquare,
   Activity,
   Menu,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -88,6 +89,11 @@ const menuItems = [
     title: 'Cài đặt',
     icon: Settings,
     href: '/admin/settings'
+  },
+  {
+    title: 'API Docs',
+    icon: BookOpen,
+    href: '/api-docs'
   }
 ];
 
@@ -95,6 +101,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
   const pathname = usePathname();
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(false);
 
   // Close mobile sidebar when viewport becomes desktop-sized to avoid
   // leaving the mobile overlay open after resizing (e.g. F12 toggling).
@@ -102,12 +109,16 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(min-width: 1024px)');
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      if (e.matches) {
+      const mobile = !('matches' in e) ? !(e as MediaQueryList).matches : !(e as MediaQueryListEvent).matches;
+      setIsMobileView(mobile);
+      if (!mobile) {
         setIsMobileOpen(false);
       }
     };
     // Initial check
-    if (mq.matches) setIsMobileOpen(false);
+    const mobile = !mq.matches;
+    setIsMobileView(mobile);
+    if (!mobile) setIsMobileOpen(false);
     // Add listener
     if ('addEventListener' in mq) {
       mq.addEventListener('change', handler as any);
@@ -130,6 +141,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
     }
     setExpandedMenu(expandedMenu === title ? null : title);
   };
+
+  // Always close mobile menu on route change (safety)
+  React.useEffect(() => {
+    setIsMobileOpen(false);
+  }, [pathname]);
 
   const isActive = (href: string, exact = false) => {
     if (exact) return pathname === href;
@@ -334,47 +350,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
 
   return (
     <>
-      {/* Mobile menu button - visible below lg breakpoint */}
-      <button
-        onClick={() => setIsMobileOpen(true)}
-        className={`lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg ${
-          theme === 'dark'
-            ? 'bg-gray-800 text-white'
-            : 'bg-gray-100 text-gray-900'
-        }`}
-      >
-        <Menu className="w-6 h-6" />
-      </button>
-
-      {/* Mobile overlay + sidebar (portal to body to avoid transformed parents) */}
-      {isMobileOpen && typeof document !== 'undefined' && ReactDOM.createPortal(
-        <>
-          <div
-            onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden fixed inset-0 z-40 bg-black/50"
-          />
-
-          <motion.aside
-            initial={{ x: -288 }}
-            animate={{ x: 0 }}
-            exit={{ x: -288 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`lg:hidden fixed top-0 left-0 h-screen w-72 border-r z-50 ${
-              theme === 'dark'
-                ? 'bg-[#0B1120] border-gray-800'
-                : 'bg-white border-gray-200'
-            }`}
-          >
-            <SidebarContent />
-          </motion.aside>
-        </>,
-        document.body
-      )}
-
-      {/* Desktop Sidebar - hidden on mobile, sticky on desktop */}
+      {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:block fixed lg:sticky top-0 left-0 h-screen border-r z-40 transition-all duration-200 ${
-          isCollapsed ? 'w-16' : 'w-72'
+        className={`fixed lg:sticky top-0 left-0 h-screen border-r z-40 transition-all duration-200 ${
+          isCollapsed ? 'w-16' : 'w-64'
         } ${
           theme === 'dark'
             ? 'bg-[#0B1120] border-gray-800'

@@ -25,59 +25,7 @@ declare global {
   var __scamGuardAdminFeedback: FeedbackRecord[] | undefined;
 }
 
-const feedbackStore = globalThis.__scamGuardAdminFeedback ?? [
-  {
-    id: 'FB001',
-    type: 'question',
-    status: 'new',
-    subject: 'Hỏi về cách báo cáo website lừa đảo',
-    message: 'Tôi muốn hỏi cách báo cáo một website lừa đảo thì cần làm gì?',
-    email: 'user1@example.com',
-    name: 'Nguyễn Văn A',
-    ip: '192.168.1.1',
-    createdAt: '2026-02-20T10:30:00.000Z',
-    updatedAt: '2026-02-20T10:30:00.000Z',
-  },
-  {
-    id: 'FB002',
-    type: 'suggestion',
-    status: 'replied',
-    subject: 'Đề xuất thêm tính năng thông báo',
-    message: 'Rất mong hệ thống có thể gửi email thông báo khi có báo cáo mới được xác minh.',
-    email: 'user2@example.com',
-    name: 'Trần Thị B',
-    createdAt: '2026-02-19T14:20:00.000Z',
-    updatedAt: '2026-02-19T16:00:00.000Z',
-    reply: 'Cảm ơn đề xuất của bạn. Chúng tôi sẽ xem xét và triển khai trong phiên bản tới.',
-    repliedAt: '2026-02-19T16:00:00.000Z',
-    repliedBy: 'admin@scamguard.vn',
-  },
-  {
-    id: 'FB003',
-    type: 'bug_report',
-    status: 'resolved',
-    subject: 'Lỗi không thể tải trang chi tiết',
-    message: 'Khi truy cập trang chi tiết báo cáo, trang bị trắng và không hiển thị nội dung.',
-    email: 'user3@example.com',
-    name: 'Lê Văn C',
-    createdAt: '2026-02-18T09:15:00.000Z',
-    updatedAt: '2026-02-18T11:30:00.000Z',
-    reply: 'Lỗi đã được sửa trong phiên bản mới nhất. Bạn vui lòng tải lại trang.',
-    repliedAt: '2026-02-18T11:30:00.000Z',
-    repliedBy: 'admin@scamguard.vn',
-  },
-  {
-    id: 'FB004',
-    type: 'complaint',
-    status: 'read',
-    subject: 'Khiếu nại về việc báo cáo bị từ chối',
-    message: 'Báo cáo của tôi bị từ chối nhưng không có lý do rõ ràng. Mong được giải thích.',
-    email: 'user4@example.com',
-    name: 'Phạm Thị D',
-    createdAt: '2026-02-17T16:45:00.000Z',
-    updatedAt: '2026-02-18T08:00:00.000Z',
-  },
-];
+const feedbackStore = globalThis.__scamGuardAdminFeedback ?? [];
 
 if (!globalThis.__scamGuardAdminFeedback) {
   globalThis.__scamGuardAdminFeedback = feedbackStore;

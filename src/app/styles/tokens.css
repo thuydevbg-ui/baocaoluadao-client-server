@@ -1,0 +1,19 @@
+:root {
+  /* Background Colors */
+  --color-bg-default: #FFFFFF;
+
+  /* Border Colors */
+  --color-border-default: #E6E6E6;
+
+  /* Text Colors */
+  --color-text-primary: #242424;
+  --color-text-secondary: #6B6B6B;
+  --color-text-muted: #9B9B9B;
+
+  /* Accent Colors */
+  --color-accent-default: #1A8917;
+  --color-accent-hover: #0F730C;
+
+  /* Interactive */
+  --color-bg-hover: #F2F2F2;
+}

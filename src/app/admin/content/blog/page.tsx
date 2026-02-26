@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Plus, Edit, Trash2, Eye, EyeOff, FileText, EyeOff as Hidden } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, EyeOff, FileText } from 'lucide-react';
 
 interface BlogPost {
   id: string;
@@ -16,11 +16,8 @@ interface BlogPost {
   updatedAt: string;
 }
 
-const mockPosts: BlogPost[] = [
-  { id: 'B001', title: 'Cách nhận biết email lừa đảo', excerpt: 'Hướng dẫn nhận biết email giả mạo...', category: 'Hướng dẫn', status: 'published', author: 'Admin', views: 1250, createdAt: '2024-01-10', updatedAt: '2024-01-10' },
-  { id: 'B002', title: 'Cảnh báo: Chiêu lừa đảo mới 2024', excerpt: 'Các chiêu lừa đảo mới nhất...', category: 'Tin tức', status: 'published', author: 'Admin', views: 2340, createdAt: '2024-01-08', updatedAt: '2024-01-09' },
-  { id: 'B003', title: 'Bảo vệ tài khoản ngân hàng', excerpt: 'Cách bảo vệ tài khoản...', category: 'Hướng dẫn', status: 'draft', author: 'Admin', views: 0, createdAt: '2024-01-05', updatedAt: '2024-01-12' },
-];
+// Empty by default; hook up to real API/DB when available
+const mockPosts: BlogPost[] = [];
 
 export default function BlogPage() {
   const [posts] = useState<BlogPost[]>(mockPosts);
@@ -36,17 +33,50 @@ export default function BlogPage() {
   return (
     <div className='space-y-6'>
       <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
-        <div><h2 className='text-2xl font-bold text-white'>Quản lý Blog</h2><p className='text-gray-400 mt-1'>Danh sách bài viết</p></div>
-        <button className='flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl'><Plus className='w-4 h-4'/>Viết bài mới</button>
+        <div><h2 className='text-2xl font-bold text-white'>Qu?n l� Blog</h2><p className='text-gray-400 mt-1'>Danh s�ch b�i vi?t</p></div>
+        <button className='flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl'><Plus className='w-4 h-4'/>Vi?t b�i m?i</button>
       </div>
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className='bg-gray-900/50 border border-gray-800 rounded-2xl p-4'>
         <div className='flex flex-col md:flex-row gap-4'>
-          <div className='relative flex-1'><Search className='absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500'/><input type='text' placeholder='Tìm bài viết...' value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className='w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white'/></div>
-          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className='px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white'><option value='all'>Tất cả</option><option value='published'>Đã xuất bản</option><option value='draft'>Bản nháp</option></select>
+          <div className='relative flex-1'>
+            <Search className='absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500'/>
+            <input type='text' placeholder='T�m b�i vi?t...' value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className='w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white'/>
+          </div>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className='px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white'>
+            <option value='all'>T?t c?</option>
+            <option value='published'>�� xu?t b?n</option>
+            <option value='draft'>Nh�p</option>
+          </select>
         </div>
       </motion.div>
-      <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:0.1}} className='bg-gray-900/50 border border-gray-800 rounded-2xl overflow-hidden'>
-        <div className='overflow-x-auto'><table className='w-full'><thead><tr className='border-b border-gray-800'><th className='text-left p-4 text-sm font-medium text-gray-400'>ID</th><th className='text-left p-4 text-sm font-medium text-gray-400'>Tiêu đề</th><th className='text-left p-4 text-sm font-medium text-gray-400'>Danh mục</th><th className='text-left p-4 text-sm font-medium text-gray-400'>Trạng thái</th><th className='text-left p-4 text-sm font-medium text-gray-400'>Lượt xem</th><th className='text-left p-4 text-sm font-medium text-gray-400'>Ngày tạo</th><th className='text-right p-4 text-sm font-medium text-gray-400'>Thao tác</th></tr></thead><tbody>{filteredPosts.map(p=>(<tr key={p.id} className='border-b border-gray-800 hover:bg-gray-800/50'><td className='p-4'><span className='text-sm font-medium text-blue-400'>{p.id}</span></td><td className='p-4'><div><span className='text-sm font-medium text-white'>{p.title}</span><p className='text-xs text-gray-500 mt-0.5'>{p.excerpt}</p></div></td><td className='p-4'><span className='text-sm text-gray-400'>{p.category}</span></td><td className='p-4'><span className={'px-2.5 py-1 text-xs font-medium rounded-full '+(p.status==='published'?'bg-green-500/20 text-green-400':'bg-yellow-500/20 text-yellow-400')}>{p.status==='published'?'Đã xuất bản':'Bản nháp'}</span></td><td className='p-4'><span className='text-sm text-white'>{p.views.toLocaleString()}</span></td><td className='p-4 text-sm text-gray-500'>{p.createdAt}</td><td className='p-4'><div className='flex items-center justify-end gap-1'><button className='p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg'><Eye className='w-4 h-4'/></button><button className='p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg'><Edit className='w-4 h-4'/></button><button className='p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg'><Trash2 className='w-4 h-4'/></button></div></td></tr>))}</tbody></table></div>
+      <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:0.1}} className='bg-gray-900/50 border border-gray-800 rounded-2xl divide-y divide-gray-800'>
+        {filteredPosts.length === 0 && (
+          <div className='p-4 text-gray-400 text-sm flex items-center gap-2'><FileText className='w-4 h-4'/>Chua c� b�i vi?t. Th�m b�i m?i d? hi?n th?.</div>
+        )}
+        {filteredPosts.map(post=>(
+          <div key={post.id} className='p-4 flex items-start justify-between gap-4'>
+            <div className='flex items-start gap-3'>
+              <div className='p-2 bg-gray-800/60 rounded-xl text-blue-400'><FileText className='w-4 h-4'/></div>
+              <div>
+                <div className='flex items-center gap-2 mb-1'>
+                  <span className='text-sm text-blue-400 font-medium'>{post.id}</span>
+                  <span className='px-2 py-0.5 text-xs bg-gray-800 text-gray-400 rounded'>{post.category}</span>
+                  <span className={'px-2 py-0.5 text-xs rounded ' + (post.status==='published' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-200')}>
+                    {post.status==='published' ? 'Xu?t b?n' : 'Nh�p'}
+                  </span>
+                </div>
+                <h3 className='text-white font-medium'>{post.title}</h3>
+                <p className='text-gray-400 text-sm mt-1'>{post.excerpt}</p>
+                <p className='text-gray-500 text-xs mt-1'>T�c gi?: {post.author} � Lu?t xem: {post.views} � C?p nh?t: {post.updatedAt}</p>
+              </div>
+            </div>
+            <div className='flex items-center gap-2'>
+              <button className='p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg'><Eye className='w-4 h-4'/></button>
+              <button className='p-2 text-gray-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg'><Edit className='w-4 h-4'/></button>
+              <button className='p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg'><Trash2 className='w-4 h-4'/></button>
+            </div>
+          </div>
+        ))}
       </motion.div>
     </div>
   );

@@ -4,13 +4,29 @@ import type { NextRequest } from 'next/server';
 const COOKIE_NAME = 'adminAuth';
 const MAX_LOGIN_AGE_HOURS = 24;
 
-// Routes that require authentication
+// Routes that require authentication (admin area only)
 const protectedRoutes = ['/admin'];
 // Routes that should redirect to admin if already authenticated
 const authRoutes = ['/admin/login'];
+const NEXT_AUTH_API_PREFIX = '/api/auth';
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Allow NextAuth to handle its own routing and HTML redirects
+  if (pathname.startsWith(NEXT_AUTH_API_PREFIX)) {
+    return NextResponse.next();
+  }
+
+  if (isDirectApiNavigation(request, pathname)) {
+    return new NextResponse('Not Found', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
 
   // Check for admin auth token in cookies (signed HttpOnly cookie)
   const adminAuthCookie = request.cookies.get(COOKIE_NAME);
@@ -43,6 +59,23 @@ export function middleware(request: NextRequest) {
   }
 
   return NextResponse.next();
+}
+
+function isDirectApiNavigation(request: NextRequest, pathname: string): boolean {
+  if (!pathname.startsWith('/api/')) return false;
+  if (pathname.startsWith(NEXT_AUTH_API_PREFIX)) return false;
+
+  const fetchMode = (request.headers.get('sec-fetch-mode') || '').toLowerCase();
+  const fetchDest = (request.headers.get('sec-fetch-dest') || '').toLowerCase();
+  const accept = (request.headers.get('accept') || '').toLowerCase();
+  const requestedWith = (request.headers.get('x-requested-with') || '').toLowerCase();
+
+  if (requestedWith === 'xmlhttprequest') return false;
+  if (fetchMode === 'navigate') return true;
+  if (fetchDest === 'document') return true;
+  if (accept.includes('text/html')) return true;
+
+  return false;
 }
 
 function isLikelyValidAuthCookie(rawValue: string): boolean {
@@ -90,5 +123,6 @@ function isLikelyValidAuthCookie(rawValue: string): boolean {
 export const config = {
   matcher: [
     '/admin/:path*',
+    '/api/:path*',
   ],
 };

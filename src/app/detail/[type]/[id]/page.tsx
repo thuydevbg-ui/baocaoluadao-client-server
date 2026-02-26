@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -22,6 +22,9 @@ import {
   ShieldCheck,
   Star,
   Loader2,
+  SendHorizonal,
+  AlertOctagon,
+  Bot,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
 import { Card, Button, RiskBadge, DetailSkeleton } from '@/components/ui';
@@ -105,6 +108,7 @@ interface FeedbackCommentView {
   avatar: string;
   text: string;
   time: string;
+  createdAt: number;
   helpful: number;
   rating: number | null;
   verified: boolean;
@@ -216,6 +220,10 @@ function normalizeSourceStatus(statusRaw?: string): SourceStatus {
   return 'unknown';
 }
 
+function isTrustedValue(value?: string): boolean {
+  return (value || '').trim().toLowerCase() === 'trusted';
+}
+
 function mapStatusToRisk(status: SourceStatus): RiskLevel {
   if (status === 'trusted') return 'safe';
   if (status === 'suspected') return 'suspicious';
@@ -247,7 +255,7 @@ function getStatusLabel(status: SourceStatus, fallbackRisk: RiskLevel): string {
 
 function repairMojibake(value: string): string {
   if (!value) return '';
-  if (!/[ÃÂÄÅ]/.test(value)) return value;
+  if (!/[ÃƒÃ‚Ã„Ã…]/.test(value)) return value;
   try {
     return decodeURIComponent(escape(value));
   } catch {
@@ -309,6 +317,7 @@ function formatRelativeTime(input: string): string {
 }
 
 function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
+  const createdAt = new Date(item.createdAt).getTime();
   return {
     id: item.id,
     user: item.user,
@@ -317,6 +326,7 @@ function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
     helpful: item.helpful,
     rating: typeof item.rating === 'number' ? item.rating : null,
     time: formatRelativeTime(item.createdAt),
+    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     verified: Boolean(item.verified),
     helpfulMarked: Boolean(item.helpfulMarked),
     canMarkHelpful: item.canMarkHelpful ?? !item.helpfulMarked,
@@ -326,7 +336,7 @@ function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
 function countSentences(input: string): number {
   const normalized = input.replace(/\n+/g, ' ').trim();
   if (!normalized) return 0;
-  const parts = normalized.split(/[.!?…]+/).map((part) => part.trim()).filter(Boolean);
+  const parts = normalized.split(/[.!?â€¦]+/).map((part) => part.trim()).filter(Boolean);
   return parts.length > 0 ? parts.length : 1;
 }
 
@@ -343,7 +353,6 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const normalizedStatus = normalizeSourceStatus(sourceMeta.status || sourceMeta.sourceMode);
   const hasSourceStatus = normalizedStatus !== 'unknown';
   const reports = parsePositiveInt(sourceMeta.reports) ?? 35 + (idHash % 240);
-  let confidence = 72 + (idHash % 26);
   const baseScoreMap: Record<ScamKind, number> = {
     phone: 86,
     bank: 90,
@@ -354,19 +363,36 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const keywordBoost = /(otp|verify|xac minh|trung thuong|khuyen mai|chuyen tien|bank|gov|shopee|tiktok)/i.test(value) ? 6 : 0;
   let riskScore = Math.min(98, baseScoreMap[kind] + keywordBoost + (idHash % 5));
   let risk: RiskLevel = riskScore >= 80 ? 'scam' : riskScore >= 55 ? 'suspicious' : 'safe';
+  let confidence = Math.max(5, 100 - riskScore);
 
   if (hasSourceStatus) {
     risk = mapStatusToRisk(normalizedStatus);
     riskScore = mapStatusToRiskScore(normalizedStatus, reports);
-    confidence = normalizedStatus === 'trusted' ? 97 : normalizedStatus === 'confirmed' ? 95 : 86;
+    confidence =
+      normalizedStatus === 'trusted'
+        ? 97
+        : normalizedStatus === 'confirmed'
+          ? Math.max(25, 100 - Math.floor(riskScore / 2))
+          : Math.max(10, 100 - riskScore);
   }
 
-  const isTrustedEntity = normalizedStatus === 'trusted' || sourceMeta.sourceMode === 'trusted';
+  const isTrustedEntity = normalizedStatus === 'trusted' || isTrustedValue(sourceMeta.sourceMode);
   const typeLabel = isTrustedEntity
     ? TRUSTED_CATEGORY_LABEL[sourceMeta.sourceCategory || ''] || 'Đối tượng tín nhiệm'
     : TYPE_LABEL[kind];
 
-  const detailByType: Record<ScamKind, { description: string; channels: string[]; riskSignals: string[]; safeSignals: string[]; recommendations: string[]; safeRecommendations: string[]; source: string }> = {
+  const detailByType: Record<
+    ScamKind,
+    {
+      description: string;
+      channels: string[];
+      riskSignals: string[];
+      safeSignals: string[];
+      recommendations: string[];
+      safeRecommendations: string[];
+      source: string;
+    }
+  > = {
     phone: {
       description:
         'Đối tượng thường gọi điện tự xưng cơ quan chức năng hoặc CSKH, tạo áp lực thời gian và yêu cầu cung cấp OTP/mã xác thực.',
@@ -393,7 +419,7 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
       safeSignals: ['Đơn vị có hồ sơ xác thực', 'Thông tin liên hệ trùng khớp', 'Nguồn công khai minh bạch'],
       recommendations: [
         'Xác thực qua ứng dụng/chăm sóc khách hàng chính thức.',
-        'Khóa tạm thời thẻ/tài khoản nếu đã lỡ cung cấp thông tin.',
+        'Khóa tạm thời thẻ/tài khoản nếu đã lộ thông tin.',
         'Liên hệ ngân hàng ngay để tra soát giao dịch.',
       ],
       safeRecommendations: [
@@ -535,7 +561,7 @@ async function lookupSourceMetaByValue(kind: ScamKind, value: string): Promise<D
   const response = await fetch('/api/categories', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ category, page: 1 }),
+    body: JSON.stringify({ category, query: value, page: 1 }),
   });
 
   if (!response.ok) return null;
@@ -593,6 +619,8 @@ export default function DetailPage() {
   const [isRatingSubmitting, setIsRatingSubmitting] = useState(false);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [helpfulSubmittingId, setHelpfulSubmittingId] = useState<string | null>(null);
+  const [commentSort, setCommentSort] = useState<'latest' | 'helpful'>('latest');
+  const [aiScan, setAiScan] = useState<{ loading: boolean; error?: string | null; verdict?: 'safe' | 'scam'; risk?: number; trust?: number; description?: string }>({ loading: false });
 
   const decodedValue = useMemo(() => decodeRouteValue(rawId), [rawId]);
   const normalizedType = useMemo(() => normalizeKind(rawType), [rawType]);
@@ -601,6 +629,24 @@ export default function DetailPage() {
     [normalizedType, decodedValue]
   );
   const searchParamsKey = searchParams.toString();
+  const commentTrimmed = comment.trim();
+  const sentenceCount = useMemo(() => countSentences(commentTrimmed), [commentTrimmed]);
+  const canSubmitComment =
+    commentTrimmed.length >= 3 &&
+    commentTrimmed.length <= 600 &&
+    sentenceCount <= 20 &&
+    !isCommentSubmitting &&
+    !isRatingSubmitting &&
+    !(myRating === null && pendingRating === null);
+  const displayedComments = useMemo(() => {
+    if (commentSort === 'helpful') {
+      return [...comments].sort((a, b) => {
+        if (b.helpful !== a.helpful) return b.helpful - a.helpful;
+        return b.createdAt - a.createdAt;
+      });
+    }
+    return comments;
+  }, [comments, commentSort]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -682,6 +728,47 @@ export default function DetailPage() {
     };
   }, [detailFeedbackKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const runAiScan = async () => {
+      if (normalizedType !== 'website' || !decodedValue) return;
+      setAiScan({ loading: true });
+      let cleanUrl = decodedValue.trim();
+      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl)) {
+        cleanUrl = `https://${cleanUrl}`;
+      }
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: cleanUrl }),
+        });
+        if (!response.ok) throw new Error('AI scan failed');
+        const data = await response.json();
+        const riskScore = data.risk_score || data.riskScore || data.score || 0;
+        const verdict = riskScore > 50 || data.verdict === 'scam' ? 'scam' : 'safe';
+        const trustRaw = typeof data.trust_score === 'number' ? data.trust_score : data.trustScore;
+        const trustScore = typeof trustRaw === 'number' ? Math.max(0, Math.min(100, Math.round(trustRaw))) : Math.max(0, 100 - Math.round(riskScore));
+        if (!cancelled) {
+          setAiScan({
+            loading: false,
+            verdict,
+            risk: Math.round(riskScore),
+            trust: trustScore,
+            description: data.description || data.summary || '',
+          });
+        }
+      } catch (err: any) {
+        if (!cancelled) setAiScan({ loading: false, error: err?.message || 'AI scan failed' });
+      }
+    };
+
+    runAiScan();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedType, decodedValue]);
+
   const getIcon = (type: ScamKind) => {
     switch (type) {
       case 'phone':
@@ -721,6 +808,10 @@ export default function DetailPage() {
     if (!text) return;
     if (text.length < 3) {
       showToast('warning', 'Bình luận cần tối thiểu 3 ký tự.');
+      return;
+    }
+    if (text.length > 600) {
+      showToast('warning', 'Bình luận tối đa 600 ký tự.');
       return;
     }
     const sentenceCount = countSentences(text);
@@ -895,7 +986,6 @@ export default function DetailPage() {
   if (!data || !insight) return null;
 
   const Icon = getIcon(normalizedType);
-
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -903,47 +993,78 @@ export default function DetailPage() {
       <main className="flex-1 pt-20 pb-20 md:pb-8">
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <Card className="mb-6 border-primary/20 overflow-hidden">
-              <div className="p-5 md:p-6 border-b border-bg-border bg-gradient-to-r from-primary/10 via-bg-card to-bg-card">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={cn(
-                        'w-14 h-14 rounded-xl flex items-center justify-center shrink-0',
-                        data.risk === 'scam'
-                          ? 'bg-danger/10 text-danger'
-                          : data.risk === 'suspicious'
-                            ? 'bg-warning/10 text-warning'
-                            : 'bg-success/10 text-success'
-                      )}
-                    >
-                      {insight.sourceIcon ? (
-                        <img src={insight.sourceIcon} alt={data.value} className="w-9 h-9 rounded-lg object-cover" />
-                      ) : (
-                        <Icon className="w-7 h-7" />
-                      )}
+            <Card className="mb-6 border-primary/20 overflow-visible">
+              <div className="relative overflow-visible p-5 md:p-6 border-b border-bg-border bg-gradient-to-r from-primary/10 via-bg-card to-bg-card">
+                {insight.status === 'trusted' && (
+                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
+                    <div className="rotate-[-10deg] border-[3px] border-danger/85 text-danger/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/50 backdrop-blur-[2px] shadow-[0_8px_18px_rgba(229,57,53,0.22)]">
+                      ĐÃ XÁC MINH UY TÍN
                     </div>
+                  </div>
+                )}
+                {(data.risk === 'scam' || insight.status === 'confirmed' || insight.status === 'suspected') && (
+                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
+                    <div className="rotate-[-10deg] border-[3px] border-danger/85 text-danger/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(229,57,53,0.25)]">
+                      NGUY HIỂM
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
+                      <div
+                        className={cn(
+                          'w-14 h-14 rounded-xl flex items-center justify-center shrink-0',
+                          data.risk === 'scam'
+                            ? 'bg-danger/10 text-danger'
+                            : data.risk === 'suspicious'
+                              ? 'bg-warning/10 text-warning'
+                              : 'bg-success/10 text-success'
+                        )}
+                      >
+                        {insight.sourceIcon ? (
+                          <img src={insight.sourceIcon} alt={data.value} className="w-9 h-9 rounded-lg object-cover" />
+                        ) : (
+                          <Icon className="w-7 h-7" />
+                        )}
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <h1 className="text-xl md:text-3xl font-bold text-text-main leading-tight break-words">
-                        {data.value}
-                      </h1>
-                      <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
-                      <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary">
-                          <ShieldCheck className="w-3.5 h-3.5 text-success" />
-                          Độ tin cậy nguồn: {insight.confidence}%
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary">
-                          <Clock className="w-3.5 h-3.5 text-primary" />
-                          Cập nhật: {insight.updatedAt}
-                        </span>
+                      <div className="min-w-0 flex-1">
+                        <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words">
+                          {data.value}
+                          {insight.isTrustedEntity && (
+                            <i className="fi fi-ss-badge-check ml-1 align-middle text-primary text-[1em] leading-none" />
+                          )}
+                        </h1>
+                        <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                          {(() => {
+                            const tone =
+                              data.risk === 'scam'
+                                ? 'text-danger'
+                                : data.risk === 'suspicious'
+                                  ? 'text-warning'
+                                  : 'text-success';
+                            return (
+                              <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border bg-bg-cardHover', tone, 'border-bg-border')}>
+                                <ShieldCheck className={cn('w-3.5 h-3.5', tone)} />
+                                Độ tin cậy nguồn: {insight.confidence}%
+                              </span>
+                            );
+                          })()}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary">
+                            <Clock className="w-3.5 h-3.5 text-primary" />
+                            Cập nhật: {insight.updatedAt}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="shrink-0">
-                      <RiskBadge risk={data.risk} label={insight.statusLabel || t(`risk.${data.risk}`)} />
-                    </div>
+                    {insight.status !== 'trusted' && (
+                      <div className="shrink-0 self-start md:self-auto">
+                        <RiskBadge risk={data.risk} label={insight.statusLabel || t(`risk.${data.risk}`)} />
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -1014,6 +1135,78 @@ export default function DetailPage() {
                     />
                   </div>
                 </div>
+
+                {normalizedType === 'website' && (
+                  <Card className="mt-4 border border-primary/15 bg-primary/5">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          'w-11 h-11 rounded-xl flex items-center justify-center shrink-0',
+                          aiScan.verdict === 'scam'
+                            ? 'bg-danger/10 text-danger border border-danger/30'
+                            : aiScan.loading
+                              ? 'bg-warning/10 text-warning border border-warning/30'
+                              : 'bg-success/10 text-success border border-success/30'
+                        )}
+                      >
+                        {aiScan.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Bot className="w-5 h-5" />}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-text-main">Tích hợp các công nghệ tiên tiến phát hiện lừa đảo</p>
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide',
+                              aiScan.loading
+                                ? 'bg-warning/10 text-warning border border-warning/40'
+                                : aiScan.verdict === 'scam'
+                                  ? 'bg-danger/10 text-danger border border-danger/50'
+                                  : 'bg-success/10 text-success border border-success/50'
+                            )}
+                          >
+                            {aiScan.loading ? 'Đang quét' : aiScan.verdict === 'scam' ? 'Nguy hiểm' : 'An toàn'}
+                          </span>
+                          {aiScan.error && <span className="text-xs text-danger font-medium">({aiScan.error})</span>}
+                        </div>
+
+                        {aiScan.loading && (
+                          <p className="text-sm text-text-muted flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> AI đang phê duyệt liên kết này...
+                          </p>
+                        )}
+
+                        {!aiScan.loading && aiScan.verdict && (
+                          <>
+                            <div className="flex flex-wrap gap-2 text-sm">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
+                                Điểm rủi ro: <strong className="text-danger">{aiScan.risk ?? 0}%</strong>
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
+                                Uy tín:{' '}
+                                <strong className={cn(aiScan.verdict === 'scam' ? 'text-danger' : 'text-success', 'font-semibold')}>
+                                  {aiScan.trust ?? 0}%
+                                </strong>
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
+                                Kết luận: {aiScan.verdict === 'scam' ? 'Nguy hiểm, có dấu hiệu lừa đảo' : 'Chưa thấy dấu hiệu nguy hiểm'}
+                              </span>
+                            </div>
+                            {aiScan.description && (
+                              <p className="text-sm text-text-secondary bg-bg-cardHover border border-bg-border rounded-lg px-3 py-2 leading-relaxed">
+                                {aiScan.description}
+                              </p>
+                            )}
+                            <p className="text-xs text-text-muted">Nguồn: mô hình GPT ScamGuard + dữ liệu TinNhiemMang.vn</p>
+                          </>
+                        )}
+
+                        {!aiScan.loading && !aiScan.verdict && aiScan.error && (
+                          <p className="text-sm text-danger">Không thể phân tích AI: {aiScan.error}</p>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-bg-cardHover rounded-xl p-3 text-center">
@@ -1178,101 +1371,120 @@ export default function DetailPage() {
             transition={{ delay: 0.16 }}
             className="mt-6 space-y-5"
           >
-            <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg md:text-xl font-bold text-text-main">
-                  {t('detail.comments')} ({comments.length})
-                </h2>
-                <div className="inline-flex items-center gap-2 rounded-full border border-bg-border bg-bg-cardHover/70 px-3 py-1.5">
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => handleRate(star)}
-                        disabled={isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null}
-                        className={cn(
-                          'rounded-sm transition-opacity',
-                          (isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null) && 'cursor-not-allowed opacity-80'
-                        )}
-                        aria-label={`Đánh giá ${star} sao`}
-                      >
-                        <Star
-                          className={cn(
-                            'w-3.5 h-3.5',
-                            (myRating ?? pendingRating ?? ratingStats.average) >= star
-                              ? 'text-warning fill-current'
-                              : 'text-text-muted/40'
-                          )}
-                        />
-                      </button>
-                    ))}
+            <Card className="overflow-hidden p-0">
+              <div className="border-b border-bg-border bg-gradient-to-r from-primary/10 via-info/5 to-success/5 p-4 md:p-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-text-main">
+                      {t('detail.comments')} ({comments.length})
+                    </h2>
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-bg-border bg-bg-card/85 px-3 py-1.5">
+                      <span className="text-sm font-semibold text-text-main">{ratingStats.average.toFixed(1)}</span>
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => handleRate(star)}
+                            disabled={isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null}
+                            className={cn(
+                              'rounded-sm transition-opacity',
+                              (isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null) && 'cursor-not-allowed opacity-80'
+                            )}
+                            aria-label={`Đánh giá ${star} sao`}
+                          >
+                            <Star
+                              className={cn(
+                                'h-3.5 w-3.5',
+                                (myRating ?? pendingRating ?? ratingStats.average) >= star ? 'text-warning fill-current' : 'text-text-muted/40'
+                              )}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-xs text-text-muted">{formatNumber(ratingStats.total)} lượt đánh giá</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-text-muted">{formatNumber(ratingStats.total)} lượt đánh giá</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCommentSort('latest')}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        commentSort === 'latest'
+                          ? 'border-primary/50 bg-primary/15 text-primary'
+                          : 'border-bg-border bg-bg-card/80 text-text-muted hover:text-text-main'
+                      )}
+                    >
+                      Mới nhất
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCommentSort('helpful')}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        commentSort === 'helpful'
+                          ? 'border-primary/50 bg-primary/15 text-primary'
+                          : 'border-bg-border bg-bg-card/80 text-text-muted hover:text-text-main'
+                      )}
+                    >
+                      Hữu ích nhất
+                    </button>
+                    {isFeedbackLoading && (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Đang tải...
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              {isFeedbackLoading && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Đang tải...
-                </span>
-              )}
-            </div>
 
-            <Card className="p-4 md:p-5">
-              <div className="flex gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold shrink-0 text-sm">
-                  B
-                </div>
-                <div className="flex-1">
+              <div className="p-4 md:p-5">
+                <div className="relative">
                   <textarea
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     placeholder={t('detail.comment_placeholder')}
                     rows={3}
-                    className="w-full px-3 py-2.5 bg-bg-cardHover border border-bg-border rounded-button text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:border-primary resize-none"
+                    maxLength={600}
+                    className="w-full rounded-2xl border border-bg-border bg-bg-cardHover pl-3 pr-14 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-primary focus:outline-none resize-none"
                   />
-                  <div className="flex items-center justify-between mt-2.5 gap-3">
-                    <p className="text-[11px] md:text-xs text-text-muted">
-                      {myRating === null
-                        ? 'Chọn sao cạnh tiêu đề Bình luận và viết nội dung đánh giá (tối đa 20 câu).'
-                        : 'Chia sẻ trải nghiệm thực tế để cộng đồng nhận diện rủi ro nhanh hơn (tối đa 20 câu).'}
-                    </p>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleComment}
-                      disabled={!comment.trim() || isCommentSubmitting || (myRating === null && pendingRating === null)}
-                      leftIcon={isCommentSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
-                    >
-                      {isCommentSubmitting ? 'Đang gửi...' : t('detail.add_comment')}
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleComment}
+                    disabled={!canSubmitComment}
+                    className={cn(
+                      'absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
+                      canSubmitComment
+                        ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
+                        : 'border-bg-border bg-bg-card text-text-muted cursor-not-allowed'
+                    )}
+                    aria-label="Gui binh luan"
+                  >
+                    {isCommentSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
             </Card>
 
             <div className="space-y-2.5">
               {!isFeedbackLoading && comments.length === 0 && (
-                <Card className="text-center py-7">
-                  <p className="text-text-secondary">Chưa có bình luận nào cho cảnh báo này.</p>
-                  <p className="text-xs text-text-muted mt-1">Hãy là người đầu tiên chia sẻ thông tin xác minh.</p>
+                <Card className="py-8 text-center">
+                  <MessageCircle className="mx-auto h-8 w-8 text-text-muted/70" />
+                  <p className="mt-2 text-text-secondary">Chưa có bình luận nào cho cảnh báo này.</p>
+                  <p className="mt-1 text-xs text-text-muted">Hãy là người đầu tiên chia sẻ thông tin xác minh.</p>
                 </Card>
               )}
-              {comments.map((c, i) => (
-                <motion.div
-                  key={c.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + i * 0.04 }}
-                >
-                  <Card hover className="p-4">
+              {displayedComments.map((c, i) => (
+                <motion.div key={c.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + i * 0.04 }}>
+                  <Card hover className="p-4 md:p-5">
                     <div className="flex gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center text-white font-semibold shrink-0 text-sm">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-sm font-semibold text-white">
                         {c.avatar}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
                           <span className="font-medium text-text-main">{c.user}</span>
                           {(() => {
                             const ratingValue = c.rating ?? 0;
@@ -1280,21 +1492,15 @@ export default function DetailPage() {
                             return (
                               <span className="inline-flex items-center gap-0.5 rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5">
                                 {[1, 2, 3, 4, 5].map((star) => (
-                                  <Star
-                                    key={`${c.id}-${star}`}
-                                    className={cn(
-                                      'w-3 h-3',
-                                      ratingValue >= star ? 'text-warning fill-current' : 'text-text-muted/40'
-                                    )}
-                                  />
+                                  <Star key={`${c.id}-${star}`} className={cn('h-3 w-3', ratingValue >= star ? 'text-warning fill-current' : 'text-text-muted/40')} />
                                 ))}
                               </span>
                             );
                           })()}
                           <span className="text-xs text-text-muted">{c.time}</span>
                         </div>
-                        <p className="text-sm text-text-secondary break-words">{sanitizeHTML(c.text)}</p>
-                        <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                        <p className="break-words text-sm text-text-secondary">{sanitizeHTML(c.text)}</p>
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handleHelpful(c.id)}
@@ -1303,26 +1509,20 @@ export default function DetailPage() {
                               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                               c.helpfulMarked
                                 ? 'border-success/40 bg-success/10 text-success'
-                                : 'border-bg-border bg-bg-cardHover text-text-muted hover:text-text-main hover:border-primary/40',
-                              (!c.canMarkHelpful || isFeedbackLoading || helpfulSubmittingId === c.id) && 'opacity-65 cursor-not-allowed'
+                                : 'border-bg-border bg-bg-cardHover text-text-muted hover:border-primary/40 hover:text-text-main',
+                              (!c.canMarkHelpful || isFeedbackLoading || helpfulSubmittingId === c.id) && 'cursor-not-allowed opacity-65'
                             )}
                           >
-                            {helpfulSubmittingId === c.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <ThumbsUp className="w-3.5 h-3.5" />
-                            )}
+                            {helpfulSubmittingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
                             {formatNumber(c.helpful)} {t('detail.helpful')}
                           </button>
                           <span
                             className={cn(
                               'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
-                              c.verified
-                                ? 'border-success/40 bg-success/10 text-success'
-                                : 'border-bg-border bg-bg-cardHover text-text-muted'
+                              c.verified ? 'border-success/40 bg-success/10 text-success' : 'border-bg-border bg-bg-cardHover text-text-muted'
                             )}
                           >
-                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <ShieldCheck className="h-3.5 w-3.5" />
                             {c.verified ? 'Đã xác minh' : 'Chưa xác minh'}
                           </span>
                         </div>
@@ -1341,3 +1541,8 @@ export default function DetailPage() {
     </div>
   );
 }
+
+
+
+
+

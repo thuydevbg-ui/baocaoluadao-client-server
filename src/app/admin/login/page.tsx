@@ -1,18 +1,10 @@
-'use client';
+﻿"use client";
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  Shield,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  Loader2
-} from 'lucide-react';
+import { Shield, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -29,26 +21,21 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      // Use secure API route that sets HttpOnly cookies
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, rememberMe }),
       });
 
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error || 'Đăng nhập thất bại');
         setIsLoading(false);
         return;
       }
 
-      // HttpOnly cookie is set by the server - no localStorage needed
       router.push('/admin');
-    } catch {
+    } catch (err) {
       setError('Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -56,151 +43,111 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B1120] flex items-center justify-center p-4">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center px-4 py-10 relative overflow-hidden">
+      <div className="absolute -top-32 -right-24 w-80 h-80 rounded-full bg-primary/20 blur-3xl" />
+      <div className="absolute -bottom-40 -left-20 w-96 h-96 rounded-full bg-indigo-500/15 blur-3xl" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative w-full max-w-md"
+        transition={{ duration: 0.4 }}
+        className="relative w-full max-w-lg"
       >
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-cyan-500/30">
               <Shield className="w-8 h-8 text-white" />
             </div>
             <div className="text-left">
               <h1 className="text-2xl font-bold text-white">ScamGuard</h1>
-              <p className="text-sm text-gray-400">Admin Panel</p>
+              <p className="text-sm text-slate-200/80">Admin Panel</p>
             </div>
           </Link>
         </div>
 
-        {/* Login form */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-          className="bg-gray-900/50 backdrop-blur-xl border border-gray-800 rounded-2xl p-8"
+          transition={{ duration: 0.25, delay: 0.05 }}
+          className="rounded-2xl bg-white shadow-2xl border border-slate-200/80 p-8"
         >
-          <h2 className="text-xl font-semibold text-white mb-2">
-            Đăng nhập
-          </h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Nhập thông tin đăng nhập để truy cập trang quản trị
-          </p>
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Đăng nhập</h2>
+          <p className="text-slate-600 text-sm mb-6">Nhập thông tin để vào trang quản trị</p>
 
-          {/* Error message */}
           {error && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 p-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm"
+              className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-red-200 bg-red-50 text-red-600 text-sm"
             >
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4" />
               <span>{error}</span>
             </motion.div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email
-              </label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@scamguard.vn"
                   required
-                  className="w-full pl-10 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
                 />
               </div>
             </div>
 
-            {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Mật khẩu
-              </label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full pl-10 pr-12 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                  className="w-full pl-11 pr-12 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
 
-            {/* Remember me & Forgot password */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 text-slate-700">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900"
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-400">Ghi nhớ đăng nhập</span>
+                <span>Ghi nhớ đăng nhập</span>
               </label>
-              <button
-                type="button"
-                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                Quên mật khẩu?
-              </button>
+              <button type="button" className="text-blue-600 hover:text-blue-500">Quên mật khẩu?</button>
             </div>
 
-            {/* Submit button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-medium rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Đang xử lý...</span>
-                </>
-              ) : (
-                <span>Đăng nhập</span>
-              )}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Đăng nhập'}
             </button>
           </form>
-
-
         </motion.div>
 
-        {/* Back to home */}
         <div className="text-center mt-6">
-          <Link
-            href="/"
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
+          <Link href="/" className="text-sm text-slate-200 hover:text-white transition">
             ← Về trang chủ
           </Link>
         </div>

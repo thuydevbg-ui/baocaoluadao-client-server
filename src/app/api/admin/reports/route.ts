@@ -22,6 +22,59 @@ function parseType(value: string | null): 'all' | AdminReportType {
   return 'all';
 }
 
+// Validation helpers
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_REGEX = /^https?:\/\/[\w.-]+\.[a-zA-Z]{2,}(\/.*)?$/;
+const PHONE_REGEX = /^(\+84|0)[3-9]\d{8}$/;
+
+function validateReportInput(body: {
+  title?: string;
+  description?: string;
+  reporterEmail?: string;
+  targetValue?: string;
+  type?: string;
+}): { valid: boolean; error?: string } {
+  const { title, description, reporterEmail, targetValue, type } = body;
+
+  
+  // Validate title length
+  if (!title || title.length < 3 || title.length > 200) {
+    return { valid: false, error: 'Title must be between 3 and 200 characters' };
+  }
+  
+  // Validate description length
+  if (!description || description.length < 10 || description.length > 5000) {
+    return { valid: false, error: 'Description must be between 10 and 5000 characters' };
+  }
+  
+  // Validate email format
+  if (!reporterEmail || !EMAIL_REGEX.test(reporterEmail)) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+  
+  // Validate targetValue based on type
+  if (!targetValue || targetValue.length > 500) {
+    return { valid: false, error: 'Target value must be between 1 and 500 characters' };
+  }
+  
+  if (type === 'website') {
+    // Allow both URLs and domain names for website type
+    const domainOrUrl = targetValue.toLowerCase();
+    const isValidDomain = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(domainOrUrl);
+    if (!URL_REGEX.test(targetValue) && !isValidDomain) {
+      return { valid: false, error: 'Invalid website URL or domain' };
+    }
+  } else if (type === 'phone') {
+    // Normalize phone number for validation
+    const normalizedPhone = targetValue.replace(/[\s.-]/g, '');
+    if (!PHONE_REGEX.test(normalizedPhone) && !/^\d{9,11}$/.test(normalizedPhone)) {
+      return { valid: false, error: 'Invalid phone number format' };
+    }
+  }
+  
+  return { valid: true };
+}
+
 export async function GET(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
@@ -79,12 +132,21 @@ export async function POST(request: NextRequest) {
   const targetValue = (body.targetValue || '').trim();
   const type = body.type;
 
-  if (!title || !description || !reporterName || !reporterEmail || !targetValue || !type) {
-    return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
+  // Validate type separately as it needs to be a valid AdminReportType
+  if (!type || !['website', 'phone', 'email', 'social', 'sms'].includes(type)) {
+    return NextResponse.json({ success: false, error: 'Invalid or missing type' }, { status: 400 });
   }
 
-  if (!['website', 'phone', 'email', 'social', 'sms'].includes(type)) {
-    return NextResponse.json({ success: false, error: 'Invalid type' }, { status: 400 });
+  // Use enhanced validation for other fields
+  const validation = validateReportInput({
+    title,
+    description,
+    reporterEmail,
+    targetValue,
+    type: type as AdminReportType,
+  });
+  if (!validation.valid) {
+    return NextResponse.json({ success: false, error: validation.error }, { status: 400 });
   }
 
   const created = createAdminReport({

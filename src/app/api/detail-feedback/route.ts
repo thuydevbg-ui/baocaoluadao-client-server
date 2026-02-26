@@ -1,6 +1,7 @@
-import crypto from 'node:crypto';
+﻿import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSignedCookie } from '@/lib/auth';
+import { applySecurityHeaders, createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 
 // In-memory feedback store using global Map
 // SECURITY & DEPLOYMENT WARNING:
@@ -80,7 +81,7 @@ function sanitizePlainText(input: string): string {
 function countSentences(input: string): number {
   const normalized = input.replace(/\n+/g, ' ').trim();
   if (!normalized) return 0;
-  const parts = normalized.split(/[.!?…]+/).map((part) => part.trim()).filter(Boolean);
+  const parts = normalized.split(/[.!?â€¦]+/).map((part) => part.trim()).filter(Boolean);
   return parts.length > 0 ? parts.length : 1;
 }
 
@@ -167,7 +168,7 @@ function withVisitorCookie(response: NextResponse, identity: IdentityInfo): Next
       maxAge: 60 * 60 * 24 * 365,
     });
   }
-  return response;
+  return applySecurityHeaders(response);
 }
 
 function ensureEntry(detailKey: string): FeedbackEntry {
@@ -260,11 +261,24 @@ function buildAvatar(name: string): string {
 }
 
 export async function GET(request: NextRequest) {
+  if (!isRequestFromSameOrigin(request)) {
+    return createSecureJsonResponse({ success: false, error: 'Forbidden request origin' }, { status: 403 });
+  }
+  const rateLimit = rateLimitRequest(request, {
+    keyPrefix: 'detail-feedback:get',
+    windowMs: 60_000,
+    maxRequests: 120,
+  });
+  if (!rateLimit.ok) {
+    return createSecureJsonResponse({ success: false, error: 'Too many requests' }, { status: 429 }, rateLimit);
+  }
+
   const detailKey = normalizeDetailKey(new URL(request.url).searchParams.get('detailKey'));
   if (!detailKey) {
-    const response = NextResponse.json(
+    const response = createSecureJsonResponse(
       { success: false, error: 'detailKey is required' },
-      { status: 400 }
+      { status: 400 },
+      rateLimit
     );
     return response;
   }
@@ -272,16 +286,28 @@ export async function GET(request: NextRequest) {
   const identity = resolveIdentity(request);
   const entry = ensureEntry(detailKey);
   const payload = buildResponsePayload(entry, identity);
-  const response = NextResponse.json({
+  const response = createSecureJsonResponse({
     success: true,
     detailKey,
     ...payload,
-  });
+  }, { status: 200 }, rateLimit);
 
   return withVisitorCookie(response, identity);
 }
 
 export async function POST(request: NextRequest) {
+  if (!isRequestFromSameOrigin(request)) {
+    return createSecureJsonResponse({ success: false, error: 'Forbidden request origin' }, { status: 403 });
+  }
+  const rateLimit = rateLimitRequest(request, {
+    keyPrefix: 'detail-feedback:post',
+    windowMs: 60_000,
+    maxRequests: 45,
+  });
+  if (!rateLimit.ok) {
+    return createSecureJsonResponse({ success: false, error: 'Too many requests' }, { status: 429 }, rateLimit);
+  }
+
   let body: {
     action?: FeedbackAction;
     detailKey?: string;
@@ -294,17 +320,17 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ success: false, error: 'Invalid JSON payload' }, { status: 400 });
+    return createSecureJsonResponse({ success: false, error: 'Invalid JSON payload' }, { status: 400 }, rateLimit);
   }
 
   const detailKey = normalizeDetailKey(body.detailKey);
   if (!detailKey) {
-    return NextResponse.json({ success: false, error: 'detailKey is required' }, { status: 400 });
+    return createSecureJsonResponse({ success: false, error: 'detailKey is required' }, { status: 400 }, rateLimit);
   }
 
   const action = body.action;
   if (action !== 'rate' && action !== 'comment' && action !== 'helpful') {
-    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+    return createSecureJsonResponse({ success: false, error: 'Invalid action' }, { status: 400 }, rateLimit);
   }
 
   const identity = resolveIdentity(request);
@@ -313,19 +339,20 @@ export async function POST(request: NextRequest) {
   if (action === 'rate') {
     const score = Number(body.score);
     if (!Number.isInteger(score) || score < 1 || score > 5) {
-      return NextResponse.json({ success: false, error: 'score must be an integer from 1 to 5' }, { status: 400 });
+      return createSecureJsonResponse({ success: false, error: 'score must be an integer from 1 to 5' }, { status: 400 }, rateLimit);
     }
 
     if (entry.ratingsByIdentity.has(identity.key)) {
       const payload = buildResponsePayload(entry, identity);
-      const response = NextResponse.json(
+      const response = createSecureJsonResponse(
         {
           success: false,
-          error: 'Bạn đã đánh giá trước đó. Mỗi IP hoặc tài khoản chỉ đánh giá 1 lần và không thể chỉnh sửa.',
+          error: 'Báº¡n Ä‘Ã£ Ä‘Ã¡nh giÃ¡ trÆ°á»›c Ä‘Ã³. Má»—i IP hoáº·c tÃ i khoáº£n chá»‰ Ä‘Ã¡nh giÃ¡ 1 láº§n vÃ  khÃ´ng thá»ƒ chá»‰nh sá»­a.',
           detailKey,
           ...payload,
         },
-        { status: 409 }
+        { status: 409 },
+        rateLimit
       );
       return withVisitorCookie(response, identity);
     }
@@ -338,36 +365,37 @@ export async function POST(request: NextRequest) {
     entry.lastActive = Date.now();
 
     const payload = buildResponsePayload(entry, identity);
-    const response = NextResponse.json({
+    const response = createSecureJsonResponse({
       success: true,
-      message: 'Đánh giá của bạn đã được ghi nhận.',
+      message: 'ÄÃ¡nh giÃ¡ cá»§a báº¡n Ä‘Ã£ Ä‘Æ°á»£c ghi nháº­n.',
       detailKey,
       ...payload,
-    });
+    }, { status: 200 }, rateLimit);
     return withVisitorCookie(response, identity);
   }
 
   if (action === 'helpful') {
     const commentId = sanitizePlainText(typeof body.commentId === 'string' ? body.commentId : '').slice(0, 80);
     if (!commentId) {
-      return NextResponse.json({ success: false, error: 'commentId is required' }, { status: 400 });
+      return createSecureJsonResponse({ success: false, error: 'commentId is required' }, { status: 400 }, rateLimit);
     }
 
     const targetComment = entry.comments.find((item) => item.id === commentId);
     if (!targetComment) {
-      return NextResponse.json({ success: false, error: 'Comment not found' }, { status: 404 });
+      return createSecureJsonResponse({ success: false, error: 'Comment not found' }, { status: 404 }, rateLimit);
     }
 
     if (targetComment.helpfulByIdentity.includes(identity.key)) {
       const payload = buildResponsePayload(entry, identity);
-      const response = NextResponse.json(
+      const response = createSecureJsonResponse(
         {
           success: false,
-          error: 'Bạn đã đánh dấu hữu ích cho bình luận này trước đó.',
+          error: 'Báº¡n Ä‘Ã£ Ä‘Ã¡nh dáº¥u há»¯u Ã­ch cho bÃ¬nh luáº­n nÃ y trÆ°á»›c Ä‘Ã³.',
           detailKey,
           ...payload,
         },
-        { status: 409 }
+        { status: 409 },
+        rateLimit
       );
       return withVisitorCookie(response, identity);
     }
@@ -377,47 +405,50 @@ export async function POST(request: NextRequest) {
     entry.lastActive = Date.now();
 
     const payload = buildResponsePayload(entry, identity);
-    const response = NextResponse.json({
+    const response = createSecureJsonResponse({
       success: true,
-      message: 'Đã ghi nhận bình chọn hữu ích của bạn.',
+      message: 'ÄÃ£ ghi nháº­n bÃ¬nh chá»n há»¯u Ã­ch cá»§a báº¡n.',
       detailKey,
       ...payload,
-    });
+    }, { status: 200 }, rateLimit);
     return withVisitorCookie(response, identity);
   }
 
   if (!entry.ratingsByIdentity.has(identity.key)) {
     const payload = buildResponsePayload(entry, identity);
-    const response = NextResponse.json(
+    const response = createSecureJsonResponse(
       {
         success: false,
-        error: 'Vui lòng đánh giá sao trước khi gửi bình luận đầu tiên.',
+        error: 'Vui lÃ²ng Ä‘Ã¡nh giÃ¡ sao trÆ°á»›c khi gá»­i bÃ¬nh luáº­n Ä‘áº§u tiÃªn.',
         detailKey,
         ...payload,
       },
-      { status: 403 }
+      { status: 403 },
+      rateLimit
     );
     return withVisitorCookie(response, identity);
   }
 
   const text = sanitizePlainText(typeof body.text === 'string' ? body.text : '');
   if (text.length < 3) {
-    return NextResponse.json({ success: false, error: 'Bình luận cần tối thiểu 3 ký tự.' }, { status: 400 });
+    return createSecureJsonResponse({ success: false, error: 'BÃ¬nh luáº­n cáº§n tá»‘i thiá»ƒu 3 kÃ½ tá»±.' }, { status: 400 }, rateLimit);
   }
   if (text.length > MAX_COMMENT_LENGTH) {
-    return NextResponse.json(
-      { success: false, error: `Bình luận tối đa ${MAX_COMMENT_LENGTH} ký tự.` },
-      { status: 400 }
+    return createSecureJsonResponse(
+      { success: false, error: `BÃ¬nh luáº­n tá»‘i Ä‘a ${MAX_COMMENT_LENGTH} kÃ½ tá»±.` },
+      { status: 400 },
+      rateLimit
     );
   }
   if (countSentences(text) > MAX_COMMENT_SENTENCES) {
-    return NextResponse.json(
-      { success: false, error: `Đánh giá tối đa ${MAX_COMMENT_SENTENCES} câu.` },
-      { status: 400 }
+    return createSecureJsonResponse(
+      { success: false, error: `ÄÃ¡nh giÃ¡ tá»‘i Ä‘a ${MAX_COMMENT_SENTENCES} cÃ¢u.` },
+      { status: 400 },
+      rateLimit
     );
   }
 
-  const userName = sanitizePlainText(typeof body.userName === 'string' ? body.userName : '').slice(0, 40) || 'Người dùng';
+  const userName = sanitizePlainText(typeof body.userName === 'string' ? body.userName : '').slice(0, 40) || 'NgÆ°á»i dÃ¹ng';
   const comment: StoredComment = {
     id: crypto.randomUUID(),
     user: userName,
@@ -437,11 +468,12 @@ export async function POST(request: NextRequest) {
   entry.lastActive = Date.now();
 
   const payload = buildResponsePayload(entry, identity);
-  const response = NextResponse.json({
+  const response = createSecureJsonResponse({
     success: true,
-    message: 'Bình luận của bạn đã được đăng.',
+    message: 'BÃ¬nh luáº­n cá»§a báº¡n Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng.',
     detailKey,
     ...payload,
-  });
+  }, { status: 200 }, rateLimit);
   return withVisitorCookie(response, identity);
 }
+

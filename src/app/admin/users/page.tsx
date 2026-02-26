@@ -1,23 +1,8 @@
-﻿'use client';
+﻿"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  Ban,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  FileText,
-  Phone,
-  RefreshCcw,
-  Search,
-  Shield,
-  Star,
-  Unlock,
-  UserCog,
-  X,
-} from 'lucide-react';
+import { Ban, Calendar, ChevronLeft, ChevronRight, Eye, FileText, Loader2, Phone, RefreshCcw, Search, Shield, Star, Unlock, UserCog, X } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 type UserRole = 'super_admin' | 'admin' | 'moderator' | 'user';
@@ -136,7 +121,7 @@ export default function UsersPage() {
       const data = (await response.json()) as UsersResponse;
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Không thể tải dữ liệu người dùng');
+        throw new Error(data.error || 'Không thể tải dữ liệu Người dùng');
       }
 
       setUsers(data.items);
@@ -144,7 +129,7 @@ export default function UsersPage() {
       setTotalPages(data.totalPages);
       setTotalUsers(data.total);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Lỗi tải dữ liệu người dùng';
+      const message = error instanceof Error ? error.message : 'Lỗi tải dữ liệu Người dùng';
       showToast('error', message);
     } finally {
       setLoading(false);
@@ -171,7 +156,7 @@ export default function UsersPage() {
 
         const data = (await response.json()) as UserDetailResponse;
         if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Không thể cập nhật người dùng');
+          throw new Error(data.error || 'Không thể cập nhật Người dùng');
         }
 
         if (selectedUser?.id === id) {
@@ -181,7 +166,7 @@ export default function UsersPage() {
         showToast('success', successMessage);
         await fetchUsers();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Cập nhật người dùng thất bại';
+        const message = error instanceof Error ? error.message : 'Cập nhật Người dùng thất bại';
         showToast('error', message);
       } finally {
         setActionUserId(null);
@@ -192,8 +177,8 @@ export default function UsersPage() {
 
   const stats = useMemo(
     () => [
-      { label: 'Tổng người dùng', value: summary.total, tone: 'text-blue-400' },
-      { label: 'Đang hoạt động', value: summary.active, tone: 'text-green-400' },
+      { label: 'Tổng Người dùng', value: summary.total, tone: 'text-blue-400' },
+      { label: 'Đang Hoạt động', value: summary.active, tone: 'text-green-400' },
       { label: 'Bị khóa', value: summary.banned, tone: 'text-red-400' },
       { label: 'Tạm ngưng', value: summary.suspended, tone: 'text-yellow-400' },
     ],
@@ -202,29 +187,29 @@ export default function UsersPage() {
 
   const getRoleBadge = (role: UserRole) => {
     const map: Record<UserRole, { label: string; className: string }> = {
-      super_admin: { label: 'Super Admin', className: 'bg-purple-500/20 text-purple-300' },
-      admin: { label: 'Admin', className: 'bg-red-500/20 text-red-300' },
-      moderator: { label: 'Moderator', className: 'bg-blue-500/20 text-blue-300' },
-      user: { label: 'Người dùng', className: 'bg-gray-500/20 text-gray-300' },
+      super_admin: { label: 'Super Admin', className: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-200' },
+      admin: { label: 'Admin', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200' },
+      moderator: { label: 'Moderator', className: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200' },
+      user: { label: 'Người dùng', className: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200' },
     };
     const item = map[role];
-    return <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.className}`}>{item.label}</span>;
+    return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${item.className}`}>{item.label}</span>;
   };
 
   const getStatusBadge = (status: UserStatus) => {
     const map: Record<UserStatus, { label: string; className: string }> = {
-      active: { label: 'Hoạt động', className: 'bg-green-500/20 text-green-300' },
-      banned: { label: 'Bị khóa', className: 'bg-red-500/20 text-red-300' },
-      suspended: { label: 'Tạm ngưng', className: 'bg-yellow-500/20 text-yellow-300' },
+      active: { label: 'Hoạt động', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200' },
+      banned: { label: 'Bị khóa', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200' },
+      suspended: { label: 'Tạm ngưng', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200' },
     };
     const item = map[status];
-    return <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.className}`}>{item.label}</span>;
+    return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${item.className}`}>{item.label}</span>;
   };
 
   const reputationColor = (score: number): string => {
-    if (score >= 80) return 'text-green-400';
-    if (score >= 50) return 'text-yellow-400';
-    return 'text-red-400';
+    if (score >= 80) return 'text-emerald-600 dark:text-emerald-300';
+    if (score >= 50) return 'text-amber-600 dark:text-amber-300';
+    return 'text-rose-600 dark:text-rose-300';
   };
 
   const rangeStart = users.length === 0 ? 0 : (currentPage - 1) * 10 + 1;
@@ -234,189 +219,148 @@ export default function UsersPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Quản lý người dùng</h2>
-          <p className="text-gray-400 mt-1">Điều phối quyền và trạng thái tài khoản</p>
+          <h2 className="text-2xl font-bold text-text-main">Quản lý Người dùng</h2>
+          <p className="text-text-muted mt-1">Điều phối quyền và trạng thái tài khoản</p>
         </div>
         <button
           onClick={fetchUsers}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-bg-border bg-bg-card hover:bg-bg-cardHover text-text-main"
         >
-          <RefreshCcw className="w-4 h-4" />
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Làm mới
         </button>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {stats.map((item) => (
-          <div key={item.label} className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4">
-            <p className="text-sm text-gray-400">{item.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${item.tone}`}>{item.value}</p>
+          <div key={item.label} className="rounded-2xl border border-bg-border bg-bg-card p-4">
+            <p className="text-sm text-text-muted">{item.label}</p>
+            <p className={`text-2xl font-semibold ${item.tone}`}>{item.value}</p>
           </div>
         ))}
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4">
-        <div className="flex flex-col lg:flex-row gap-3">
+      <div className="rounded-2xl border border-bg-border bg-bg-card p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
             <input
-              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tên, email, số điện thoại, ID..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
+              placeholder="Tìm theo tên, email, Số điện thoại, ID..."
+              className="w-full pl-10 pr-4 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-main placeholder:text-text-muted"
             />
           </div>
-
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as 'all' | UserRole)}
-            className="px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-          >
-            {roleOptions.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'all' | UserStatus)}
-            className="px-4 py-2.5 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-          >
-            {statusOptions.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as any)}
+              className="px-3 py-2 rounded-xl border border-bg-border bg-bg-card text-text-main"
+            >
+              {roleOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="px-3 py-2 rounded-xl border border-bg-border bg-bg-card text-text-main"
+            >
+              {statusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
-      </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-gray-900/50 border border-gray-800 rounded-2xl overflow-hidden"
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px]">
-            <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left p-4 text-sm font-medium text-gray-400">ID</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Người dùng</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Vai trò</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Trạng thái</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Uy tín</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Báo cáo</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Ngày tham gia</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400">Hoạt động gần nhất</th>
-                <th className="text-right p-4 text-sm font-medium text-gray-400">Thao tác</th>
+        <div className="overflow-x-auto rounded-xl border border-bg-border">
+          <table className="w-full text-sm">
+            <thead className="bg-bg-cardHover/60">
+              <tr>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">ID</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Người dùng</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Vai trò</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Trạng thái</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Uy tín</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Báo cáo</th>
+                <th className="text-left p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Ngày tham gia</th>
+                <th className="text-right p-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="p-6 text-center text-gray-400">
-                    Đang tải dữ liệu...
-                  </td>
-                </tr>
-              ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-6 text-center text-gray-400">
-                    Không có người dùng phù hợp bộ lọc.
-                  </td>
-                </tr>
-              ) : (
-                users.map((user) => {
-                  const isPending = actionUserId === user.id;
-                  return (
-                    <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800/40">
-                      <td className="p-4 text-sm font-semibold text-blue-300">{user.id}</td>
-                      <td className="p-4">
-                        <p className="text-white font-medium">{user.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{user.email}</p>
-                      </td>
-                      <td className="p-4">{getRoleBadge(user.role)}</td>
-                      <td className="p-4">{getStatusBadge(user.status)}</td>
-                      <td className="p-4">
-                        <div className={`inline-flex items-center gap-2 font-semibold ${reputationColor(user.reputationScore)}`}>
-                          <Star className="w-4 h-4" />
-                          {user.reputationScore}
-                        </div>
-                      </td>
-                      <td className="p-4 text-sm text-white">
-                        {user.reportCount} <span className="text-gray-500">(</span>
-                        <span className="text-green-400">{user.verifiedReportCount}</span>
-                        <span className="text-gray-500">)</span>
-                      </td>
-                      <td className="p-4 text-sm text-gray-400">{formatDate(user.joinedAt)}</td>
-                      <td className="p-4 text-sm text-gray-400">{formatLastActive(user.lastActiveAt)}</td>
-                      <td className="p-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setSelectedUser(user)}
-                            className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg"
-                            title="Xem chi tiết"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-
-                          {user.status === 'active' ? (
-                            <button
-                              onClick={() => updateUser(user.id, { status: 'banned' }, 'Đã khóa tài khoản người dùng')}
-                              disabled={isPending}
-                              className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
-                              title="Khóa tài khoản"
-                            >
-                              <Ban className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => updateUser(user.id, { status: 'active' }, 'Đã mở khóa tài khoản')}
-                              disabled={isPending}
-                              className="p-2 text-gray-500 hover:text-green-400 hover:bg-green-500/10 rounded-lg disabled:opacity-50"
-                              title="Mở khóa tài khoản"
-                            >
-                              <Unlock className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+              {loading && (
+                <tr><td colSpan={8} className="p-6 text-center text-text-muted">Đang tải dữ liệu...</td></tr>
               )}
+              {!loading && users.length === 0 && (
+                <tr><td colSpan={8} className="p-6 text-center text-text-muted">Không có Người dùng phù hợp bộ lọc.</td></tr>
+              )}
+              {!loading && users.map((user) => (
+                <tr key={user.id} className="border-t border-bg-border hover:bg-bg-cardHover/60">
+                  <td className="p-4 font-mono text-text-secondary">{user.id}</td>
+                  <td className="p-4">
+                    <div className="font-semibold text-text-main">{user.name}</div>
+                    <div className="text-text-secondary text-xs">{user.email}</div>
+                    {user.phone && <div className="text-text-muted text-xs">{user.phone}</div>}
+                  </td>
+                  <td className="p-4">{getRoleBadge(user.role)}</td>
+                  <td className="p-4">{getStatusBadge(user.status)}</td>
+                  <td className={`p-4 font-semibold ${reputationColor(user.reputationScore)}`}>{user.reputationScore}</td>
+                  <td className="p-4 text-text-main font-semibold">{user.reportCount}</td>
+                  <td className="p-4 text-text-secondary">{formatDate(user.joinedAt)}</td>
+                  <td className="p-4 text-right space-x-2">
+                    <button
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs"
+                      onClick={() => setSelectedUser(user)}
+                    >
+                      <Eye className="w-4 h-4" /> Chi tiết
+                    </button>
+                    {user.status !== 'banned' ? (
+                      <button
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs"
+                        disabled={actionUserId === user.id}
+                        onClick={() => updateUser(user.id, { status: 'banned' }, 'Đã khóa tài khoản Người dùng')}
+                      >
+                        {actionUserId === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                        Khóa
+                      </button>
+                    ) : (
+                      <button
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs"
+                        disabled={actionUserId === user.id}
+                        onClick={() => updateUser(user.id, { status: 'active' }, 'Đã mở khóa tài khoản')}
+                      >
+                        {actionUserId === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                        Mở khóa
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-gray-800">
-          <span className="text-sm text-gray-500">
-            Hiển thị {rangeStart}-{rangeEnd} / {totalUsers}
-          </span>
+        <div className="flex items-center justify-between text-sm text-text-secondary">
+          <div>Hiển thị {rangeStart}-{rangeEnd} / {totalUsers}</div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
-              className="p-2 text-gray-500 hover:text-white disabled:opacity-40"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="p-2 rounded-lg border border-bg-border text-text-main disabled:opacity-40"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm text-gray-400">
-              Trang {currentPage}/{totalPages}
-            </span>
+            <span>Trang {currentPage}/{totalPages}</span>
             <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage >= totalPages}
-              className="p-2 text-gray-500 hover:text-white disabled:opacity-40"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="p-2 rounded-lg border border-bg-border text-text-main disabled:opacity-40"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       <AnimatePresence>
         {selectedUser && (
@@ -424,103 +368,102 @@ export default function UsersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
-            onClick={() => setSelectedUser(null)}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           >
             <motion.div
-              initial={{ scale: 0.96, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-2xl"
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-2xl rounded-2xl bg-bg-card p-6 border border-bg-border shadow-xl"
             >
-              <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-semibold text-white">Chi tiết người dùng</h3>
-                  <p className="text-sm text-gray-400">ID: {selectedUser.id}</p>
+                  <h3 className="text-xl font-bold text-text-main">Thông tin Người dùng</h3>
+                  <p className="text-text-secondary text-sm">Cập nhật vai trò và trạng thái</p>
                 </div>
-                <button onClick={() => setSelectedUser(null)} className="p-2 text-gray-500 hover:text-white">
+                <button onClick={() => setSelectedUser(null)} className="text-text-muted hover:text-text-main">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xl font-semibold">
-                    {selectedUser.name.slice(0, 1)}
+              <div className="grid md:grid-cols-2 gap-4 mt-5">
+                <div className="rounded-xl border border-bg-border p-3">
+                  <p className="text-xs text-text-secondary mb-1">Email</p>
+                  <p className="font-semibold text-text-main break-all">{selectedUser.email}</p>
+                </div>
+                <div className="rounded-xl border border-bg-border p-3">
+                  <p className="text-xs text-text-secondary mb-1">Số điện thoại</p>
+                  <p className="font-semibold text-text-main">{selectedUser.phone || '—'}</p>
+                </div>
+                <div className="rounded-xl border border-bg-border p-3">
+                  <p className="text-xs text-text-secondary mb-1">Ngày tham gia</p>
+                  <p className="font-semibold text-text-main">{formatDate(selectedUser.joinedAt)}</p>
+                </div>
+                <div className="rounded-xl border border-bg-border p-3">
+                  <p className="text-xs text-text-secondary mb-1">Báo cáo đã gửi</p>
+                  <p className="font-semibold text-text-main">{selectedUser.reportCount} (đã xác minh {selectedUser.verifiedReportCount})</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 mt-5">
+                <div className="rounded-xl border border-bg-border p-3">
+                  <p className="text-xs text-text-secondary mb-1">Vai trò</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {roleOptions.filter(r => r.value !== 'all').map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`px-3 py-2 rounded-lg border ${selectedRole === opt.value ? 'border-primary bg-primary/10 text-primary' : 'border-bg-border text-text-main'}`}
+                        onClick={() => setSelectedRole(opt.value as UserRole)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
-                  <div>
-                    <p className="text-lg font-semibold text-white">{selectedUser.name}</p>
-                    <p className="text-sm text-gray-400">{selectedUser.email}</p>
-                  </div>
+                  <button
+                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white"
+                    disabled={actionUserId === selectedUser.id}
+                    onClick={() => updateUser(selectedUser.id, { role: selectedRole }, 'Đã cập nhật vai trò Người dùng')}
+                  >
+                    {actionUserId === selectedUser.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCog className="w-4 h-4" />}
+                    Lưu vai trò
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Số điện thoại</p>
-                    <p className="text-white flex items-center gap-2"><Phone className="w-4 h-4" />{selectedUser.phone}</p>
+                <div className="rounded-xl border border-bg-border p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-text-main">Khóa / Mở khóa</p>
+                      <p className="text-xs text-text-secondary">Bật tắt trạng thái hoạt động</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm"
+                        disabled={actionUserId === selectedUser.id || selectedUser.status === 'banned'}
+                        onClick={() => updateUser(selectedUser.id, { status: 'banned' }, 'Đã khóa tài khoản Người dùng')}
+                      >
+                        Khóa
+                      </button>
+                      <button
+                        className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm"
+                        disabled={actionUserId === selectedUser.id || selectedUser.status === 'active'}
+                        onClick={() => updateUser(selectedUser.id, { status: 'active' }, 'Đã mở khóa tài khoản')}
+                      >
+                        Mở khóa
+                      </button>
+                    </div>
                   </div>
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Ngày tham gia</p>
-                    <p className="text-white flex items-center gap-2"><Calendar className="w-4 h-4" />{formatDate(selectedUser.joinedAt)}</p>
-                  </div>
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Trạng thái</p>
-                    {getStatusBadge(selectedUser.status)}
-                  </div>
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Vai trò hiện tại</p>
-                    {getRoleBadge(selectedUser.role)}
-                  </div>
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Điểm uy tín</p>
-                    <p className={`font-semibold ${reputationColor(selectedUser.reputationScore)}`}>{selectedUser.reputationScore}/100</p>
-                  </div>
-                  <div className="bg-gray-800/40 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 mb-1">Báo cáo đã gửi</p>
-                    <p className="text-white flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      {selectedUser.reportCount} (đã xác minh {selectedUser.verifiedReportCount})
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-700/50">
-                  <p className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                    <UserCog className="w-4 h-4" />
-                    Cập nhật vai trò
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <select
-                      value={selectedRole}
-                      onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-                      className="px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-white"
-                    >
-                      {roleOptions
-                        .filter((item): item is { value: UserRole; label: string } => item.value !== 'all')
-                        .map((item) => (
-                          <option key={item.value} value={item.value}>
-                            {item.label}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      onClick={() => updateUser(selectedUser.id, { role: selectedRole }, 'Đã cập nhật vai trò người dùng')}
-                      disabled={actionUserId === selectedUser.id || selectedRole === selectedUser.role}
-                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl"
-                    >
-                      Lưu vai trò
-                    </button>
+                  <div className="rounded-lg border border-bg-border p-3 bg-bg-cardHover">
+                    <p className="text-xs text-text-secondary mb-1">Hoạt động gần nhất</p>
+                    <p className="text-sm font-semibold text-text-main">{formatLastActive(selectedUser.lastActiveAt || selectedUser.updatedAt)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-6 border-t border-gray-800">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Shield className="w-4 h-4" />
-                  Cập nhật gần nhất: {formatDate(selectedUser.updatedAt)}
-                </div>
-                <button onClick={() => setSelectedUser(null)} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl">
+              <div className="mt-6 text-right">
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-bg-border text-text-main hover:bg-bg-cardHover"
+                >
                   Đóng
                 </button>
               </div>

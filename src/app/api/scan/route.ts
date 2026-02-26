@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { findScamWebsiteByDomain, normalizeDomainInput, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
+import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 
 function isValidScanDomain(domain: string): boolean {
   const normalized = domain.trim().toLowerCase();
@@ -136,42 +137,69 @@ function toLocalHeuristicResponse(domain: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isRequestFromSameOrigin(request)) {
+    return createSecureJsonResponse({ error: 'Forbidden request origin' }, { status: 403 });
+  }
+
+  const rateLimit = rateLimitRequest(request, {
+    keyPrefix: 'scan:post',
+    windowMs: 60_000,
+    maxRequests: 30,
+  });
+  if (!rateLimit.ok) {
+    return createSecureJsonResponse({ error: 'Too many requests' }, { status: 429 }, rateLimit);
+  }
+
   try {
     const body = await request.json();
     const rawUrl = typeof body?.url === 'string' ? body.url : '';
     if (!rawUrl.trim()) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+      return createSecureJsonResponse({ error: 'URL is required' }, { status: 400 }, rateLimit);
     }
 
     const domain = normalizeDomainInput(rawUrl);
     if (!domain || !isValidScanDomain(domain)) {
-      return NextResponse.json({ error: 'Invalid domain format' }, { status: 400 });
+      return createSecureJsonResponse({ error: 'Invalid domain format' }, { status: 400 }, rateLimit);
     }
 
     try {
       const matched = await findScamWebsiteByDomain(domain);
       if (matched) {
-        return NextResponse.json(toScamResponse(domain, matched));
+        return createSecureJsonResponse(toScamResponse(domain, matched), { status: 200 }, rateLimit);
       }
-      return NextResponse.json(toSafeResponse(domain));
+      return createSecureJsonResponse(toSafeResponse(domain), { status: 200 }, rateLimit);
     } catch (lookupError) {
       console.error('tinnhiemmang lookup error:', lookupError);
-      return NextResponse.json(toLocalHeuristicResponse(domain));
+      return createSecureJsonResponse(toLocalHeuristicResponse(domain), { status: 200 }, rateLimit);
     }
   } catch (error) {
     console.error('Scan error:', error);
-    return NextResponse.json(
+    return createSecureJsonResponse(
       { error: 'Failed to scan website', risk_score: 0, verdict: 'unknown' },
-      { status: 500 }
+      { status: 500 },
+      rateLimit
     );
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
+export async function GET(request: NextRequest) {
+  if (!isRequestFromSameOrigin(request)) {
+    return createSecureJsonResponse({ error: 'Forbidden request origin' }, { status: 403 });
+  }
+
+  const rateLimit = rateLimitRequest(request, {
+    keyPrefix: 'scan:get',
+    windowMs: 60_000,
+    maxRequests: 60,
+  });
+  if (!rateLimit.ok) {
+    return createSecureJsonResponse({ error: 'Too many requests' }, { status: 429 }, rateLimit);
+  }
+
+  return createSecureJsonResponse({
     message: 'Use POST to scan a URL',
     example: {
       url: 'https://example.com',
     },
-  });
+  }, { status: 200 }, rateLimit);
 }

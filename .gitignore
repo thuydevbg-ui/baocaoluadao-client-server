@@ -23,8 +23,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dev-server.log
+tm_*.html
+.cache/
+.tmp/
 
 # local env files
+.env
 .env*.local
 
 # vercel

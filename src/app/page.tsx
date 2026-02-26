@@ -371,32 +371,6 @@ export default function HomePage() {
         </section>
 
         <section className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {overviewCards.map((stat) => {
-              const Icon = stat.icon;
-              const value = getCategoryCount(stat.slug);
-              return (
-                <Card key={stat.slug} className="text-center p-4 md:p-5">
-                  <div className={cn('w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center', stat.tone)}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <p className="text-xl md:text-2xl font-bold text-text-main font-mono">
-                    {statsLoading ? (
-                      <span className="text-text-muted">...</span>
-                    ) : hasLiveData ? (
-                      <AnimatedCounter value={value.toLocaleString('vi-VN')} />
-                    ) : (
-                      <span className="text-text-muted">--</span>
-                    )}
-                  </p>
-                  <p className="text-sm text-text-secondary mt-1">{stat.label}</p>
-                </Card>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
           <SectionHeader
             title="Kho dữ liệu cảnh báo"
             subtitle={`Nguồn dữ liệu: ${dataSource}. Các danh mục được đồng bộ để bạn lọc và tra cứu nhanh.`}

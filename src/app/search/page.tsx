@@ -9,6 +9,7 @@ import { Navbar, MobileNav, Footer } from '@/components/layout';
 import { Card, SearchResultSkeleton, RiskBadge } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type SearchResult } from '@/lib/utils';
+import { CheckCircle, XCircle, ShieldCheck, AlertOctagon, ExternalLink, Copy } from 'lucide-react';
 
 interface CategoryApiItem {
   id: string;
@@ -76,6 +77,12 @@ function slugifySearchKey(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function isTrustedSource(mode?: string, status?: string): boolean {
+  const normalizedMode = (mode || '').trim().toLowerCase();
+  const normalizedStatus = (status || '').trim().toLowerCase();
+  return normalizedMode === 'trusted' || normalizedStatus === 'trusted';
+}
+
 function getMatchScore(queryKey: string, querySlug: string, item: CategoryApiItem): number {
   const nameKey = normalizeSearchKey(item.name || '');
   const link = (item.link || '').toLowerCase();
@@ -94,12 +101,15 @@ function getMatchScore(queryKey: string, querySlug: string, item: CategoryApiIte
 function SearchPageContent() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
-  const query = searchParams.get('q') || '';
+  const query = (searchParams.get('q') || '').trim();
   const category = searchParams.get('category') || '';
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SearchResultView[]>([]);
+  const [scanResult, setScanResult] = useState<any | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -191,7 +201,7 @@ function SearchPageContent() {
               const response = await fetch('/api/categories', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: categoryKey, page: 1 }),
+                body: JSON.stringify({ category: categoryKey, page: 1, query, perPage: 200 }),
               });
 
               if (!response.ok) {
@@ -211,10 +221,9 @@ function SearchPageContent() {
 
             (data.items || []).forEach((item, index) => {
               const score = getMatchScore(queryKey, querySlug, item);
-              if (score <= 0) return;
               scored.push({
                 item: mapApiItemToResult(item, index, categoryKey, data.mode),
-                score,
+                score: score > 0 ? score : 60,
               });
             });
           });
@@ -238,7 +247,7 @@ function SearchPageContent() {
           const response = await fetch('/api/categories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category, page: 1 }),
+            body: JSON.stringify({ category, page: 1, query, perPage: 200 }),
           });
 
           if (!response.ok) {
@@ -256,6 +265,7 @@ function SearchPageContent() {
         }
       } catch (err) {
         setError('Failed to fetch results. Please try again.');
+        setScanResult(null);
       } finally {
         setIsLoading(false);
       }
@@ -274,6 +284,55 @@ function SearchPageContent() {
       }
     };
   }, [query, category]);
+
+  useEffect(() => {
+    const runScan = async () => {
+      if (!query) return;
+      let cleanUrl = query.trim();
+      const isFullUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl);
+      if (!isFullUrl) cleanUrl = 'https://' + cleanUrl;
+
+      setIsScanning(true);
+      setScanError(null);
+      setScanResult(null);
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: cleanUrl }),
+        });
+        if (!response.ok) throw new Error('Scan failed');
+        const data = await response.json();
+        const riskScore = data.risk_score || data.riskScore || data.score || 0;
+        const verdict = riskScore > 50 || data.verdict === 'scam' ? 'scam' : 'safe';
+        const trustScoreRaw = typeof data.trust_score === 'number' ? data.trust_score : (data.trustScore || null);
+        const trustScore = trustScoreRaw !== null && trustScoreRaw !== undefined
+          ? Math.max(0, Math.min(100, Math.round(trustScoreRaw)))
+          : verdict === 'scam'
+            ? Math.max(0, 100 - Math.round(riskScore))
+            : Math.max(0, 100 - Math.round(riskScore));
+        setScanResult({
+          domain: data.domain || cleanUrl.replace(/^https?:\/\//, ''),
+          verdict,
+          riskScore,
+          trustScore,
+          status: data.status || data.mode || verdict,
+          reports: data.reports || 0,
+          organization: data.organization || '',
+          description: data.description || '',
+          source: data.source || 'scan',
+        });
+      } catch (e: any) {
+        setScanError(e?.message || 'Scan failed');
+      } finally {
+        setIsScanning(false);
+      }
+    };
+
+    if (!isLoading && results.length === 0 && query) {
+      runScan();
+    }
+  }, [isLoading, results.length, query]);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -321,6 +380,7 @@ function SearchPageContent() {
             <div className="space-y-4">
               {results.map((result, i) => {
                 const Icon = getIcon(result.type);
+                const trustedSource = result.risk === 'safe' && isTrustedSource(result.sourceMode, result.sourceStatus);
                 return (
                   <motion.div
                     key={result.id}
@@ -350,21 +410,14 @@ function SearchPageContent() {
                           )}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-text-main text-lg">{result.value}</p>
+                          <p className="font-medium text-text-main text-lg inline-flex items-center gap-1.5">
+                            <span>{result.value}</span>
+                            {trustedSource && (
+                              <i className="fi fi-ss-badge-check text-primary text-[1em] leading-none align-middle shrink-0" />
+                            )}
+                          </p>
                           {result.sourceOrganization && (
-                            <p className="text-warning text-sm mt-1 inline-flex items-center gap-1.5">
-                              {result.sourceOrganizationIcon ? (
-                                <img
-                                  src={result.sourceOrganizationIcon}
-                                  alt={result.sourceOrganization}
-                                  className="w-4 h-4 rounded-full object-cover border border-white/20"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                  }}
-                                />
-                              ) : (
-                                <Building2 className="w-4 h-4" />
-                              )}
+                            <p className="text-warning text-sm mt-1">
                               <span className="truncate">{result.sourceOrganization}</span>
                             </p>
                           )}
@@ -389,6 +442,81 @@ function SearchPageContent() {
                 );
               })}
             </div>
+          ) : scanResult ? (
+            <Card
+          className={cn(
+            'relative p-4 border-2 overflow-hidden',
+            scanResult.verdict === 'scam' ? 'border-danger/50 bg-danger/5' : 'border-success/40 bg-success/5'
+          )}
+        >
+              <div className="flex items-start gap-3 relative z-10">
+                <div
+                  className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center',
+                    scanResult.verdict === 'scam' ? 'bg-danger/15 text-danger' : 'bg-success/15 text-success'
+                  )}
+                >
+                  {scanResult.verdict === 'scam' ? <AlertOctagon className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+                </div>
+                <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-text-main text-lg truncate">{scanResult.domain}</p>
+                      {scanResult.verdict === 'scam' && (
+                        <span className="inline-flex items-center gap-1 border-[1.5px] border-danger/85 text-danger/90 font-bold uppercase tracking-[0.1em] text-[11px] px-2.5 py-0.5 rounded-md bg-white/90 shadow-[0_2px_6px_rgba(229,57,53,0.18)]">
+                          <XCircle className="w-3.5 h-3.5" /> Nguy hiểm
+                        </span>
+                      )}
+                      {scanResult.verdict === 'safe' && (
+                        <span className="inline-flex items-center gap-1 text-success text-xs font-bold uppercase">
+                          <CheckCircle className="w-4 h-4" /> An toàn
+                        </span>
+                      )}
+                    </div>
+                  <p className="text-text-secondary text-sm mt-1">
+                    {scanResult.description ||
+                      (scanResult.verdict === 'scam'
+                        ? 'Hệ thống AI phát hiện rủi ro cao, cần thận trọng.'
+                        : 'Không phát hiện rủi ro rõ ràng.')}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                      <AlertOctagon className="w-4 h-4 text-danger" /> Điểm rủi ro: <strong className="text-danger">{scanResult.riskScore}%</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                      <XCircle className="w-4 h-4 text-danger" /> Lừa đảo: <strong className="text-danger">{Math.min(100, Math.max(0, Math.round(scanResult.riskScore)))}%</strong>
+                    </span>
+                    {scanResult.verdict !== 'scam' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                        <ShieldCheck className="w-4 h-4 text-success" /> Uy tín: <strong className="text-success">{scanResult.trustScore}%</strong>
+                      </span>
+                    )}
+                    {scanResult.organization && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                        <Building2 className="w-4 h-4 text-warning" /> Mạo danh: {scanResult.organization}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                      <Copy className="w-3.5 h-3.5 text-text-muted" /> Báo cáo: {scanResult.reports}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                      <ExternalLink className="w-3.5 h-3.5 text-text-muted" /> Nguồn: {scanResult.source}
+                    </span>
+                  </div>
+                  <div className="mt-3">
+                    <a
+                      href={`/detail/website/${encodeURIComponent(scanResult.domain)}?status=${scanResult.status || scanResult.verdict}&reports=${scanResult.reports || 0}&sourceCategory=websites&source=${scanResult.source || 'scan'}&description=${encodeURIComponent(scanResult.description || '')}&risk=${scanResult.riskScore}`}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary text-white px-3 py-1 text-xs font-semibold hover:bg-primary/90 transition-colors"
+                    >
+                      Xem chi tiết <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ) : isScanning ? (
+            <Card className="text-center py-8 text-text-secondary">Đang quét AI...</Card>
+          ) : scanError ? (
+            <Card className="text-center py-8 text-danger">{scanError}</Card>
           ) : (
             <Card className="text-center py-12">
               <Search className="w-12 h-12 text-text-muted mx-auto mb-4" />
