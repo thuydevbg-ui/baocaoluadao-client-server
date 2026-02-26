@@ -44,8 +44,8 @@ ssh root@YOUR_VPS_IP
 
 # 2. Tải script deploy về VPS
 cd /tmp
-git clone https://github.com/thuydevbg-ui/baocaoluadao_client_server.git
-cd baocaoluadao_client_server
+git clone https://github.com/thuydevbg-ui/baocaoluadao-client-server.git
+cd baocaoluadao-client-server
 
 # 3. Chạy script deploy
 bash scripts/deploy.sh
@@ -299,6 +299,50 @@ pm2 restart scamguard
    npm run build
    pm2 restart scamguard
    ```
+
+---
+
+## Rollback (Khôi Phục Phiên Bản Trước)
+
+### Sử Dụng Script Rollback
+
+```bash
+# SSH vào VPS
+ssh root@YOUR_VPS_IP
+
+# Di chuyển đến thư mục app
+cd /var/www/scamguard
+
+# Chạy script rollback
+bash scripts/rollback.sh
+```
+
+### Rollback Thủ Công
+
+```bash
+# Xem các phiên bản có sẵn
+git log --oneline -10
+
+# Tạo backup trước khi rollback
+cp -r /var/www/scamguard /var/www/scamguard_backup_$(date +%Y%m%d)
+
+# Checkout về phiên bản trước
+git checkout HEAD~1
+
+# Rebuild và restart
+npm run build
+pm2 restart scamguard
+```
+
+### Khôi Phục Từ Backup
+
+```bash
+# Copy backup zurück
+cp -r /var/www/scamguard_backup_20260226 /var/www/scamguard
+
+# Restart PM2
+pm2 restart scamguard
+```
 
 ---
 
