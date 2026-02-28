@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicSiteSettings } from '@/lib/siteSettings';
 import { getClientIp } from '@/lib/ipBan';
+import { withApiObservability } from '@/lib/apiHandler';
 import { AUTH_RATE_LIMIT, checkRateLimit } from '@/lib/rateLimit';
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const ip = getClientIp(request) ?? 'unknown';
   const rateLimitResult = await checkRateLimit({
     scope: 'public-settings',
@@ -36,4 +37,4 @@ export async function GET(request: NextRequest) {
     console.error('settings/public error:', error);
     return NextResponse.json({ success: true, settings: { registrationEnabled: true, loginEnabled: true } });
   }
-}
+});

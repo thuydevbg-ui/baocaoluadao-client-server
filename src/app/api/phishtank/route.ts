@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextResponse } from 'next/server';
 import { fetchPhishTankData, getRecentPhishes, getPhishTankStats, checkUrlInPhishTank } from '@/lib/dataSources/phishtank';
 
@@ -9,7 +10,7 @@ import { fetchPhishTankData, getRecentPhishes, getPhishTankStats, checkUrlInPhis
  * - url: URL to check (for 'check' action)
  * - limit: number of results (for 'recent' action)
  */
-export async function GET(request: Request) {
+export const GET = withApiObservability(async (request: Request) => {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'list';
@@ -76,4 +77,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+});

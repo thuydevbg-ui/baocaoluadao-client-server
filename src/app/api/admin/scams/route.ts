@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   type AdminScamRiskLevel,
@@ -32,7 +33,7 @@ function parseRiskLevel(value: string | null): 'all' | AdminScamRiskLevel {
   return 'all';
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -59,9 +60,9 @@ export async function GET(request: NextRequest) {
     success: true,
     ...data,
   });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -119,5 +120,5 @@ export async function POST(request: NextRequest) {
     success: true,
     item: created,
   });
-}
+});
 

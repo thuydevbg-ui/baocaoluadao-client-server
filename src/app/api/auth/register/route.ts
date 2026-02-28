@@ -1,4 +1,5 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { withApiObservability } from '@/lib/apiHandler';
+import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import { createUserWithPassword, findUserByEmail } from '@/lib/userRepository';
 import { getSiteSettings } from '@/lib/siteSettings';
@@ -7,7 +8,7 @@ const MIN_PASSWORD_LENGTH = 8;
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   try {
     const settings = await getSiteSettings();
     if (!settings.registrationEnabled) {
@@ -56,4 +57,4 @@ export async function POST(request: NextRequest) {
     console.error('Register error:', error);
     return NextResponse.json({ error: 'Lỗi máy chủ' }, { status: 500 });
   }
-}
+});

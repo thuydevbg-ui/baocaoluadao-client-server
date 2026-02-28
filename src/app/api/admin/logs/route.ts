@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   type AdminActivityStatus,
@@ -13,7 +14,7 @@ function parseStatus(value: string | null): 'all' | AdminActivityStatus {
   return 'all';
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -36,5 +37,5 @@ export async function GET(request: NextRequest) {
     success: true,
     ...data,
   });
-}
+});
 

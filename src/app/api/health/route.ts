@@ -1,6 +1,7 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getRedisClient } from '@/lib/redis';
+import { ensureRedisReady } from '@/lib/redis';
 
 interface HealthCheckPayload {
   database: boolean;
@@ -9,7 +10,7 @@ interface HealthCheckPayload {
   timestamp: string;
 }
 
-export async function GET() {
+export const GET = withApiObservability(async () => {
   let dbStatus = false;
   let redisStatus = false;
   const envReady =
@@ -30,11 +31,7 @@ export async function GET() {
   }
 
   try {
-    const redis = await getRedisClient();
-    if (redis) {
-      await redis.ping();
-      redisStatus = true;
-    }
+    redisStatus = await ensureRedisReady();
   } catch (error) {
     console.error('Health check Redis error:', error);
   }
@@ -48,4 +45,4 @@ export async function GET() {
 
   const statusCode = dbStatus && envReady ? 200 : 503;
   return NextResponse.json({ status: dbStatus && envReady ? 'ok' : 'degraded', checks: payload }, { status: statusCode });
-}
+});

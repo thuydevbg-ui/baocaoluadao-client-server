@@ -1,142 +1,107 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextResponse } from 'next/server';
-import { fetchCategoryDirectory, type TinnhiemCategory } from '@/lib/dataSources/tinnhiemmang';
+import { getDashboardStats, getDashboardCategoryBreakdown, checkDashboardHealth } from '@/lib/services/dashboard.service';
 
-interface CategoryStats {
-  name: string;
-  slug: TinnhiemCategory;
-  count: number;
-  icon: string;
-  description: string;
-}
-
-const CATEGORY_META: Record<TinnhiemCategory, Omit<CategoryStats, 'slug' | 'count'>> = {
-  websites: {
-    name: 'Website',
-    icon: '🌐',
-    description: 'Danh sách website cảnh báo hoặc cần xác minh',
-  },
-  organizations: {
-    name: 'Tổ chức',
-    icon: '🏢',
-    description: 'Danh sách tổ chức đã xác minh trên tinnhiemmang.vn',
-  },
-  devices: {
-    name: 'Thiết bị',
-    icon: '📱',
-    description: 'Danh mục thiết bị được xác minh',
-  },
-  systems: {
-    name: 'Hệ thống',
-    icon: '🔒',
-    description: 'Danh mục hệ thống được xác minh',
-  },
-  apps: {
-    name: 'Ứng dụng',
-    icon: '📲',
-    description: 'Danh mục ứng dụng được xác minh',
-  },
-};
-
-const FALLBACK_COUNTS: Record<TinnhiemCategory, number> = {
-  websites: 8200,
-  organizations: 2100,
-  devices: 1200,
-  systems: 550,
-  apps: 355,
-};
-
-function estimateCategoryCount(category: TinnhiemCategory, totalEstimate: number, firstPageItems: number): number {
-  if (totalEstimate > 0) {
-    return Math.min(totalEstimate, 200000);
-  }
-  if (firstPageItems > 0) {
-    return firstPageItems;
-  }
-  return FALLBACK_COUNTS[category];
-}
-
-export async function GET() {
+/**
+ * GET /api/stats
+ * Returns dashboard statistics from database
+ * Uses Redis caching with 60s TTL
+ */
+export const GET = withApiObservability(async () => {
   try {
-    const orderedCategories: TinnhiemCategory[] = ['websites', 'organizations', 'devices', 'systems', 'apps'];
-    const settled = await Promise.allSettled(
-      orderedCategories.map((category) => fetchCategoryDirectory(category, 1))
-    );
+    // Check health first
+    const health = await checkDashboardHealth();
+    
+    if (!health.database) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'DATABASE_UNAVAILABLE',
+            message: 'Không thể kết nối đến cơ sở dữ liệu',
+          },
+        },
+        { status: 503 }
+      );
+    }
 
-    let successCount = 0;
-    const categories: CategoryStats[] = orderedCategories.map((category, index) => {
-      const meta = CATEGORY_META[category];
-      const result = settled[index];
-
-      if (result.status === 'fulfilled') {
-        successCount += 1;
-        const estimatedCount = estimateCategoryCount(
-          category,
-          result.value.totalEstimate,
-          result.value.items.length
-        );
-
-        return {
-          name: meta.name,
-          slug: category,
-          count: estimatedCount,
-          icon: meta.icon,
-          description: meta.description,
-        };
-      }
-
-      return {
-        name: meta.name,
-        slug: category,
-        count: FALLBACK_COUNTS[category],
-        icon: meta.icon,
-        description: meta.description,
-      };
-    });
-
-    const total = categories.reduce((sum, category) => sum + category.count, 0);
+    // Get dashboard stats (uses cache automatically)
+    const stats = await getDashboardStats();
+    const breakdown = await getDashboardCategoryBreakdown();
 
     return NextResponse.json({
       success: true,
-      timestamp: new Date().toISOString(),
-      total,
-      categories,
-      summary: {
-        websites: categories.find((c) => c.slug === 'websites')?.count ?? 0,
-        organizations: categories.find((c) => c.slug === 'organizations')?.count ?? 0,
-        devices: categories.find((c) => c.slug === 'devices')?.count ?? 0,
-        systems: categories.find((c) => c.slug === 'systems')?.count ?? 0,
-        apps: categories.find((c) => c.slug === 'apps')?.count ?? 0,
+      data: {
+        ...stats,
+        categories: breakdown.categories,
+        summary: {
+          website: stats.website,
+          organization: stats.organization,
+          device: stats.device,
+          system: stats.system,
+          application: stats.application,
+        },
       },
-      source: successCount > 0 ? 'tinnhiemmang.vn' : 'fallback',
-      message:
-        successCount > 0
-          ? 'Dữ liệu đã đồng bộ từ tinnhiemmang.vn (một phần số lượng là ước lượng theo phân trang).'
-          : 'Không thể đồng bộ nguồn ngoài, đang dùng dữ liệu dự phòng.',
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    console.error('[Stats API] Error fetching stats:', error);
 
-    const categories: CategoryStats[] = (Object.keys(CATEGORY_META) as TinnhiemCategory[]).map((slug) => ({
-      name: CATEGORY_META[slug].name,
-      slug,
-      count: FALLBACK_COUNTS[slug],
-      icon: CATEGORY_META[slug].icon,
-      description: CATEGORY_META[slug].description,
-    }));
+    // Don't leak stack trace in production
+    const message = process.env.NODE_ENV === 'production' 
+      ? 'Lỗi server nội bộ' 
+      : error instanceof Error ? error.message : 'Unknown error';
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'STATS_ERROR',
+          message,
+        },
+      },
+      { status: 500 }
+    );
+  }
+});
+
+/**
+ * POST /api/stats
+ * Force refresh cache
+ */
+export const POST = withApiObservability(async () => {
+  try {
+    const stats = await getDashboardStats(true);
+    const breakdown = await getDashboardCategoryBreakdown(true);
 
     return NextResponse.json({
       success: true,
-      timestamp: new Date().toISOString(),
-      total: categories.reduce((sum, category) => sum + category.count, 0),
-      categories,
-      summary: {
-        websites: FALLBACK_COUNTS.websites,
-        organizations: FALLBACK_COUNTS.organizations,
-        devices: FALLBACK_COUNTS.devices,
-        systems: FALLBACK_COUNTS.systems,
-        apps: FALLBACK_COUNTS.apps,
+      data: {
+        ...stats,
+        categories: breakdown.categories,
+        summary: {
+          website: stats.website,
+          organization: stats.organization,
+          device: stats.device,
+          system: stats.system,
+          application: stats.application,
+        },
       },
-      source: 'fallback',
+      message: 'Cache đã được làm mới',
+      timestamp: new Date().toISOString(),
     });
+  } catch (error) {
+    console.error('[Stats API] Error refreshing stats:', error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'REFRESH_ERROR',
+          message: error instanceof Error ? error.message : 'Lỗi làm mới dữ liệu',
+        },
+      },
+      { status: 500 }
+    );
   }
-}
+});

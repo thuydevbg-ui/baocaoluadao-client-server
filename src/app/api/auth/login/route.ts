@@ -1,9 +1,10 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { COOKIE_NAME, createSignedCookieValue } from '@/lib/auth';
 import { recordAdminActivity } from '@/lib/adminManagementStore';
 import { AUTH_RATE_LIMIT, checkRateLimit } from '@/lib/rateLimit';
+import { withApiObservability } from '@/lib/apiHandler';
 
 // Environment variables for admin credentials
 // IMPORTANT: ADMIN_PASSWORD should be bcrypt HASHED, not plain text!
@@ -93,7 +94,7 @@ function getClientIP(request: NextRequest): string {
   return 'unknown';
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   try {
     const ip = getClientIP(request);
     const rateLimitResult = await checkRateLimit({
@@ -226,4 +227,4 @@ export async function POST(request: NextRequest) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Loi server noi bo' }, { status: 500 });
   }
-}
+});

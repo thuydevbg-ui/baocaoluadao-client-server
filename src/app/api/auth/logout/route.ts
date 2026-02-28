@@ -1,6 +1,7 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   // CSRF protection: Validate Origin header for cross-origin requests
   const origin = request.headers.get('origin');
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) || [];
@@ -44,4 +45,4 @@ export async function POST(request: NextRequest) {
   });
 
   return response;
-}
+});

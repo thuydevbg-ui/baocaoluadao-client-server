@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest } from 'next/server';
 import { fetchCategoryDirectory, type TinnhiemCategory } from '@/lib/dataSources/tinnhiemmang';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
@@ -23,7 +24,7 @@ function parseQuery(value: unknown): string {
   return value.trim().slice(0, 120);
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ success: false, error: 'Forbidden request origin', items: [] }, { status: 403 });
   }
@@ -64,9 +65,9 @@ export async function POST(request: NextRequest) {
       rateLimit
     );
   }
-}
+});
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ error: 'Forbidden request origin' }, { status: 403 });
   }
@@ -87,4 +88,4 @@ export async function GET(request: NextRequest) {
       page: 1,
     },
   }, { status: 200 }, rateLimit);
-}
+});

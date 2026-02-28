@@ -1,4 +1,5 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { withApiObservability } from '@/lib/apiHandler';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { getAdminAuth, requireRole } from '@/lib/adminApiAuth';
@@ -32,7 +33,7 @@ const querySchema = z.object({
     .pipe(z.string().max(191).optional()),
 });
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!requireRole(auth, ['admin', 'super_admin'])) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -131,4 +132,4 @@ export async function GET(request: NextRequest) {
     console.error('GET /api/admin/users connection error:', error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   }
-}
+});

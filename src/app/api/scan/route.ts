@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest } from 'next/server';
 import { findScamWebsiteByDomain, normalizeDomainInput, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
@@ -136,7 +137,7 @@ function toLocalHeuristicResponse(domain: string) {
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ error: 'Forbidden request origin' }, { status: 403 });
   }
@@ -180,9 +181,9 @@ export async function POST(request: NextRequest) {
       rateLimit
     );
   }
-}
+});
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ error: 'Forbidden request origin' }, { status: 403 });
   }
@@ -202,4 +203,4 @@ export async function GET(request: NextRequest) {
       url: 'https://example.com',
     },
   }, { status: 200 }, rateLimit);
-}
+});

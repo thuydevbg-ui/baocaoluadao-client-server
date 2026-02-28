@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   type AdminScamRiskLevel,
@@ -27,7 +28,7 @@ function parseRiskLevel(input: unknown): AdminScamRiskLevel | null {
   return null;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -44,9 +45,9 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, item });
-}
+});
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -109,9 +110,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, item: updated });
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -132,4 +133,4 @@ export async function DELETE(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true });
-}
+});

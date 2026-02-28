@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getAdminAuth } from '@/lib/adminApiAuth';
@@ -52,7 +53,7 @@ function parseType(value: string | null): FeedbackType | 'all' {
   return 'all';
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -97,9 +98,9 @@ export async function GET(request: NextRequest) {
     totalPages,
     summary,
   });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -162,4 +163,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

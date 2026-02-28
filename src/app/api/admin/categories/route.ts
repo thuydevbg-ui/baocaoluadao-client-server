@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getAdminAuth } from '@/lib/adminApiAuth';
@@ -96,7 +97,7 @@ function sanitizeString(input: string | undefined, maxLength: number): string {
   return input.trim().slice(0, maxLength);
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -114,9 +115,9 @@ export async function GET(request: NextRequest) {
     categories: filtered,
     total: filtered.length,
   });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -161,4 +162,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

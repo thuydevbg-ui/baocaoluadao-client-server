@@ -1,3 +1,4 @@
+import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 
 // SECURITY NOTE: In-memory rate limiter does NOT work in serverless environments
@@ -334,7 +335,7 @@ Trả về JSON hợp lệ, không có markdown code blocks.`;
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   try {
     // Rate limiting check
     const clientIP = getClientIP(request);
@@ -375,9 +376,9 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-export async function GET() {
+export const GET = withApiObservability(async () => {
   return NextResponse.json({
     service: 'ScamGuard AI Analysis API',
     version: '1.0.0',
@@ -390,4 +391,4 @@ export async function GET() {
       POST: '/api/ai/analyze - Phân tích nội dung (message/url/phone)'
     }
   });
-}
+});

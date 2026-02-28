@@ -1,8 +1,9 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { withApiObservability } from '@/lib/apiHandler';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/adminApiAuth';
 import { getPublicSiteSettings, updateSiteSettings } from '@/lib/siteSettings';
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -12,9 +13,9 @@ export async function GET(request: NextRequest) {
     success: true,
     settings: await getPublicSiteSettings(),
   });
-}
+});
 
-export async function PUT(request: NextRequest) {
+export const PUT = withApiObservability(async (request: NextRequest) => {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -53,4 +54,4 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

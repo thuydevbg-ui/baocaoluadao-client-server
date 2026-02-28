@@ -28,6 +28,14 @@ deploy_worktree() {
 
   echo "Reloading PM2..."
   pm2 reload ecosystem.config.js --update-env
+
+  echo "Validating health endpoint..."
+  STATUS=$(curl -s -o /tmp/deploy_health.json -w "%{http_code}" https://baocaoluadao.com/api/health)
+  if [[ "$STATUS" -ne 200 ]]; then
+    cat /tmp/deploy_health.json
+    echo "ERROR: Health check failed (status $STATUS)"
+    exit 1
+  fi
 }
 
 deploy_head() {

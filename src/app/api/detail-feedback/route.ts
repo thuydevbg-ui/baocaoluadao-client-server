@@ -1,4 +1,5 @@
-﻿import crypto from 'node:crypto';
+import { withApiObservability } from '@/lib/apiHandler';
+import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSignedCookie } from '@/lib/auth';
 import { applySecurityHeaders, createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
@@ -260,7 +261,7 @@ function buildAvatar(name: string): string {
   return first.toUpperCase();
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ success: false, error: 'Forbidden request origin' }, { status: 403 });
   }
@@ -293,9 +294,9 @@ export async function GET(request: NextRequest) {
   }, { status: 200 }, rateLimit);
 
   return withVisitorCookie(response, identity);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ success: false, error: 'Forbidden request origin' }, { status: 403 });
   }
@@ -475,5 +476,5 @@ export async function POST(request: NextRequest) {
     ...payload,
   }, { status: 200 }, rateLimit);
   return withVisitorCookie(response, identity);
-}
+});
 
