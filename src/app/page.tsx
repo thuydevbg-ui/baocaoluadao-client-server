@@ -46,9 +46,14 @@ interface CategoryData {
 
 interface StatsResponse {
   success: boolean;
-  total: number;
-  categories: CategoryData[];
-  source: string;
+  data?: {
+    total?: number;
+    categories?: CategoryData[];
+    source?: string;
+  };
+  total?: number;
+  categories?: CategoryData[];
+  source?: string;
 }
 
 function AnimatedCounter({ value }: { value: string }) {
@@ -122,9 +127,22 @@ export default function HomePage() {
       try {
         const response = await fetch('/api/stats');
         const data: StatsResponse = await response.json();
-        if (data.success && data.categories.length > 0) {
-          setCategories(data.categories);
-          setDataSource(data.source);
+
+        const resolvedCategories = Array.isArray(data?.data?.categories)
+          ? data.data.categories
+          : Array.isArray(data?.categories)
+            ? data.categories
+            : [];
+        const resolvedSource =
+          typeof data?.data?.source === 'string'
+            ? data.data.source
+            : typeof data?.source === 'string'
+              ? data.source
+              : 'fallback';
+
+        if (data.success) {
+          setCategories(resolvedCategories);
+          setDataSource(resolvedSource);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);

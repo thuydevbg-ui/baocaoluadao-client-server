@@ -29,19 +29,24 @@ export const GET = withApiObservability(async () => {
     const stats = await getDashboardStats();
     const breakdown = await getDashboardCategoryBreakdown();
 
+    const payload = {
+      ...stats,
+      categories: breakdown.categories,
+      summary: {
+        website: stats.website,
+        organization: stats.organization,
+        device: stats.device,
+        system: stats.system,
+        application: stats.application,
+      },
+    };
+
     return NextResponse.json({
       success: true,
-      data: {
-        ...stats,
-        categories: breakdown.categories,
-        summary: {
-          website: stats.website,
-          organization: stats.organization,
-          device: stats.device,
-          system: stats.system,
-          application: stats.application,
-        },
-      },
+      data: payload,
+      total: payload.total,
+      categories: payload.categories,
+      source: payload.source,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -74,19 +79,24 @@ export const POST = withApiObservability(async () => {
     const stats = await getDashboardStats(true);
     const breakdown = await getDashboardCategoryBreakdown(true);
 
+    const payload = {
+      ...stats,
+      categories: breakdown.categories,
+      summary: {
+        website: stats.website,
+        organization: stats.organization,
+        device: stats.device,
+        system: stats.system,
+        application: stats.application,
+      },
+    };
+
     return NextResponse.json({
       success: true,
-      data: {
-        ...stats,
-        categories: breakdown.categories,
-        summary: {
-          website: stats.website,
-          organization: stats.organization,
-          device: stats.device,
-          system: stats.system,
-          application: stats.application,
-        },
-      },
+      data: payload,
+      total: payload.total,
+      categories: payload.categories,
+      source: payload.source,
       message: 'Cache đã được làm mới',
       timestamp: new Date().toISOString(),
     });
