@@ -3,6 +3,14 @@ set -euo pipefail
 
 cd /var/www/baocaoluadao.com
 
+# Load environment variables from .env.production
+if [[ -f .env.production ]]; then
+  source .env.production
+else
+  echo "ERROR: .env.production file not found"
+  exit 1
+fi
+
 required_vars=(AUTH_COOKIE_SECRET ADMIN_EMAIL ADMIN_PASSWORD_HASH)
 missing=()
 for var in "${required_vars[@]}"; do
