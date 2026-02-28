@@ -8,7 +8,27 @@ if [[ ! -f .env.production ]]; then
   exit 1
 fi
 
-source .env.production
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
+  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+  [[ "$line" == *=* ]] || continue
+
+  key="${line%%=*}"
+  value="${line#*=}"
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+
+  if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    continue
+  fi
+
+  if [[ "${value:0:1}" == "'" && "${value: -1}" == "'" ]] || [[ "${value:0:1}" == '"' && "${value: -1}" == '"' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+
+  printf -v "$key" '%s' "$value"
+  export "$key"
+done < .env.production
 
 required=(DB_HOST DB_USER DB_NAME DB_PASSWORD)
 for var in "${required[@]}"; do
