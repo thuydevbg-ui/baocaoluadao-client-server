@@ -36,19 +36,29 @@ import {
   mockSearchHistory,
 } from '@/lib/mockData';
 
+interface StatsResponse {
+  success: boolean;
+  data?: {
+    website: number;
+    organization: number;
+    device: number;
+    system: number;
+    application: number;
+    lastUpdated: string;
+    categories: CategoryData[];
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
 interface CategoryData {
   name: string;
   slug: string;
   count: number;
   icon: string;
   description?: string;
-}
-
-interface StatsResponse {
-  success: boolean;
-  total: number;
-  categories: CategoryData[];
-  source: string;
 }
 
 function AnimatedCounter({ value }: { value: string }) {
@@ -112,8 +122,9 @@ export default function HomePage() {
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   const [categories, setCategories] = useState<CategoryData[]>([]);
-  const [dataSource, setDataSource] = useState<string>('fallback');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const searchBoxRef = useRef<HTMLDivElement>(null);
 
@@ -122,12 +133,15 @@ export default function HomePage() {
       try {
         const response = await fetch('/api/stats');
         const data: StatsResponse = await response.json();
-        if (data.success && data.categories.length > 0) {
-          setCategories(data.categories);
-          setDataSource(data.source);
+        if (data.success && data.data?.categories) {
+          setCategories(data.data.categories);
+          setLastUpdated(data.data.lastUpdated || null);
+        } else if (data.error) {
+          setStatsError(data.error.message);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
+        setStatsError('Không thể tải dữ liệu');
       } finally {
         setStatsLoading(false);
       }
@@ -152,7 +166,7 @@ export default function HomePage() {
       : mockRecentAlerts.filter((alert) => alert.type === activeFilter);
 
   const getCategoryCount = (slug: string) => categories.find((category) => category.slug === slug)?.count ?? 0;
-  const hasLiveData = dataSource === 'tinnhiemmang.vn';
+  const hasLiveData = categories.length > 0 && !statsError;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -373,29 +387,57 @@ export default function HomePage() {
         <section className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
           <SectionHeader
             title="Kho dữ liệu cảnh báo"
-            subtitle={`Nguồn dữ liệu: ${dataSource}. Các danh mục được đồng bộ để bạn lọc và tra cứu nhanh.`}
+            subtitle={`Dữ liệu từ cơ sở dữ liệu nội bộ${lastUpdated ? `. Cập nhật lúc: ${new Date(lastUpdated).toLocaleString('vi-VN')}` : ''}`}
           />
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {categories.map((category) => {
-              const visual = categoryVisual[category.slug] || { icon: '🛡️', color: 'from-slate-500 to-slate-600' };
-              return (
-                <Link key={category.slug} href={`/search?category=${category.slug}`}>
-                  <Card hover className="h-full text-center p-4">
-                    <div className={cn('w-12 h-12 rounded-xl bg-gradient-to-br mx-auto mb-3 flex items-center justify-center text-2xl shadow-lg', visual.color)}>
-                      {visual.icon}
-                    </div>
-                    <p className="font-semibold text-text-main">{category.name}</p>
-                    <p className="text-2xl font-mono font-bold text-primary mt-1">
-                      {hasLiveData ? category.count.toLocaleString('vi-VN') : '--'}
-                    </p>
-                    <p className="text-xs text-text-muted mt-1 line-clamp-2">
-                      {category.description || 'Dữ liệu được cập nhật thường xuyên'}
-                    </p>
-                  </Card>
-                </Link>
-              );
-            })}
+            {statsLoading ? (
+              // Loading skeleton
+              Array.from({ length: 5 }).map((_, i) => (
+                <Card key={i} className="h-full text-center p-4 animate-pulse">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br mx-auto mb-3 bg-slate-200 dark:bg-slate-700"></div>
+                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded mx-auto mb-2"></div>
+                  <div className="h-6 w-16 bg-slate-200 dark:bg-slate-700 rounded mx-auto"></div>
+                  <div className="h-3 w-24 bg-slate-200 dark:bg-slate-700 rounded mx-auto mt-2"></div>
+                </Card>
+              ))
+            ) : statsError ? (
+              // Error state
+              <div className="col-span-full text-center py-8">
+                <p className="text-red-500 mb-2">{statsError}</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="text-primary hover:underline text-sm"
+                >
+                  Thử lại
+                </button>
+              </div>
+            ) : categories.length === 0 ? (
+              // Empty state
+              <div className="col-span-full text-center py-8">
+                <p className="text-text-muted">Chưa có dữ liệu cảnh báo</p>
+              </div>
+            ) : (
+              categories.map((category) => {
+                const visual = categoryVisual[category.slug] || { icon: '🛡️', color: 'from-slate-500 to-slate-600' };
+                return (
+                  <Link key={category.slug} href={`/search?category=${category.slug}`}>
+                    <Card hover className="h-full text-center p-4">
+                      <div className={cn('w-12 h-12 rounded-xl bg-gradient-to-br mx-auto mb-3 flex items-center justify-center text-2xl shadow-lg', visual.color)}>
+                        {visual.icon}
+                      </div>
+                      <p className="font-semibold text-text-main">{category.name}</p>
+                      <p className="text-2xl font-mono font-bold text-primary mt-1">
+                        {category.count.toLocaleString('vi-VN')}
+                      </p>
+                      <p className="text-xs text-text-muted mt-1 line-clamp-2">
+                        {category.description || 'Dữ liệu được cập nhật thường xuyên'}
+                      </p>
+                    </Card>
+                  </Link>
+                );
+              })
+            )}
           </div>
         </section>
 
