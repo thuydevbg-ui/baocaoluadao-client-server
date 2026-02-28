@@ -281,8 +281,29 @@ export async function getDashboardStats(forceRefresh = false): Promise<Dashboard
     }
   }
 
-  // Get from database
-  const stats = await getDatabaseStats();
+  // Get from database with fallback on error
+  let stats: DashboardStats;
+  try {
+    stats = await getDatabaseStats();
+  } catch (error) {
+    console.error('[Dashboard] Database error, using fallback:', error);
+    // Return fallback stats if database fails
+    stats = {
+      website: 0,
+      organization: 0,
+      device: 0,
+      system: 0,
+      application: 0,
+      phone: 0,
+      email: 0,
+      social: 0,
+      sms: 0,
+      bank: 0,
+      total: 0,
+      lastUpdated: new Date().toISOString(),
+      source: 'fallback',
+    };
+  }
 
   // Cache the result
   await cacheStats(stats);
@@ -311,8 +332,26 @@ export async function getDashboardCategoryBreakdown(forceRefresh = false): Promi
     }
   }
 
-  // Get from database
-  const breakdown = await getCategoryBreakdown();
+  // Get from database with fallback
+  let breakdown: CategoryBreakdown;
+  try {
+    breakdown = await getCategoryBreakdown();
+  } catch (error) {
+    console.error('[Dashboard] Category breakdown error, using fallback:', error);
+    // Return fallback categories if database fails
+    breakdown = {
+      categories: [
+        { name: 'Website', slug: 'websites', count: 0, icon: 'globe', description: 'Các trang web lừa đảo' },
+        { name: 'Tổ chức', slug: 'organizations', count: 0, icon: 'building', description: 'Các tổ chức lừa đảo' },
+        { name: 'Thiết bị', slug: 'devices', count: 0, icon: 'smartphone', description: 'Các thiết bị lừa đảo' },
+        { name: 'Hệ thống', slug: 'systems', count: 0, icon: 'server', description: 'Các hệ thống lừa đảo' },
+        { name: 'Ứng dụng', slug: 'apps', count: 0, icon: 'app', description: 'Các ứng dụng lừa đảo' },
+      ],
+      total: 0,
+      lastUpdated: new Date().toISOString(),
+      source: 'fallback',
+    };
+  }
 
   // Cache the result
   try {
