@@ -1,11 +1,13 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 cd /var/www/baocaoluadao.com
 
 # Load environment variables from .env.production
 if [[ -f .env.production ]]; then
+  set +u  # Temporarily disable unset variable check for sourcing
   source .env.production
+  set -u
 else
   echo "ERROR: .env.production file not found"
   exit 1
