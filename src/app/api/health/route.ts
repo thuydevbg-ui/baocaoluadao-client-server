@@ -43,6 +43,22 @@ export const GET = withApiObservability(async () => {
     timestamp: new Date().toISOString(),
   };
 
-  const statusCode = dbStatus && envReady ? 200 : 503;
-  return NextResponse.json({ status: dbStatus && envReady ? 'ok' : 'degraded', checks: payload }, { status: statusCode });
+  const isHealthy = dbStatus && envReady;
+  const statusCode = isHealthy ? 200 : 503;
+
+  if (isHealthy) {
+    return NextResponse.json({
+      success: true,
+      data: payload,
+    }, { status: statusCode });
+  } else {
+    return NextResponse.json({
+      success: false,
+      error: {
+        code: 'HEALTH_CHECK_FAILED',
+        message: 'Một số dịch vụ không khả dụng',
+        details: payload,
+      },
+    }, { status: statusCode });
+  }
 });
