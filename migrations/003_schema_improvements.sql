@@ -90,13 +90,29 @@ CREATE TABLE IF NOT EXISTS site_settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert default settings
-INSERT INTO site_settings (id, setting_key, setting_value, setting_type, is_public, description) VALUES
-('SET001', 'site_name', 'Báo Cáo Lừa Đảo', 'string', TRUE, 'Tên website'),
-('SET002', 'site_description', 'Nền tảng cảnh báo lừa đảo trực tuyến', 'string', TRUE, 'Mô tả website'),
-('SET003', 'reports_cache_ttl', '60', 'number', FALSE, 'Thời gian cache thống kê (giây)'),
-('SET004', 'max_reports_per_day', '5', 'number', FALSE, 'Số báo cáo tối đa/ngày/IP'),
-('SET005', 'duplicate_check_days', '7', 'number', FALSE, 'Số ngày kiểm tra trùng lặp')
-ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = CURRENT_TIMESTAMP;
+SET @has_setting_key := (
+    SELECT COUNT(*)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'site_settings'
+      AND COLUMN_NAME = 'setting_key'
+);
+
+SET @site_settings_seed_sql := IF(
+    @has_setting_key > 0,
+    "INSERT INTO site_settings (id, setting_key, setting_value, setting_type, is_public, description) VALUES
+    ('SET001', 'site_name', 'Báo Cáo Lừa Đảo', 'string', TRUE, 'Tên website'),
+    ('SET002', 'site_description', 'Nền tảng cảnh báo lừa đảo trực tuyến', 'string', TRUE, 'Mô tả website'),
+    ('SET003', 'reports_cache_ttl', '60', 'number', FALSE, 'Thời gian cache thống kê (giây)'),
+    ('SET004', 'max_reports_per_day', '5', 'number', FALSE, 'Số báo cáo tối đa/ngày/IP'),
+    ('SET005', 'duplicate_check_days', '7', 'number', FALSE, 'Số ngày kiểm tra trùng lặp')
+    ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = CURRENT_TIMESTAMP",
+    "SELECT 'Skip site_settings seed because legacy schema is detected' AS migration_note"
+);
+
+PREPARE site_settings_seed_stmt FROM @site_settings_seed_sql;
+EXECUTE site_settings_seed_stmt;
+DEALLOCATE PREPARE site_settings_seed_stmt;
 
 -- ============================================
 -- USERS TABLE (NEW)
