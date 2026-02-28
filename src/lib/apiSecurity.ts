@@ -52,14 +52,18 @@ export function getClientIp(request: NextRequest): string {
 }
 
 export function isRequestFromSameOrigin(request: NextRequest): boolean {
-  const requestUrl = new URL(request.url);
+  const normalizeHost = (value: string) => value.trim().toLowerCase().replace(/^www\./, '');
+  const hostHeader = request.headers.get('host');
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const expectedHost = normalizeHost((hostHeader || forwardedHost || request.nextUrl.host).split(',')[0]);
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
 
   if (origin) {
     try {
       const originUrl = new URL(origin);
-      if (originUrl.host !== requestUrl.host || originUrl.protocol !== requestUrl.protocol) {
+      const originHost = normalizeHost(originUrl.host);
+      if (originHost !== expectedHost) {
         return false;
       }
     } catch {
@@ -70,7 +74,8 @@ export function isRequestFromSameOrigin(request: NextRequest): boolean {
   if (referer) {
     try {
       const refererUrl = new URL(referer);
-      if (refererUrl.host !== requestUrl.host || refererUrl.protocol !== requestUrl.protocol) {
+      const refererHost = normalizeHost(refererUrl.host);
+      if (refererHost !== expectedHost) {
         return false;
       }
     } catch {

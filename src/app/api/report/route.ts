@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { withApiObservability } from '@/lib/apiHandler';
 
 export type ReportType = 'website' | 'phone' | 'email' | 'social' | 'sms';
 export type ReportSource = 'community' | 'auto_scan' | 'manual';
@@ -66,7 +67,7 @@ function validateEmail(email: string | null | undefined): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiObservability(async (request: NextRequest) => {
   const db = getDb();
   
   try {
@@ -173,9 +174,9 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-export async function GET(request: NextRequest) {
+export const GET = withApiObservability(async (request: NextRequest) => {
   const db = getDb();
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') || '1');
@@ -227,4 +228,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

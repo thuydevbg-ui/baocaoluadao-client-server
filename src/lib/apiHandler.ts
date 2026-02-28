@@ -8,15 +8,16 @@ export interface ApiContext {
   logger: ReturnType<typeof getLogger>;
 }
 
-export type ApiHandler<T extends NextResponse = NextResponse> = (
+export type ApiHandler<T extends Response = NextResponse, RouteContext = unknown> = (
   request: NextRequest,
-  context: ApiContext
+  context: ApiContext,
+  routeContext: RouteContext
 ) => Promise<T> | T;
 
-export function withApiObservability<T extends NextResponse>(
-  handler: ApiHandler<T>
-): (request: NextRequest) => Promise<T> {
-  return async function wrapped(request: NextRequest) {
+export function withApiObservability<T extends Response, RouteContext = unknown>(
+  handler: ApiHandler<T, RouteContext>
+): (request: NextRequest, routeContext: RouteContext) => Promise<T> {
+  return async function wrapped(request: NextRequest, routeContext: RouteContext) {
     const requestId = createRequestId(request.headers.get('x-request-id'));
     const logger = getLogger({
       requestId,
@@ -27,11 +28,11 @@ export function withApiObservability<T extends NextResponse>(
     const start = Date.now();
 
     try {
-      const response = await handler(request, { requestId, logger });
+      const response = await handler(request, { requestId, logger }, routeContext);
       const duration = Date.now() - start;
       logDuration('http.request', duration, { requestId, method: request.method, path: request.nextUrl.pathname });
 
-      if (response instanceof NextResponse) {
+      if (response instanceof Response) {
         response.headers.set('x-request-id', requestId);
         response.headers.set('x-request-duration-ms', duration.toString());
       }
