@@ -170,7 +170,7 @@ export default function HomePage() {
       : mockRecentAlerts.filter((alert) => alert.type === activeFilter);
 
   const getCategoryCount = (slug: string) => categories.find((category) => category.slug === slug)?.count ?? 0;
-  const hasLiveData = dataSource === 'tinnhiemmang.vn';
+  const shouldShowCategoryCount = !statsLoading && categories.length > 0;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -405,7 +405,7 @@ export default function HomePage() {
                     </div>
                     <p className="font-semibold text-text-main">{category.name}</p>
                     <p className="text-2xl font-mono font-bold text-primary mt-1">
-                      {hasLiveData ? category.count.toLocaleString('vi-VN') : '--'}
+                      {shouldShowCategoryCount ? category.count.toLocaleString('vi-VN') : '--'}
                     </p>
                     <p className="text-xs text-text-muted mt-1 line-clamp-2">
                       {category.description || 'Dữ liệu được cập nhật thường xuyên'}
