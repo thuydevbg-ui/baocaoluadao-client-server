@@ -1,0 +1,406 @@
+name: Hybrid AI Node MySQL Pipeline
+
+on:
+  push:
+    tags:
+      - 'hybrid-model-*'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'train-and-register | promote | deploy'
+        type: choice
+        required: true
+        default: train-and-register
+        options:
+          - train-and-register
+          - promote
+          - deploy
+      model_name:
+        description: 'Model name'
+        type: string
+        required: false
+        default: hybrid-risk-model
+      model_version:
+        description: 'Model version (example: v2.1.4)'
+        type: string
+        required: false
+      model_description:
+        description: 'Model description'
+        type: string
+        required: false
+        default: Hybrid AI fraud detection model
+      dataset_path:
+        description: 'Real labeled CSV dataset path in repo/workspace'
+        type: string
+        required: false
+        default: data/hybrid/training.csv
+      roc_auc_threshold:
+        description: 'Minimum ROC-AUC'
+        type: string
+        required: false
+        default: '0.85'
+      f1_threshold:
+        description: 'Minimum F1'
+        type: string
+        required: false
+        default: '0.75'
+      deploy_branch:
+        description: 'Branch to deploy on VPS'
+        type: string
+        required: false
+        default: production
+      healthcheck_url:
+        description: 'VPS health check URL'
+        type: string
+        required: false
+        default: http://127.0.0.1:3000/api/health
+      ai_smoke_url:
+        description: 'VPS AI smoke test endpoint'
+        type: string
+        required: false
+        default: http://127.0.0.1:3000/api/risk/analyze
+      ai_smoke_domain:
+        description: 'Domain used for deploy AI smoke test'
+        type: string
+        required: false
+        default: example.com
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hybrid-node-mysql-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  train-and-register:
+    name: Train and Register (Staging)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'train-and-register')
+    outputs:
+      model_name: ${{ steps.meta.outputs.model_name }}
+      model_version: ${{ steps.meta.outputs.model_version }}
+      artifact_file: ${{ steps.artifact-meta.outputs.artifact_file }}
+      artifact_uri: ${{ steps.artifact-uri.outputs.artifact_uri }}
+      checksum: ${{ steps.checksum.outputs.checksum }}
+    env:
+      MYSQL_REGISTRY_HOST: ${{ secrets.MYSQL_REGISTRY_HOST }}
+      MYSQL_REGISTRY_PORT: ${{ secrets.MYSQL_REGISTRY_PORT }}
+      MYSQL_REGISTRY_USER: ${{ secrets.MYSQL_REGISTRY_USER }}
+      MYSQL_REGISTRY_PASSWORD: ${{ secrets.MYSQL_REGISTRY_PASSWORD }}
+      MYSQL_REGISTRY_DB: ${{ secrets.MYSQL_REGISTRY_DB }}
+      HYBRID_S3_ENDPOINT: ${{ secrets.HYBRID_S3_ENDPOINT }}
+      HYBRID_S3_ACCESS_KEY: ${{ secrets.HYBRID_S3_ACCESS_KEY }}
+      HYBRID_S3_SECRET_KEY: ${{ secrets.HYBRID_S3_SECRET_KEY }}
+      HYBRID_S3_BUCKET: ${{ secrets.HYBRID_S3_BUCKET }}
+      HYBRID_S3_REGION: ${{ secrets.HYBRID_S3_REGION }}
+      MODEL_REGISTRY_TABLE_PREFIX: hybrid_
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail fast if required registry secrets are missing
+        shell: bash
+        run: |
+          required=(MYSQL_REGISTRY_HOST MYSQL_REGISTRY_PORT MYSQL_REGISTRY_USER MYSQL_REGISTRY_PASSWORD MYSQL_REGISTRY_DB)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install --upgrade pip
+          pip install -r hybrid-ai-platform/training/requirements.txt
+
+      - name: Run model registry migration (MySQL)
+        env:
+          HYBRID_AI_ENABLED: '1'
+          HYBRID_MIGRATION_FILE: hybrid-ai-platform/sql/mysql_model_registry.sql
+        run: node scripts/migrate-hybrid.js
+
+      - name: Resolve model metadata
+        id: meta
+        shell: bash
+        run: |
+          MODEL_NAME="${{ github.event.inputs.model_name }}"
+          if [[ -z "$MODEL_NAME" ]]; then
+            MODEL_NAME="hybrid-risk-model"
+          fi
+
+          MODEL_VERSION="${{ github.event.inputs.model_version }}"
+          if [[ -z "$MODEL_VERSION" ]]; then
+            if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+              MODEL_VERSION="${GITHUB_REF#refs/tags/}"
+            else
+              MODEL_VERSION="v$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}"
+            fi
+          fi
+
+          echo "model_name=$MODEL_NAME" >> "$GITHUB_OUTPUT"
+          echo "model_version=$MODEL_VERSION" >> "$GITHUB_OUTPUT"
+          DATASET_PATH="${{ github.event.inputs.dataset_path }}"
+          if [[ -z "$DATASET_PATH" ]]; then
+            DATASET_PATH="data/hybrid/training.csv"
+          fi
+          echo "dataset_path=$DATASET_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Validate real dataset exists
+        shell: bash
+        run: |
+          if [[ ! -f "${{ steps.meta.outputs.dataset_path }}" ]]; then
+            echo "Training dataset file not found: ${{ steps.meta.outputs.dataset_path }}"
+            echo "Provide a real labeled CSV dataset (no synthetic default)."
+            exit 1
+          fi
+
+      - name: Train model
+        env:
+          MODEL_NAME: ${{ steps.meta.outputs.model_name }}
+          MODEL_VERSION: ${{ steps.meta.outputs.model_version }}
+          MODEL_DESCRIPTION: ${{ github.event.inputs.model_description }}
+          TRAIN_DATASET_PATH: ${{ steps.meta.outputs.dataset_path }}
+        run: npm run train
+
+      - name: Resolve artifact metadata from manifest
+        id: artifact-meta
+        shell: bash
+        run: |
+          node -e "
+          const fs=require('fs');
+          const m=JSON.parse(fs.readFileSync('artifacts/hybrid-models/train-manifest.json','utf8'));
+          if (!m.artifact_file || !fs.existsSync(m.artifact_file)) {
+            throw new Error('artifact_file missing in train-manifest');
+          }
+          if (!m.checksum) {
+            throw new Error('checksum missing in train-manifest');
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, \`artifact_file=\${m.artifact_file}\n\`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, \`manifest_checksum=\${m.checksum}\n\`);
+          "
+
+      - name: Evaluate model
+        env:
+          EVAL_DATASET_PATH: ${{ steps.meta.outputs.dataset_path }}
+        run: npm run evaluate
+
+      - name: Validate metric thresholds
+        shell: bash
+        run: |
+          ROC_AUC_THRESHOLD="${{ github.event.inputs.roc_auc_threshold }}"
+          F1_THRESHOLD="${{ github.event.inputs.f1_threshold }}"
+          if [[ -z "$ROC_AUC_THRESHOLD" ]]; then ROC_AUC_THRESHOLD="0.85"; fi
+          if [[ -z "$F1_THRESHOLD" ]]; then F1_THRESHOLD="0.75"; fi
+
+          ROC_AUC_THRESHOLD="$ROC_AUC_THRESHOLD" F1_THRESHOLD="$F1_THRESHOLD" node -e "
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('artifacts/hybrid-models/evaluation.json', 'utf8'));
+          const roc = Number(data.metrics?.roc_auc ?? NaN);
+          const f1 = Number(data.metrics?.f1 ?? NaN);
+          const rocThreshold = Number(process.env.ROC_AUC_THRESHOLD);
+          const f1Threshold = Number(process.env.F1_THRESHOLD);
+          if (!Number.isFinite(roc) || !Number.isFinite(f1)) {
+            throw new Error('Invalid evaluation metrics');
+          }
+          if (roc < rocThreshold || f1 < f1Threshold) {
+            throw new Error(\`Metric gate failed: roc_auc=\${roc}, f1=\${f1}, thresholds=\${rocThreshold}/\${f1Threshold}\`);
+          }
+          console.log(JSON.stringify({ success: true, roc_auc: roc, f1 }));
+          "
+
+      - name: Compute artifact checksum
+        id: checksum
+        shell: bash
+        run: |
+          checksum="$(sha256sum "${{ steps.artifact-meta.outputs.artifact_file }}" | awk '{print $1}')"
+          if [[ "$checksum" != "${{ steps.artifact-meta.outputs.manifest_checksum }}" ]]; then
+            echo "Checksum mismatch with train-manifest"
+            exit 1
+          fi
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve artifact URI
+        id: artifact-uri
+        shell: bash
+        run: |
+          if [[ -n "${HYBRID_S3_ENDPOINT:-}" && -n "${HYBRID_S3_ACCESS_KEY:-}" && -n "${HYBRID_S3_SECRET_KEY:-}" && -n "${HYBRID_S3_BUCKET:-}" ]]; then
+            if ! command -v aws >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y awscli
+            fi
+            export AWS_ACCESS_KEY_ID="${HYBRID_S3_ACCESS_KEY}"
+            export AWS_SECRET_ACCESS_KEY="${HYBRID_S3_SECRET_KEY}"
+            export AWS_DEFAULT_REGION="${HYBRID_S3_REGION:-us-east-1}"
+            key="hybrid-models/${{ steps.meta.outputs.model_name }}/${{ steps.meta.outputs.model_version }}/$(basename "${{ steps.artifact-meta.outputs.artifact_file }}")"
+            aws --endpoint-url "${HYBRID_S3_ENDPOINT}" s3 cp \
+              "${{ steps.artifact-meta.outputs.artifact_file }}" \
+              "s3://${HYBRID_S3_BUCKET}/${key}" \
+              --only-show-errors
+            echo "artifact_uri=s3://${HYBRID_S3_BUCKET}/${key}" >> "$GITHUB_OUTPUT"
+          else
+            echo "artifact_uri=file://${{ steps.artifact-meta.outputs.artifact_file }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate MySQL registry connection
+        run: node scripts/check-mysql-connection.js
+
+      - name: Register model version as staging
+        env:
+          MODEL_NAME: ${{ steps.meta.outputs.model_name }}
+          MODEL_VERSION: ${{ steps.meta.outputs.model_version }}
+          MODEL_DESCRIPTION: ${{ github.event.inputs.model_description }}
+          MODEL_STAGE: staging
+          ARTIFACT_URI: ${{ steps.artifact-uri.outputs.artifact_uri }}
+          MODEL_ARTIFACT_FILE: ${{ steps.artifact-meta.outputs.artifact_file }}
+          MODEL_METRICS_FILE: artifacts/hybrid-models/evaluation.json
+          MODEL_CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+        run: node scripts/register-model.js
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-model-${{ steps.meta.outputs.model_version }}
+          path: |
+            artifacts/hybrid-models/
+          if-no-files-found: error
+
+  promote:
+    name: Promote Staging Model To Production
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'promote'
+    env:
+      MYSQL_REGISTRY_HOST: ${{ secrets.MYSQL_REGISTRY_HOST }}
+      MYSQL_REGISTRY_PORT: ${{ secrets.MYSQL_REGISTRY_PORT }}
+      MYSQL_REGISTRY_USER: ${{ secrets.MYSQL_REGISTRY_USER }}
+      MYSQL_REGISTRY_PASSWORD: ${{ secrets.MYSQL_REGISTRY_PASSWORD }}
+      MYSQL_REGISTRY_DB: ${{ secrets.MYSQL_REGISTRY_DB }}
+      MODEL_REGISTRY_TABLE_PREFIX: hybrid_
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail fast if required registry secrets are missing
+        shell: bash
+        run: |
+          required=(MYSQL_REGISTRY_HOST MYSQL_REGISTRY_PORT MYSQL_REGISTRY_USER MYSQL_REGISTRY_PASSWORD MYSQL_REGISTRY_DB)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --omit=dev
+
+      - name: Validate MySQL registry connection
+        run: node scripts/check-mysql-connection.js
+
+      - name: Promote model in MySQL registry
+        env:
+          MODEL_NAME: ${{ github.event.inputs.model_name }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+          PROMOTE_MIN_ROC_AUC: ${{ github.event.inputs.roc_auc_threshold }}
+          PROMOTE_MIN_F1: ${{ github.event.inputs.f1_threshold }}
+        run: node scripts/promote-model.js
+
+      - name: Tag release
+        shell: bash
+        run: |
+          if [[ -z "${{ github.event.inputs.model_name }}" || -z "${{ github.event.inputs.model_version }}" ]]; then
+            echo "model_name and model_version are required for promote action"
+            exit 1
+          fi
+
+          tag_name="promote-${{ github.event.inputs.model_name }}-${{ github.event.inputs.model_version }}"
+          tag_name="$(echo "$tag_name" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-')"
+
+          if git rev-parse "$tag_name" >/dev/null 2>&1; then
+            echo "Tag $tag_name already exists. Skipping tag creation."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag_name" -m "Promote model ${{ github.event.inputs.model_name }}:${{ github.event.inputs.model_version }} to production"
+          git push origin "$tag_name"
+
+  deploy-production:
+    name: Deploy To VPS Production
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy'
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fail fast if required VPS secrets are missing
+        shell: bash
+        run: |
+          required=(VPS_HOST VPS_USER VPS_SSH_KEY)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Deploy over SSH with rollback-safe script
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -euo pipefail
+            cd /var/www/baocaoluadao.com
+            export DEPLOY_BRANCH="${{ github.event.inputs.deploy_branch }}"
+            export HEALTHCHECK_URL="${{ github.event.inputs.healthcheck_url }}"
+            export AI_SMOKE_URL="${{ github.event.inputs.ai_smoke_url }}"
+            export AI_SMOKE_DOMAIN="${{ github.event.inputs.ai_smoke_domain }}"
+            chmod +x scripts/deploy-hybrid-node.sh
+            ./scripts/deploy-hybrid-node.sh
