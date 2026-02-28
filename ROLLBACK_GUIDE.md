@@ -1,78 +1,51 @@
 # Rollback Guide - ScamGuard
 
-## Các điểm khôi phục đã tạo
+## Branch strategy
 
-### Branches
-| Branch | Mô tả |
-|--------|-------|
-| `master` | Phiên bản hiện tại |
-| `backup-initial` | Sao lưu ban đầu |
+| Branch | Description |
+|--------|-------------|
+| `main` | Development and staging work |
+| `production` | Deploy-only branch that feeds CI/CD |
 
-### Tags
-| Tag | Mô tả |
-|-----|-------|
-| `v1.0.0-initial` | Phiên bản ban đầu |
+## Tagging releases
 
----
+Versioned tags are required so you can rollback with precision. Create and push tags with:
 
-## Cách Rollback
-
-### 1. Rollback về phiên bản ban đầu (khôi phục toàn bộ)
 ```bash
-# Cách 1: Dùng branch backup
-git checkout backup-initial
-git checkout -b master-backup
-git push -f origin master-backup:master
-
-# Cách 2: Dùng tag
-git checkout v1.0.0-initial
-git checkout -b master
-git push -f origin master
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
 ```
 
-### 2. Rollback một file cụ thể
+CI/CD and `deploy.sh --rollback` use tags to identify safe checkpoints.
+
+## Performing a rollback
+
+1. Fetch the latest tags: `git fetch origin production --tags --prune`.
+2. Run the rollback helper on the VPS (or via CI using the same command):
+
 ```bash
-# Xem lịch sử file
-git log --oneline src/app/page.tsx
-
-# Khôi phục file về phiên bản cũ
-git checkout v1.0.0-initial -- src/app/page.tsx
-
-# Hoặc khôi phục từ commit cụ thể
-git checkout abc1234 -- src/app/page.tsx
+./deploy.sh --rollback v1.0.0
 ```
 
-### 3. Undo commit cuối (giữ lịch sử)
-```bash
-# Undo commit nhưng giữ thay đổi trong staging
-git reset --soft HEAD~1
+The script will:
+- verify the tag exists
+- check out the tag in a clean working tree
+- install dependencies, run migrations, build and reload PM2
+- return the working tree back to `production` at the end
 
-# Undo commit và bỏ thay đổi
-git reset --hard HEAD~1
+## Creating a hotfix after rollback
+
+Once the service is stable, create a hotfix branch off the tag:
+
+```bash
+git checkout -b hotfix/rollback-fix v1.0.0
+# implement fixes, run tests/build
+git push origin hotfix/rollback-fix
 ```
 
-### 4. Tạo điểm backup mới trước khi thay đổi lớn
-```bash
-# Tạo branch backup mới
-git checkout -b backup-$(date +%Y%m%d)
+Merge that branch into `main`, then cherry-pick or merge into `production` before your next deploy.
 
-# Hoặc tạo tag
-git tag v1.0.$(date +%Y%m%d)-backup
+## Audit readiness
 
-# Push lên GitHub
-git push origin backup-$(date +%Y%m%d)
-```
-
----
-
-## GitHub Actions (Optional)
-
-Để tự động hóa rollback, có thể thêm GitHub Actions:
-- Tạo release mỗi khi merge vào master
-- Cho phép rollback bằng cách revert PR
-
----
-
-## Liên hệ
-
-Nếu cần hỗ trợ rollback, liên hệ qua GitHub Issues.
+- Always document which tag was rolled back to in your changelog or incident report.
+- Keep track of deployments in GitHub (release notes + tags) so auditors can map running versions to commits.

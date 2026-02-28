@@ -6,7 +6,10 @@ export const dynamic = 'force-dynamic';
 
 function parseAllowedIps(raw: string | null): string[] {
   if (!raw) return [];
-  return raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export async function GET(req: NextRequest) {
@@ -43,7 +46,7 @@ paths:
     put: { summary: Update admin settings (auth required), responses: { '200': { description: Updated } } }
   /api/auth/register:
     post:
-      summary: �ang k� ngu?i d�ng
+      summary: Ä�Äƒng kÃ½ ngÆ°á»�i dÃ¹ng
       requestBody:
         required: true
         content:

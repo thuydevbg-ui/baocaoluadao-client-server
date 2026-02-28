@@ -20,6 +20,11 @@ export interface ScamDetail extends SearchResult {
   riskScore: number;
   description: string;
   amount?: string;
+  views?: number;
+  comments?: number;
+  time?: string;
+  name?: string;
+  image?: string;
 }
 
 export interface Comment {

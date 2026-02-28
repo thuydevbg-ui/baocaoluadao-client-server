@@ -21,6 +21,7 @@ type SettingsResponse = {
     googleAuthEnabled: boolean;
     googleClientIdSet: boolean;
     googleClientSecretSet: boolean;
+    allowedDocsIps?: string | null;
     updatedAt: string;
   };
 };

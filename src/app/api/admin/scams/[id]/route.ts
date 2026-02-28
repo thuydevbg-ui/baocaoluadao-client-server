@@ -8,10 +8,9 @@ import {
 } from '@/lib/adminManagementStore';
 import { getAdminAuth } from '@/lib/adminApiAuth';
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
+function extractIdFromRequest(request: NextRequest): string {
+  const segments = request.nextUrl.pathname.split('/').filter(Boolean);
+  return segments.at(-1) ?? '';
 }
 
 function parseStatus(input: unknown): AdminScamStatus | null {
@@ -28,13 +27,13 @@ function parseRiskLevel(input: unknown): AdminScamRiskLevel | null {
   return null;
 }
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const id = (params.id || '').trim();
+  const id = extractIdFromRequest(request).trim();
   if (!id) {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
@@ -47,13 +46,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   return NextResponse.json({ success: true, item });
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const id = (params.id || '').trim();
+  const id = extractIdFromRequest(request).trim();
   if (!id) {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
@@ -112,13 +111,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   return NextResponse.json({ success: true, item: updated });
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const id = (params.id || '').trim();
+  const id = extractIdFromRequest(request).trim();
   if (!id) {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }

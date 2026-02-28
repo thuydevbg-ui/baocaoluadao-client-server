@@ -442,9 +442,18 @@ export default function HomePage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-3 text-xs text-text-muted shrink-0">
-                              <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{alert.views.toLocaleString('vi-VN')}</span>
-                              <span className="flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" />{alert.comments}</span>
-                              <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{alert.time}</span>
+                              <span className="flex items-center gap-1">
+                                <Eye className="w-3.5 h-3.5" />
+                                {alert.views ? alert.views.toLocaleString('vi-VN') : '0'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                {alert.comments ?? 0}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" />
+                                {alert.time ?? '—'}
+                              </span>
                             </div>
                           </div>
                         </Card>
@@ -459,7 +468,11 @@ export default function HomePage() {
                   <h3 className="text-lg font-semibold text-text-main mb-3">{t('home.trending_scams')}</h3>
                   <div className="space-y-3">
                     {mockTrendingScams.slice(0, 5).map((scam) => (
-                      <Link key={scam.id} href={`/search?q=${encodeURIComponent(scam.name)}`} className="flex items-start gap-3 group">
+                      <Link
+                        key={scam.id}
+                        href={`/search?q=${encodeURIComponent(scam.name ?? scam.value)}`}
+                        className="flex items-start gap-3 group"
+                      >
                         <div className="w-9 h-9 rounded-lg bg-bg-cardHover flex items-center justify-center text-lg shrink-0">
                           {scam.image}
                         </div>

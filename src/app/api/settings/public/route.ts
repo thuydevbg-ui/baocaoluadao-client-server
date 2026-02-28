@@ -1,7 +1,34 @@
-﻿import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPublicSiteSettings } from '@/lib/siteSettings';
+import { getClientIp } from '@/lib/ipBan';
+import { AUTH_RATE_LIMIT, checkRateLimit } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const ip = getClientIp(request) ?? 'unknown';
+  const rateLimitResult = await checkRateLimit({
+    scope: 'public-settings',
+    key: ip,
+    maxAttempts: 120,
+    windowMs: 60 * 1000,
+    banSeconds: 5 * 60,
+  });
+
+  if (!rateLimitResult.allowed) {
+    const response = NextResponse.json(
+      { success: false, error: 'Too many requests' },
+      {
+        status: 429,
+        headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {},
+      }
+    );
+    response.headers.set('X-RateLimit-Limit', String(120));
+    response.headers.set('X-RateLimit-Remaining', '0');
+    if (rateLimitResult.retryAfter) {
+      response.headers.set('X-RateLimit-Reset', String(rateLimitResult.retryAfter));
+    }
+    return response;
+  }
+
   try {
     const settings = await getPublicSiteSettings();
     return NextResponse.json({ success: true, settings });

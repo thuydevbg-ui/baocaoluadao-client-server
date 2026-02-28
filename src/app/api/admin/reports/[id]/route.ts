@@ -7,10 +7,9 @@ import {
 import { recordAdminActivity } from '@/lib/adminManagementStore';
 import { getAdminAuth } from '@/lib/adminApiAuth';
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
+function extractIdFromRequest(request: NextRequest): string {
+  const segments = request.nextUrl.pathname.split('/').filter(Boolean);
+  return segments.at(-1) ?? '';
 }
 
 function parseStatus(input: unknown): AdminReportStatus | null {
@@ -20,13 +19,13 @@ function parseStatus(input: unknown): AdminReportStatus | null {
   return null;
 }
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const id = (params.id || '').trim();
+  const id = extractIdFromRequest(request).trim();
   if (!id) {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
@@ -42,13 +41,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   });
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(request: NextRequest) {
   const auth = getAdminAuth(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const id = (params.id || '').trim();
+  const id = extractIdFromRequest(request).trim();
   if (!id) {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }

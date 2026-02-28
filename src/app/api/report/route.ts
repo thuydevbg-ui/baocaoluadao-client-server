@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getDb } from '@/lib/db';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 export type ReportType = 'website' | 'phone' | 'email' | 'social' | 'sms';
 export type ReportSource = 'community' | 'auto_scan' | 'manual';
@@ -18,9 +19,6 @@ interface SubmittedReport {
   ip?: string;
 }
 
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REPORTS_PER_IP = 5;
-
 function getClientIP(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
   const realIP = request.headers.get('x-real-ip');
@@ -30,44 +28,6 @@ function getClientIP(request: NextRequest): string {
   if (realIP) return realIP.trim();
   if (cfIP) return cfIP.trim();
   return 'unknown';
-}
-
-async function checkRateLimit(ip: string, db: any): Promise<boolean> {
-  if (ip === 'unknown') return true;
-  
-  const now = Date.now();
-  
-  try {
-    // Check existing rate limit record
-    const [rows] = await db.execute(
-      'SELECT * FROM rate_limits WHERE ip = ? AND reset_time > NOW()',
-      [ip]
-    );
-    
-    const records = rows as any[];
-    if (records.length > 0) {
-      const record = records[0];
-      if (record.count >= MAX_REPORTS_PER_IP) {
-        return false;
-      }
-      // Increment count
-      await db.execute(
-        'UPDATE rate_limits SET count = count + 1 WHERE ip = ?',
-        [ip]
-      );
-      return true;
-    }
-    
-    // Create new record
-    await db.execute(
-      'INSERT INTO rate_limits (ip, count, first_attempt, reset_time) VALUES (?, 1, NOW(), DATE_ADD(NOW(), INTERVAL 1 MINUTE))',
-      [ip]
-    );
-    return true;
-  } catch {
-    // If DB fails, allow the request (fail open)
-    return true;
-  }
 }
 
 function sanitizeInput(input: string | undefined, maxLength: number): string {
@@ -110,13 +70,29 @@ export async function POST(request: NextRequest) {
   const db = getDb();
   
   try {
-    // Rate limiting
     const ip = getClientIP(request);
-    if (!await checkRateLimit(ip, db)) {
-      return NextResponse.json(
+    const rateLimitResult = await checkRateLimit({
+      scope: 'report-submission',
+      key: ip,
+      maxAttempts: 5,
+      windowSeconds: 60,
+      banSeconds: 5 * 60,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const response = NextResponse.json(
         { success: false, error: 'Quá nhiều yêu cầu. Vui lòng thử lại sau.' },
-        { status: 429 }
+        {
+          status: 429,
+          headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {},
+        }
       );
+      response.headers.set('X-RateLimit-Limit', String(5));
+      response.headers.set('X-RateLimit-Remaining', '0');
+      if (rateLimitResult.retryAfter) {
+        response.headers.set('X-RateLimit-Reset', String(rateLimitResult.retryAfter));
+      }
+      return response;
     }
 
     // Parse body

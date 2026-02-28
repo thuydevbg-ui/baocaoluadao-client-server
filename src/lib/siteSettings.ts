@@ -23,6 +23,8 @@ export interface PublicSiteSettings
   extends Omit<SiteSettings, 'googleClientId' | 'googleClientSecret'> {
   googleClientIdSet: boolean;
   googleClientSecretSet: boolean;
+  googleClientId?: never;
+  googleClientSecret?: never;
 }
 
 const defaultSettings: SiteSettings = {

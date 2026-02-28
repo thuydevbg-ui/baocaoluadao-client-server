@@ -17,7 +17,8 @@ export async function ensureIpBanTable() {
 export function getClientIp(req: NextRequest): string | null {
   const xf = req.headers.get('x-forwarded-for');
   if (xf) return xf.split(',')[0].trim();
-  return req.ip ?? req.headers.get('x-real-ip') ?? null;
+  const realIp = req.headers.get('x-real-ip');
+  return realIp ?? null;
 }
 
 export async function isIpBanned(ip: string | null): Promise<boolean> {
