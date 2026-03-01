@@ -1,11 +1,11 @@
 import os from 'node:os';
 import { NextRequest, NextResponse } from 'next/server';
 import { withApiObservability } from '@/lib/apiHandler';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 import { ensureRedisReady, getRedisClientSafe } from '@/lib/redis';
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
