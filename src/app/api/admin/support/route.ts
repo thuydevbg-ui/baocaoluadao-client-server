@@ -1,7 +1,7 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 export type FeedbackStatus = 'new' | 'read' | 'replied' | 'resolved';
 export type FeedbackType = 'question' | 'complaint' | 'suggestion' | 'bug_report' | 'other';
@@ -54,7 +54,7 @@ function parseType(value: string | null): FeedbackType | 'all' {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -101,7 +101,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const POST = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
