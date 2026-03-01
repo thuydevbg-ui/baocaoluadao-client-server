@@ -1,10 +1,10 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated, requireRole } from '@/lib/adminApiAuth';
 import { getPublicSiteSettings, updateSiteSettings } from '@/lib/siteSettings';
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -16,7 +16,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const PUT = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
