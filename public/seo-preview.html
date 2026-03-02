@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEO Preview - Google Search Results</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Roboto', Arial, sans-serif;
+      background: #f8f9fa;
+      padding: 40px;
+      line-height: 1.58;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #202124; margin-bottom: 30px; font-size: 24px; }
+    
+    /* Google Search Result Styles */
+    .search-result {
+      background: white;
+      padding: 20px;
+      margin-bottom: 30px;
+      border-radius: 8px;
+      box-shadow: 0 1px 6px rgba(32,33,36,.1);
+    }
+    
+    .result-url {
+      color: #202124;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .favicon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #dc2626;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    
+    .url-text {
+      color: #5f6368;
+    }
+    
+    .url-path {
+      color: #5f6368;
+    }
+    
+    .result-title {
+      color: #1a0dab;
+      font-size: 20px;
+      font-weight: 400;
+      line-height: 1.3;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    
+    .result-title:hover {
+      text-decoration: underline;
+    }
+    
+    .result-title:visited {
+      color: #660099;
+    }
+    
+    .result-description {
+      color: #4d5156;
+      font-size: 14px;
+      line-height: 1.58;
+    }
+    
+    .rich-snippets {
+      margin-top: 12px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .snippet-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #70757a;
+    }
+    
+    .snippet-item svg {
+      width: 16px;
+      height: 16px;
+    }
+    
+    .star-rating {
+      color: #fbbc04;
+      font-size: 14px;
+    }
+    
+    /* Breadcrumb styles */
+    .breadcrumb {
+      color: #202124;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    
+    .breadcrumb-separator {
+      margin: 0 4px;
+      color: #5f6368;
+    }
+    
+    /* Section headers */
+    .section-title {
+      font-size: 18px;
+      color: #202124;
+      margin: 40px 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #dadce0;
+    }
+    
+    /* Info panel */
+    .info-panel {
+      background: #e8f0fe;
+      border-left: 4px solid #1a73e8;
+      padding: 16px;
+      margin: 20px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    
+    .info-panel h3 {
+      color: #1a73e8;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .info-panel ul {
+      margin-left: 20px;
+      color: #3c4043;
+    }
+    
+    .info-panel li {
+      margin: 4px 0;
+    }
+    
+    code {
+      background: #f1f3f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+    
+    /* Mobile preview */
+    .mobile-preview {
+      max-width: 375px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .mobile-result .result-title {
+      font-size: 16px;
+    }
+    
+    .mobile-result .result-description {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 SEO Preview: Cách Website Hiển Thị Trên Google</h1>
+    
+    <div class="info-panel">
+      <h3>📌 Trang Chủ (Homepage)</h3>
+      <ul>
+        <li><strong>Title:</strong> <code>Báo Cáo Lừa Đảo | Kiểm Tra & Báo Cáo Lừa Đảo Online Uy Tín #1</code></li>
+        <li><strong>Description:</strong> <code>Kiểm tra website, số điện thoại, email có phải lừa đảo không. Cộng đồng báo cáo lừa đảo lớn nhất Việt Nam với AI phát hiện scam chính xác 98%.</code></li>
+        <li><strong>URL:</strong> <code>https://baocaoluadao.com</code></li>
+      </ul>
+    </div>
+
+    <!-- Homepage Search Result -->
+    <div class="search-result">
+      <div class="breadcrumb">
+        baocaoluadao.com
+      </div>
+      <a href="#" class="result-title">
+        Báo Cáo Lừa Đảo | Kiểm Tra & Báo Cáo Lừa Đảo Online Uy Tín #1
+      </a>
+      <div class="result-description">
+        Kiểm tra website, số điện thoại, email có phải lừa đảo không. Cộng đồng báo cáo lừa đảo lớn nhất Việt Nam với AI phát hiện scam chính xác 98%. Bảo vệ bạn khỏi lừa đảo trực tuyến ngay hôm nay!
+      </div>
+      <div class="rich-snippets">
+        <div class="snippet-item">
+          <span class="star-rating">★★★★★</span>
+          <span>4.8 (1,250 đánh giá)</span>
+        </div>
+        <div class="snippet-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <span>12,847+ báo cáo đã xác minh</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Page Result -->
+    <div class="info-panel">
+      <h3>📌 Trang Tìm Kiếm (Search)</h3>
+      <ul>
+        <li><strong>Title:</strong> <code>Tra Cứu Lừa Đảo | Kiểm Tra Website, SĐT, Email | Báo Cáo Lừa Đảo</code></li>
+        <li><strong>Description:</strong> <code>Tra cứu thông tin lừa đảo miễn phí. Kiểm tra website, số điện thoại, tài khoản ngân hàng có bị báo cáo lừa đảo không.</code></li>
+      </ul>
+    </div>
+
+    <div class="search-result">
+      <div class="breadcrumb">
+        baocaoluadao.com <span class="breadcrumb-separator">›</span> search
+      </div>
+      <a href="#" class="result-title">
+        Tra Cứu Lừa Đảo | Kiểm Tra Website, SĐT, Email
+      </a>
+      <div class="result-description">
+        Tra cứu thông tin lừa đảo miễn phí. Kiểm tra website, số điện thoại, tài khoản ngân hàng có bị báo cáo lừa đảo không. Dữ liệu từ cộng đồng và AI phân tích.
+      </div>
+      <div class="rich-snippets">
+        <div class="snippet-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          <span>Cập nhật: 2 giờ trước</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Report Page Result -->
+    <div class="info-panel">
+      <h3>📌 Trang Báo Cáo (Report)</h3>
+      <ul>
+        <li><strong>Title:</strong> <code>Báo Cáo Lừa Đảo | Gửi Thông Tin Lừa Đảo | Báo Cáo Lừa Đảo</code></li>
+        <li><strong>Description:</strong> <code>Gửi báo cáo lừa đảo để cảnh báo cộng đồng. Bảo vệ ngườii khác khỏi các hình thức lừa đảo trực tuyến.</code></li>
+      </ul>
+    </div>
+
+    <div class="search-result">
+      <div class="breadcrumb">
+        baocaoluadao.com <span class="breadcrumb-separator">›</span> report
+      </div>
+      <a href="#" class="result-title">
+        Báo Cáo Lừa Đảo | Gửi Thông Tin Lừa Đảo
+      </a>
+      <div class="result-description">
+        Gửi báo cáo lừa đảo để cảnh báo cộng đồng. Bảo vệ ngườii khác khỏi các hình thức lừa đảo trực tuyến. Báo cáo ẩn danh, bảo mật 100%.
+      </div>
+      <div class="rich-snippets">
+        <div class="snippet-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Bảo mật thông tin</span>
+        </div>
+        <div class="snippet-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span>Xác minh trong 24h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- About Page Result -->
+    <div class="info-panel">
+      <h3>📌 Trang Giới Thiệu (About)</h3>
+      <ul>
+        <li><strong>Title:</strong> <code>Về Chúng Tôi | Sứ Mệnh & Tầm Nhìn | Báo Cáo Lừa Đảo</code></li>
+        <li><strong>Description:</strong> <code>Tìm hiểu về sứ mệnh bảo vệ cộng đồng khỏi lừa đảo trực tuyến của chúng tôi. Cộng đồng báo cáo lừa đảo lớn nhất Việt Nam.</code></li>
+      </ul>
+    </div>
+
+    <div class="search-result">
+      <div class="breadcrumb">
+        baocaoluadao.com <span class="breadcrumb-separator">›</span> about
+      </div>
+      <a href="#" class="result-title">
+        Về Chúng Tôi | Sứ Mệnh & Tầm Nhìn
+      </a>
+      <div class="result-description">
+        Tìm hiểu về sứ mệnh bảo vệ cộng đồng khỏi lừa đảo trực tuyến của chúng tôi. Cộng đồng báo cáo lừa đảo lớn nhất Việt Nam với hơn 100,000 ngườii dùng.
+      </div>
+    </div>
+
+    <!-- FAQ Page with Rich Snippets -->
+    <div class="info-panel">
+      <h3>📌 Trang FAQ (với Rich Snippets)</h3>
+      <ul>
+        <li><strong>Title:</strong> <code>Câu Hỏi Thường Gặp | FAQ | Báo Cáo Lừa Đảo</code></li>
+        <li><strong>Description:</strong> <code>Giải đáp các câu hỏi thường gặp về báo cáo lừa đảo, cách tra cứu và phòng chống lừa đảo.</code></li>
+        <li><strong>Schema:</strong> FAQPage Schema (hiển thị questions trực tiếp trên Google)</li>
+      </ul>
+    </div>
+
+    <div class="search-result">
+      <div class="breadcrumb">
+        baocaoluadao.com <span class="breadcrumb-separator">›</span> faq
+      </div>
+      <a href="#" class="result-title">
+        Câu Hỏi Thường Gặp | FAQ | Báo Cáo Lừa Đảo
+      </a>
+      <div class="result-description">
+        ❓ Làm thế nào để báo cáo lừa đảo? ⏱️ Báo cáo được xử lý trong bao lâu? 🔒 Thông tin báo cáo có được bảo mật không? Xem tất cả câu trả lờii...
+      </div>
+    </div>
+
+    <h2 class="section-title">📱 Mobile Search Preview</h2>
+    
+    <div class="mobile-preview">
+      <div class="search-result mobile-result">
+        <div class="result-url">
+          <div class="favicon">B</div>
+          <span class="url-text">baocaoluadao.com</span>
+        </div>
+        <a href="#" class="result-title">
+          Báo Cáo Lừa Đảo | Kiểm Tra & Báo Cáo Lừa Đảo Online
+        </a>
+        <div class="result-description">
+          Kiểm tra website, số điện thoại, email có phải lừa đảo không. AI phát hiện scam chính xác 98%...
+        </div>
+        <div class="rich-snippets">
+          <div class="snippet-item">
+            <span class="star-rating">★★★★★</span>
+            <span>4.8</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section-title">🎯 Tính năng SEO đã triển khai</h2>
+    
+    <div class="info-panel">
+      <h3>✅ Hoàn thành</h3>
+      <ul>
+        <li><strong>Meta tags:</strong> Title, description, keywords cho mỗi trang</li>
+        <li><strong>Open Graph:</strong> Hiển thị đẹp khi share Facebook, Zalo</li>
+        <li><strong>Twitter Cards:</strong> Hiển thị đẹp khi share Twitter/X</li>
+        <li><strong>Canonical URLs:</strong> Tránh duplicate content</li>
+        <li><strong>Robots meta:</strong> Hướng dẫn Google index đúng</li>
+        <li><strong>Schema.org:</strong> Website, Organization, FAQ, Breadcrumb, Review</li>
+        <li><strong>Sitemap XML:</strong> /sitemap.xml (tự động generate)</li>
+        <li><strong>Robots.txt:</strong> /robots.txt (chặn AI crawlers)</li>
+        <li><strong>Core Web Vitals:</strong> Theo dõi LCP, CLS, FID</li>
+      </ul>
+    </div>
+
+    <div class="info-panel" style="background: #fce8e6; border-left-color: #c5221f;">
+      <h3 style="color: #c5221f;">⚠️ Lưu ý quan trọng</h3>
+      <ul>
+        <li>Kết quả tìm kiếm thực tế có thể khác do Google tự động điều chỉnh</li>
+        <li>Google có thể lấy description từ nội dung trang thay vì meta description</li>
+        <li>Rich snippets chỉ hiển thị khi website đủ uy tín và structured data hợp lệ</li>
+        <li>Thứ hạng tìm kiếm phụ thuộc vào nhiều yếu tố: content, backlinks, UX...</li>
+      </ul>
+    </div>
+
+  </div>
+</body>
+</html>

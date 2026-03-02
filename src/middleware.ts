@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const COOKIE_NAME = 'adminAuth';
 const MAX_LOGIN_AGE_HOURS = 24;
+const TMP_HTML_ROUTE = /^\/tm_.*\.html$/i;
 
 // Routes that require authentication (admin area only)
 const protectedRoutes = ['/admin'];
@@ -10,8 +11,16 @@ const protectedRoutes = ['/admin'];
 const authRoutes = ['/admin/login'];
 const NEXT_AUTH_API_PREFIX = '/api/auth';
 
+// Routes that should never be indexed by search engines
+const NO_INDEX_ROUTES = ['/admin', '/login', '/register', '/profile'];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Block temp HTML files
+  if (TMP_HTML_ROUTE.test(pathname)) {
+    return new NextResponse('Not Found', { status: 404 });
+  }
 
   // Allow NextAuth to handle its own routing and HTML redirects
   if (pathname.startsWith(NEXT_AUTH_API_PREFIX)) {
@@ -46,8 +55,13 @@ export function middleware(request: NextRequest) {
   // Skip redirect if already on login page to avoid infinite loop
   const isLoginPage = pathname === '/admin/login';
 
+  // Get correct base URL from headers (for proxy/CDN environments)
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'baocaoluadao.com';
+  const protocol = request.headers.get('x-forwarded-proto') || 'https';
+  const baseUrl = `${protocol}://${host}`;
+
   if (isProtectedRoute && !isAuthenticated && !isLoginPage) {
-    const loginUrl = new URL('/admin/login', request.url);
+    const loginUrl = new URL('/admin/login', baseUrl);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -55,10 +69,24 @@ export function middleware(request: NextRequest) {
   // If already authenticated and trying to access login page, redirect to admin
   const isAuthRoute = authRoutes.includes(pathname);
   if (isAuthRoute && isAuthenticated) {
-    return NextResponse.redirect(new URL('/admin', request.url));
+    return NextResponse.redirect(new URL('/admin', baseUrl));
   }
 
-  return NextResponse.next();
+  // Add SEO headers for no-index routes
+  const response = NextResponse.next();
+  
+  const shouldNoIndex = NO_INDEX_ROUTES.some(route =>
+    pathname === route || pathname.startsWith(`${route}/`)
+  );
+
+  if (shouldNoIndex) {
+    // Add X-Robots-Tag header to prevent indexing
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+    // Add cache control to prevent caching of private pages
+    response.headers.set('Cache-Control', 'no-store, private');
+  }
+
+  return response;
 }
 
 function isDirectApiNavigation(request: NextRequest, pathname: string): boolean {
@@ -124,5 +152,9 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/:path*',
+    '/login',
+    '/register',
+    '/profile/:path*',
+    '/tm_:path*.html',
   ],
 };

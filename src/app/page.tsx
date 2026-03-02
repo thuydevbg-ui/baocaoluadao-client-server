@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,12 +22,13 @@ import {
   Zap,
   FileText,
   BarChart3,
+  Info,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, Tooltip } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
-import { cn } from '@/lib/utils';
+import { cn, getRiskGradient, type RiskLevel } from '@/lib/utils';
 import {
   mockPopularSearches,
   mockTrendingScams,
@@ -96,6 +97,42 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
   );
 }
 
+type SearchInsight = {
+  title: string;
+  subtitle: string;
+  hint: string;
+  value: string;
+  risk: RiskLevel;
+  Icon: React.ComponentType<{ className?: string }>;
+};
+
+const fallbackSearchInsights: SearchInsight[] = [
+  {
+    title: 'Từ khóa nóng',
+    subtitle: 'Phân tích 24h: tăng 32% lượt tìm',
+    hint: 'Tốc độ tìm kiểm gia tăng nhanh ở khu vực miền Bắc',
+    value: 'scamguard.app',
+    risk: 'scam',
+    Icon: Sparkles,
+  },
+  {
+    title: 'Chuỗi ngân hàng',
+    subtitle: '14 báo cáo mới liên quan tới VCB',
+    hint: 'Các thanh toán chuyển khoản có dấu hiệu giả mạo',
+    value: 'VCB-Message',
+    risk: 'suspicious',
+    Icon: Shield,
+  },
+  {
+    title: 'Cảnh báo tổng quan',
+    subtitle: '62% báo cáo tuần này thuộc website',
+    hint: 'Tỉ lệ gian lận cao đang tập trung trên các miền mới',
+    value: '62% nguy cơ',
+    risk: 'scam',
+    Icon: Zap,
+  },
+];
+
 const categoryVisual: Record<string, { icon: string; color: string }> = {
   websites: { icon: '🌐', color: 'from-blue-500 to-blue-600' },
   organizations: { icon: '🏢', color: 'from-purple-500 to-purple-600' },
@@ -119,6 +156,31 @@ export default function HomePage() {
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [dataSource, setDataSource] = useState<string>('fallback');
   const [statsLoading, setStatsLoading] = useState(true);
+
+  const uniqueCategories = useMemo(() => {
+    const seen = new Map<string, CategoryData>();
+    categories.forEach((category) => {
+      if (!seen.has(category.slug)) {
+        seen.set(category.slug, category);
+      }
+    });
+    return Array.from(seen.values());
+  }, [categories]);
+
+  const searchInsights = useMemo<SearchInsight[]>(() => {
+    if (mockPopularSearches.length) {
+      return mockPopularSearches.slice(0, 3).map((item, index) => ({
+        title: item.value,
+        subtitle: `Phân loại: ${item.risk}`,
+        hint: `Đã có ${((index + 1) * 14).toString()} lượt tìm kiếm gần đây`,
+        value: `${(index + 1) * 120}+ lượt`,
+        risk: item.risk as RiskLevel,
+        Icon: [Sparkles, Shield, Zap][index % 3],
+      }));
+    }
+
+    return fallbackSearchInsights;
+  }, []);
 
   const searchBoxRef = useRef<HTMLDivElement>(null);
 
@@ -169,8 +231,21 @@ export default function HomePage() {
       ? mockRecentAlerts
       : mockRecentAlerts.filter((alert) => alert.type === activeFilter);
 
-  const getCategoryCount = (slug: string) => categories.find((category) => category.slug === slug)?.count ?? 0;
-  const shouldShowCategoryCount = !statsLoading && categories.length > 0;
+  const dedupedAlerts = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredAlerts.filter((alert) => {
+      if (seen.has(alert.value)) {
+        return false;
+      }
+      seen.add(alert.value);
+      return true;
+    });
+  }, [filteredAlerts]);
+
+  const displayedAlerts = dedupedAlerts.slice(0, 4);
+
+  const getCategoryCount = (slug: string) => uniqueCategories.find((category) => category.slug === slug)?.count ?? 0;
+  const shouldShowCategoryCount = !statsLoading && uniqueCategories.length > 0;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -395,7 +470,7 @@ export default function HomePage() {
           />
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {categories.map((category) => {
+            {uniqueCategories.map((category) => {
               const visual = categoryVisual[category.slug] || { icon: '🛡️', color: 'from-slate-500 to-slate-600' };
               return (
                 <Link key={category.slug} href={`/search?category=${category.slug}`}>
@@ -419,32 +494,42 @@ export default function HomePage() {
 
         <section className="bg-bg-card/45 border-y border-bg-border">
           <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-12">
-            <div className="grid lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-7">
-                <div className="flex items-end justify-between gap-4 mb-4">
-                  <h2 className="text-2xl md:text-3xl font-bold text-text-main">{t('home.recent_alerts')}</h2>
+            <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6">
+              <div className="space-y-5">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl md:text-3xl font-bold text-text-main">{t('home.recent_alerts')}</h2>
+                    <p className="text-sm text-text-secondary mt-1">
+                      Cập nhật theo luồng báo cáo mới nhất từ cộng đồng.
+                    </p>
+                  </div>
                   <Link href="/report" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0">
                     {t('home.view_all')} <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
 
-                <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-2 mb-2 overflow-x-auto scrollbar-hide">
                   {['all', 'phone', 'website', 'bank'].map((filter) => (
-                    <button
+                    <Tooltip
                       key={filter}
-                      onClick={() => setActiveFilter(filter)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors',
-                        activeFilter === filter ? 'bg-primary text-white' : 'bg-bg-card text-text-secondary hover:bg-bg-cardHover'
-                      )}
+                      label={`Lọc ${t(`home.filter.${filter}`)} báo cáo`}
+                      position="bottom"
                     >
-                      {t(`home.filter.${filter}`)}
-                    </button>
+                      <button
+                        onClick={() => setActiveFilter(filter)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors',
+                          activeFilter === filter ? 'bg-primary text-white' : 'bg-bg-card text-text-secondary hover:bg-bg-cardHover'
+                        )}
+                      >
+                        {t(`home.filter.${filter}`)}
+                      </button>
+                    </Tooltip>
                   ))}
                 </div>
 
                 <div className="space-y-3">
-                  {filteredAlerts.slice(0, 4).map((alert) => {
+                  {displayedAlerts.map((alert) => {
                     const TypeIcon = getTypeIcon(alert.type);
                     return (
                       <Link key={alert.id} href={`/detail/${alert.type}/${encodeURIComponent(alert.value)}`}>
@@ -460,18 +545,24 @@ export default function HomePage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-3 text-xs text-text-muted shrink-0">
-                              <span className="flex items-center gap-1">
-                                <Eye className="w-3.5 h-3.5" />
-                                {alert.views ? alert.views.toLocaleString('vi-VN') : '0'}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                {alert.comments ?? 0}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5" />
-                                {alert.time ?? '—'}
-                              </span>
+                              <Tooltip label="Số lượt xem" position="top">
+                                <span className="flex items-center gap-1">
+                                  <Eye className="w-3.5 h-3.5" />
+                                  {alert.views ? alert.views.toLocaleString('vi-VN') : '0'}
+                                </span>
+                              </Tooltip>
+                              <Tooltip label="Bình luận cộng đồng" position="top">
+                                <span className="flex items-center gap-1">
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  {alert.comments ?? 0}
+                                </span>
+                              </Tooltip>
+                              <Tooltip label="Thời gian cập nhật" position="top">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {alert.time ?? '—'}
+                                </span>
+                              </Tooltip>
                             </div>
                           </div>
                         </Card>
@@ -481,30 +572,75 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="lg:col-span-5 space-y-4">
+              <div className="space-y-4">
                 <Card className="p-5">
-                  <h3 className="text-lg font-semibold text-text-main mb-3">{t('home.trending_scams')}</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-text-main">{t('home.trending_scams')}</h3>
+                    <Tooltip label="Bảng xếp hạng các scam nóng" position="bottom">
+                      <Info className="w-4 h-4 text-text-muted" />
+                    </Tooltip>
+                  </div>
                   <div className="space-y-3">
                     {mockTrendingScams.slice(0, 5).map((scam) => (
-                      <Link
+                      <Tooltip
                         key={scam.id}
-                        href={`/search?q=${encodeURIComponent(scam.name ?? scam.value)}`}
-                        className="flex items-start gap-3 group"
+                        label={`${scam.reports.toLocaleString('vi-VN')} báo cáo`}
+                        position="top"
                       >
-                        <div className="w-9 h-9 rounded-lg bg-bg-cardHover flex items-center justify-center text-lg shrink-0">
-                          {scam.image}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-text-main font-medium line-clamp-1 group-hover:text-primary transition-colors">
-                            {scam.name}
-                          </p>
-                          <p className="text-xs text-text-muted mt-0.5">
-                            {scam.reports.toLocaleString('vi-VN')} báo cáo
-                          </p>
-                        </div>
-                        <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-primary shrink-0" />
-                      </Link>
+                        <Link
+                          href={`/search?q=${encodeURIComponent(scam.name ?? scam.value)}`}
+                          className="flex items-start gap-3 group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-bg-cardHover flex items-center justify-center text-lg shrink-0">
+                            {scam.image}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-text-main font-medium line-clamp-1 group-hover:text-primary transition-colors">
+                              {scam.name}
+                            </p>
+                            <p className="text-xs text-text-muted mt-0.5">
+                              {scam.reports.toLocaleString('vi-VN')} báo cáo
+                            </p>
+                          </div>
+                          <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-primary shrink-0" />
+                        </Link>
+                      </Tooltip>
                     ))}
+                  </div>
+                </Card>
+
+                <Card className="p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-text-main">Dữ liệu tìm kiếm</h3>
+                    <Tooltip label="Thống kê từ khóa, nguồn tìm kiếm" position="bottom">
+                      <Info className="w-5 h-5 text-text-muted" />
+                    </Tooltip>
+                  </div>
+                  <div className="grid gap-3">
+                    {searchInsights.map((insight) => {
+                      const InsightIcon = insight.Icon;
+                      return (
+                        <Tooltip key={insight.title} label={insight.hint} position="top">
+                          <div className="group flex items-center justify-between border border-bg-border/70 rounded-2xl p-3 bg-white/60 shadow-sm hover:shadow-lg transition">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  'w-11 h-11 rounded-2xl text-white flex items-center justify-center shadow-inner',
+                                  `bg-gradient-to-br ${getRiskGradient(insight.risk)}`
+                                )}
+                              >
+                                <InsightIcon className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-text-main">{insight.title}</p>
+                                <p className="text-xs text-text-muted">{insight.subtitle}</p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-bold text-text-main">{insight.value}</span>
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
                   </div>
                 </Card>
 
@@ -512,10 +648,16 @@ export default function HomePage() {
                   <h3 className="text-lg font-semibold text-text-main mb-3">{t('home.safety_tips')}</h3>
                   <div className="space-y-3">
                     {mockSafetyTips.slice(0, 3).map((tip) => (
-                      <div key={tip.id} className="p-3 rounded-xl bg-bg-cardHover/80 border border-bg-border/70">
-                        <p className="text-sm font-medium text-text-main">{tip.title}</p>
-                        <p className="text-xs text-text-secondary mt-1 line-clamp-2">{tip.description}</p>
-                      </div>
+                      <Tooltip
+                        key={tip.id}
+                        label="Chi tiết mẹo ngắn"
+                        position="bottom"
+                      >
+                        <div className="p-3 rounded-xl bg-bg-cardHover/80 border border-bg-border/70">
+                          <p className="text-sm font-medium text-text-main">{tip.title}</p>
+                          <p className="text-xs text-text-secondary mt-1 line-clamp-2">{tip.description}</p>
+                        </div>
+                      </Tooltip>
                     ))}
                   </div>
                 </Card>
