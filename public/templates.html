@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5 Mẫu Design - Trang Báo Cáo Lừa Đảo ScamGuard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f4f8;
+        }
+        .template {
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        .template.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .nav-btn {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .nav-btn.active {
+            background: #1e40af !important;
+            color: white !important;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transform: scale(1.02);
+        }
+        .nav-btn:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <div class="bg-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <h1 class="text-2xl font-bold text-blue-600 mb-4">🎨 5 Mẫu Design - Trang Báo Cáo Lừa Đảo</h1>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="showTemplate(1)" class="nav-btn active bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold">✨ Mẫu 1: Minimalist</button>
+                <button onclick="showTemplate(2)" class="nav-btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold">🎨 Mẫu 2: Bold & Color</button>
+                <button onclick="showTemplate(3)" class="nav-btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold">🏢 Mẫu 3: Corporate</button>
+                <button onclick="showTemplate(4)" class="nav-btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold">🚀 Mẫu 4: Interactive</button>
+                <button onclick="showTemplate(5)" class="nav-btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold">📊 Mẫu 5: Dashboard</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-4">
+
+        <!-- TEMPLATE 1: MINIMALIST -->
+        <div id="template-1" class="template active">
+            <div class="bg-white rounded-2xl shadow-2xl p-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-4xl font-bold text-gray-900 mb-2">🔍 BÁO CÁO LỪA ĐẢO</h2>
+                    <p class="text-gray-600 text-lg">Giúp bảo vệ cộng đồng khỏi các kẻ lừa đảo</p>
+                </div>
+
+                <div class="max-w-2xl mx-auto space-y-6">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">📝 Loại lừa đảo</label>
+                        <select class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option>-- Chọn loại --</option>
+                            <option>🌐 Website lừa đảo</option>
+                            <option>📧 Email giả mạo</option>
+                            <option>📞 Số điện thoại giả</option>
+                            <option>💰 Gian lận thanh toán</option>
+                            <option>📱 Ứng dụng fake</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">🎯 Mục tiêu lừa đảo</label>
+                        <input type="text" placeholder="Nhập website, email, số điện thoại..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">📋 Mô tả chi tiết</label>
+                        <textarea rows="4" placeholder="Mô tả chi tiết về lừa đảo..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">📧 Email của bạn (tuỳ chọn)</label>
+                        <input type="email" placeholder="your@email.com" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <button class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition text-lg">
+                        ✓ GỬI BÁO CÁO
+                    </button>
+                </div>
+
+                <div class="text-center mt-8 text-sm text-gray-500">
+                    🔒 Dữ liệu của bạn được bảo mật tuyệt đối
+                </div>
+            </div>
+        </div>
+
+        <!-- TEMPLATE 2: BOLD & COLORFUL -->
+        <div id="template-2" class="template">
+            <div class="bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 rounded-2xl shadow-2xl p-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-5xl font-black text-red-600 mb-2">⚠️ CẢNH BÁO LỪA ĐẢO</h2>
+                    <p class="text-gray-700 text-lg font-semibold">Báo cáo nghi vấn, bảo vệ người khác</p>
+                </div>
+
+                <div class="max-w-4xl mx-auto">
+                    <div class="grid md:grid-cols-2 gap-4 mb-8">
+                        <div class="bg-gradient-to-br from-blue-400 to-blue-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition cursor-pointer">
+                            <h3 class="text-2xl font-bold mb-2">🌐 WEBSITE LỪA ĐẢO</h3>
+                            <p class="text-lg opacity-90">spam-bank.fake.vn</p>
+                            <div class="mt-4 bg-white/20 px-3 py-1 rounded-full inline-block text-sm font-semibold">⚠️ 156 báo cáo</div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-pink-400 to-red-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition cursor-pointer">
+                            <h3 class="text-2xl font-bold mb-2">📧 EMAIL GIẢ MẠO</h3>
+                            <p class="text-lg opacity-90">noreply@banco-falso.br</p>
+                            <div class="mt-4 bg-white/20 px-3 py-1 rounded-full inline-block text-sm font-semibold">⚠️ 234 báo cáo</div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-purple-400 to-indigo-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition cursor-pointer">
+                            <h3 class="text-2xl font-bold mb-2">📞 SỐ ĐIỆN THOẠI GIẢ</h3>
+                            <p class="text-lg opacity-90">0987 XXX XXX</p>
+                            <div class="mt-4 bg-white/20 px-3 py-1 rounded-full inline-block text-sm font-semibold">⚠️ 89 báo cáo</div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-green-400 to-teal-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition cursor-pointer">
+                            <h3 class="text-2xl font-bold mb-2">💰 GIẢ CHUYỂN KHOẢN</h3>
+                            <p class="text-lg opacity-90">Vietcombank, Techcombank</p>
+                            <div class="mt-4 bg-white/20 px-3 py-1 rounded-full inline-block text-sm font-semibold">⚠️ 412 báo cáo</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 shadow-lg">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4">📝 BÁO CÁO BỊ CHIẾM</h3>
+
+                        <select class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold">
+                            <option>-- Chọn loại lừa đảo --</option>
+                            <option>🌐 Website</option>
+                            <option>📧 Email</option>
+                            <option>📞 Điện thoại</option>
+                            <option>💰 Thanh toán</option>
+                            <option>📱 Ứng dụng</option>
+                            <option>💬 Tin nhắn</option>
+                        </select>
+
+                        <input type="text" placeholder="Nhập mục tiêu lừa đảo..." class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                        <textarea rows="4" placeholder="Mô tả chi tiết..." class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+
+                        <button class="w-full bg-gradient-to-r from-red-500 to-orange-500 text-white font-black py-4 rounded-lg hover:shadow-xl transition text-lg">
+                            🚀 GỬI BÁO CÁO NGAY
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TEMPLATE 3: CORPORATE -->
+        <div id="template-3" class="template">
+            <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
+                <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-8">
+                    <h2 class="text-4xl font-bold mb-2">SCAMGUARD REPORT CENTER</h2>
+                    <p class="text-lg opacity-90">Xây dựng cộng đồng an toàn hơn cùng nhau</p>
+                </div>
+
+                <div class="p-8 max-w-4xl mx-auto">
+                    <div class="mb-8">
+                        <div class="flex items-center mb-4">
+                            <span class="inline-block w-10 h-10 bg-blue-600 text-white rounded-full text-center leading-10 font-bold mr-3">1</span>
+                            <h3 class="text-xl font-bold text-gray-900">LỰA CHỌN LOẠI BÁO CÁO</h3>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 ml-13">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 🌐 Website
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 📧 Email
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 📞 Phone
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 💰 Bank
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 📱 App
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="type" class="w-4 h-4"> 💬 Social
+                            </label>
+                        </div>
+                    </div>
+
+                    <hr class="my-8 border-gray-300">
+
+                    <div class="mb-8">
+                        <div class="flex items-center mb-4">
+                            <span class="inline-block w-10 h-10 bg-blue-600 text-white rounded-full text-center leading-10 font-bold mr-3">2</span>
+                            <h3 class="text-xl font-bold text-gray-900">NHẬP THÔNG TIN CHI TIẾT</h3>
+                        </div>
+
+                        <div class="space-y-4 ml-13">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Mục tiêu:</label>
+                                <input type="text" placeholder="VD: scam-banking.fake.vn" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Mô tả chi tiết:</label>
+                                <textarea rows="5" placeholder="Mô tả những gì xảy ra..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-8 border-gray-300">
+
+                    <div class="mb-8">
+                        <div class="flex items-center mb-4">
+                            <span class="inline-block w-10 h-10 bg-blue-600 text-white rounded-full text-center leading-10 font-bold mr-3">3</span>
+                            <h3 class="text-xl font-bold text-gray-900">XÁC NHẬN VÀ GỬI</h3>
+                        </div>
+
+                        <div class="space-y-3 ml-13">
+                            <label class="flex items-start gap-2 cursor-pointer">
+                                <input type="checkbox" class="mt-1">
+                                <span class="text-sm">Tôi xác nhận thông tin trên là chính xác</span>
+                            </label>
+                            <label class="flex items-start gap-2 cursor-pointer">
+                                <input type="checkbox" class="mt-1">
+                                <span class="text-sm">Tôi đồng ý với Điều khoản sử dụng</span>
+                            </label>
+
+                            <button class="mt-6 w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition text-lg">
+                                SUBMIT REPORT
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-gray-700">
+                        <p>🔒 <strong>Bảo mật:</strong> Dữ liệu được bảo vệ theo GDPR</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TEMPLATE 4: INTERACTIVE -->
+        <div id="template-4" class="template">
+            <div class="bg-gradient-to-br from-purple-100 to-blue-100 rounded-2xl shadow-2xl p-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-4xl font-black text-purple-600 mb-4">🚀 TỪNGA ĐƠ BÁO CÁO</h2>
+                    <div class="w-full bg-gray-300 rounded-full h-4 max-w-md mx-auto mb-2">
+                        <div class="bg-gradient-to-r from-purple-500 to-blue-500 h-4 rounded-full" style="width: 60%"></div>
+                    </div>
+                    <p class="text-gray-700 font-semibold">Tiến độ: 60%</p>
+                </div>
+
+                <div class="max-w-3xl mx-auto">
+                    <div class="flex justify-between mb-8">
+                        <div class="text-center">
+                            <div class="w-12 h-12 bg-green-500 text-white rounded-full mx-auto mb-2 flex items-center justify-center font-bold">✓</div>
+                            <p class="text-sm font-semibold">Bước 1</p>
+                        </div>
+                        <div class="text-center flex-1 flex items-end mb-2 px-2">
+                            <div class="flex-1 h-1 bg-green-500"></div>
+                        </div>
+                        <div class="text-center">
+                            <div class="w-12 h-12 bg-purple-500 text-white rounded-full mx-auto mb-2 flex items-center justify-center font-bold">2</div>
+                            <p class="text-sm font-semibold">Bước 2</p>
+                        </div>
+                        <div class="text-center flex-1 flex items-end mb-2 px-2">
+                            <div class="flex-1 h-1 bg-gray-300"></div>
+                        </div>
+                        <div class="text-center">
+                            <div class="w-12 h-12 bg-gray-300 text-gray-600 rounded-full mx-auto mb-2 flex items-center justify-center font-bold">3</div>
+                            <p class="text-sm font-semibold">Bước 3</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-8 shadow-lg mb-6">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6">❓ LOẠI LỪA CÓ GÌ?</h3>
+
+                        <div class="grid grid-cols-2 gap-4 mb-8">
+                            <div class="border-2 border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition">
+                                <div class="text-4xl mb-2">🌐</div>
+                                <p class="font-bold">Website</p>
+                            </div>
+                            <div class="border-2 border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition">
+                                <div class="text-4xl mb-2">📧</div>
+                                <p class="font-bold">Email</p>
+                            </div>
+                            <div class="border-2 border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition">
+                                <div class="text-4xl mb-2">📞</div>
+                                <p class="font-bold">Điện thoại</p>
+                            </div>
+                            <div class="border-2 border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition">
+                                <div class="text-4xl mb-2">💰</div>
+                                <p class="font-bold">Thanh toán</p>
+                            </div>
+                        </div>
+
+                        <button class="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white font-bold py-4 rounded-xl hover:shadow-xl transition text-lg">
+                            TIẾP TỤC ▶
+                        </button>
+                    </div>
+
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+                        <p class="text-sm text-gray-700">
+                            <strong>💡 Tip:</strong> Cung cấp URL hoặc số điện thoại chính xác để báo cáo nhanh hơn
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TEMPLATE 5: DASHBOARD -->
+        <div id="template-5" class="template">
+            <div class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-2xl p-8">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold mb-4">📊 HỆ THỐNG THEO DÕI BÁO CÁO</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-slate-700/50 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm">Hôm nay</p>
+                            <p class="text-2xl font-bold">234</p>
+                        </div>
+                        <div class="bg-slate-700/50 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm">Tuần này</p>
+                            <p class="text-2xl font-bold">1,890</p>
+                        </div>
+                        <div class="bg-slate-700/50 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm">Tháng này</p>
+                            <p class="text-2xl font-bold">7,456</p>
+                        </div>
+                        <div class="bg-slate-700/50 rounded-lg p-4">
+                            <p class="text-gray-400 text-sm">Tổng cộng</p>
+                            <p class="text-2xl font-bold">45,234</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-slate-700/50 rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">🔴 TOP 5 LỪA ĐẢO HÔM NAY</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="flex justify-between mb-1 text-sm">
+                                    <span>fake-banking.vn</span>
+                                    <span>45</span>
+                                </div>
+                                <div class="w-full bg-slate-600 rounded-full h-2">
+                                    <div class="bg-red-500 h-2 rounded-full" style="width: 90%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1 text-sm">
+                                    <span>spam-invest.com</span>
+                                    <span>38</span>
+                                </div>
+                                <div class="w-full bg-slate-600 rounded-full h-2">
+                                    <div class="bg-orange-500 h-2 rounded-full" style="width: 76%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1 text-sm">
+                                    <span>0987654321</span>
+                                    <span>28</span>
+                                </div>
+                                <div class="w-full bg-slate-600 rounded-full h-2">
+                                    <div class="bg-yellow-500 h-2 rounded-full" style="width: 56%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1 text-sm">
+                                    <span>paypal.fake.vn</span>
+                                    <span>18</span>
+                                </div>
+                                <div class="w-full bg-slate-600 rounded-full h-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 36%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1 text-sm">
+                                    <span>amazon-vietland.ru</span>
+                                    <span>12</span>
+                                </div>
+                                <div class="w-full bg-slate-600 rounded-full h-2">
+                                    <div class="bg-green-500 h-2 rounded-full" style="width: 24%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-700/50 rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">📊 LOẠI BÁO CÁO</h3>
+                        <div class="grid grid-cols-3 gap-3 text-center">
+                            <div class="bg-blue-500/20 border border-blue-500 rounded-xl p-4">
+                                <p class="text-2xl font-bold">45%</p>
+                                <p class="text-sm">Website</p>
+                            </div>
+                            <div class="bg-pink-500/20 border border-pink-500 rounded-xl p-4">
+                                <p class="text-2xl font-bold">35%</p>
+                                <p class="text-sm">Phone</p>
+                            </div>
+                            <div class="bg-purple-500/20 border border-purple-500 rounded-xl p-4">
+                                <p class="text-2xl font-bold">20%</p>
+                                <p class="text-sm">Email</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-700/50 rounded-xl p-6 mb-6">
+                    <h3 class="text-xl font-bold mb-4">+ GỬI BÁO CÁO MỚI</h3>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <input type="text" placeholder="website, email, phone..." class="px-4 py-2 rounded-lg bg-slate-600 border border-slate-500 text-white placeholder-gray-400">
+                        <select class="px-4 py-2 rounded-lg bg-slate-600 border border-slate-500 text-white">
+                            <option>-- Chọn loại --</option>
+                            <option>Website</option>
+                            <option>Phone</option>
+                            <option>Email</option>
+                        </select>
+                    </div>
+                    <textarea rows="3" placeholder="Chi tiết..." class="w-full px-4 py-2 rounded-lg bg-slate-600 border border-slate-500 text-white placeholder-gray-400 mb-4"></textarea>
+                    <button class="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold py-2 px-6 rounded-lg hover:shadow-xl transition">
+                        [ GỬI ]
+                    </button>
+                </div>
+
+                <div class="bg-green-500/20 border border-green-500 rounded-xl p-4 text-center">
+                    <p>📈 Báo cáo của bạn #12845 ✅ Đã nhận thành công</p>
+                    <p class="text-xs text-gray-300 mt-1">Gửi lúc: 2024-03-03 14:25:30</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="max-w-7xl mx-auto p-4 mt-12 mb-8">
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+            <h3 class="text-lg font-bold text-blue-900 mb-2">✨ Chọn mẫu yêu thích</h3>
+            <p class="text-sm text-gray-700">Mẫu nào bạn thích? Cho tôi biết để implement code React đầy đủ!</p>
+        </div>
+    </div>
+
+    <script>
+        function showTemplate(num) {
+            // Hide all templates
+            const templates = document.querySelectorAll('.template');
+            templates.forEach(t => t.classList.remove('active'));
+
+            // Show selected template
+            document.getElementById(`template-${num}`).classList.add('active');
+
+            // Update buttons
+            const buttons = document.querySelectorAll('.nav-btn');
+            buttons.forEach(btn => btn.classList.remove('active', 'bg-blue-600', 'text-white'));
+            event.target.classList.add('active', 'bg-blue-600', 'text-white');
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

@@ -157,12 +157,18 @@ export function MobileNav() {
   // Touch events
   const onTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
+    if (!touch) return;
     handleDragStart(touch.clientX, touch.clientY);
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
+    if (!touch) return;
     handleDragMove(touch.clientX, touch.clientY);
+  };
+
+  const onTouchEnd = () => {
+    handleDragEnd();
   };
 
   // Mouse events
@@ -196,12 +202,39 @@ export function MobileNav() {
   }, [isDragging, handleDragEnd, handleDragMove]);
 
   const toggleMenu = () => setIsOpen(prev => !prev);
-  const closeMenu = () => setIsOpen(false);
+  const closeMenu = useCallback(() => setIsOpen(false), []);
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+
+    const handleOutside = (event: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(event.target as Node)) {
+        closeMenu();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMenu();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, closeMenu]);
 
   // Calculate menu position based on button position
-  const menuStyle: React.CSSProperties = isRightSide 
-    ? { right: 0, bottom: BUTTON_SIZE + 12, alignItems: 'flex-end' }
-    : { left: 0, bottom: BUTTON_SIZE + 12, alignItems: 'flex-start' };
+  const menuPositionClass = isRightSide ? 'right-0 items-end' : 'left-0 items-start';
 
   return (
     <>
@@ -226,11 +259,14 @@ export function MobileNav() {
         }}
       >
         {/* Menu Items */}
-        {isOpen && (
-          <div 
-            className="absolute flex flex-col gap-2 mb-3"
-            style={menuStyle}
-          >
+        <div 
+          className={cn(
+            'absolute flex flex-col gap-2 mb-3 transition-all duration-200',
+            'opacity-0 translate-y-2 scale-95 pointer-events-none',
+            menuPositionClass,
+            isOpen && 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+          )}
+        >
             {tabs.map((tab, index) => {
               const Icon = tab.icon;
               const isActive = pathname === tab.href;
@@ -247,9 +283,6 @@ export function MobileNav() {
                       ? 'bg-primary/90 text-white' 
                       : 'bg-white/85 text-text-main hover:bg-white/95'
                   )}
-                  style={{
-                    animation: `slideInUp 0.3s ease ${index * 0.05}s both`,
-                  }}
                 >
                   <Icon className={cn('w-5 h-5', isActive ? 'text-white' : 'text-primary')} />
                   <span className="font-medium text-sm whitespace-nowrap">{tab.label}</span>
@@ -257,7 +290,6 @@ export function MobileNav() {
               );
             })}
           </div>
-        )}
 
         {/* AssistiveTouch Button */}
         <button
@@ -266,7 +298,8 @@ export function MobileNav() {
           onMouseUp={onMouseUp}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
-          onTouchEnd={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchEnd}
           onClick={() => !isDragging && toggleMenu()}
           className={cn(
             'w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300',
@@ -289,19 +322,6 @@ export function MobileNav() {
         </button>
       </div>
 
-      {/* CSS Animations */}
-      <style jsx global>{`
-        @keyframes slideInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.9);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
     </>
   );
 }

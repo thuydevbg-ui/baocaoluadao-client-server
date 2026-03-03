@@ -1,7 +1,6 @@
 import { Building2, CheckCircle2, Clock, FileText, Globe } from 'lucide-react';
-import { RowDataPacket } from 'mysql2/promise';
-import { getDb } from '@/lib/db';
 import { formatDate } from '@/lib/utils';
+import { fetchCategoryDirectory, type TinnhiemCategory, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,115 +17,89 @@ interface TrustedAuthorityItem {
   riskScore: number;
 }
 
-interface TrustedRow extends RowDataPacket {
-  id?: string;
-  type?: string;
-  name?: string;
-  value?: string;
-  organization?: string;
-  source?: string;
-  reports?: number;
-  report_count?: number;
-  firstSeen?: string;
-  created_at?: string;
-  status?: string;
-  riskScore?: number;
+const CACHE_TTL_MS = 60_000;
+const DISPLAY_LIMIT = 6;
+let cachedTrusted: { items: TrustedAuthorityItem[]; fetchedAt: number } | null = null;
+
+function normalizeRowType(value?: string): TrustedAuthorityType {
+  const normalized = (value || '').trim().toLowerCase();
+  if (normalized === 'bank' || normalized === 'organization') return 'organization';
+  return 'website';
 }
 
-function shuffle<T>(items: T[]): T[] {
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
+const CATEGORY_SOURCE: TinnhiemCategory[] = ['websites', 'organizations', 'apps'];
+const SAFE_STATUS_EXCLUDE = ['confirmed', 'scam', 'suspected', 'warning'];
+
+function mapCategoryRisk(status?: string): 'safe' | 'suspicious' | 'scam' {
+  if (!status) return 'safe';
+  const lowered = status.toLowerCase();
+  if (lowered === 'confirmed' || lowered === 'scam') return 'scam';
+  if (lowered === 'suspected' || lowered === 'warning') return 'suspicious';
+  return 'safe';
+}
+
+function parseDateValue(input?: string): number {
+  if (!input) return 0;
+  const trimmed = input.trim();
+  const parts = trimmed.split('/');
+  if (parts.length === 3) {
+    const day = Number.parseInt(parts[0], 10);
+    const month = Number.parseInt(parts[1], 10) - 1;
+    let year = Number.parseInt(parts[2], 10);
+    if (Number.isFinite(year) && year < 100) {
+      year += 2000;
+    }
+    const date = new Date(Date.UTC(year, month, day));
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
   }
-  return next;
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function pickBalanced(websites: TrustedAuthorityItem[], organizations: TrustedAuthorityItem[], limit = 6) {
-  const websiteItems = shuffle(websites).slice(0, Math.ceil(limit / 2));
-  const organizationItems = shuffle(organizations).slice(0, Math.floor(limit / 2));
-  let combined = [...websiteItems, ...organizationItems];
-
-  if (combined.length < limit) {
-    const remaining = shuffle([
-      ...websites.filter((item) => !websiteItems.includes(item)),
-      ...organizations.filter((item) => !organizationItems.includes(item)),
-    ]);
-    combined = [...combined, ...remaining.slice(0, limit - combined.length)];
-  }
-
-  return combined.slice(0, limit);
-}
-
-function normalizeStatus(value?: string): string {
-  return (value || '').trim().toLowerCase();
-}
-
-function toTrustedItem(row: TrustedRow): TrustedAuthorityItem {
-  const type = (row.type || 'website') as TrustedAuthorityType;
-  const name = row.name || row.value || 'Đối tượng uy tín';
-  const reportsValue = row.reports ?? row.report_count ?? 0;
-  const reports = Number.isFinite(reportsValue) ? Number(reportsValue) : 0;
-  const riskScoreValue = row.riskScore ?? 0;
-  const riskScore = Number.isFinite(riskScoreValue) ? Number(riskScoreValue) : 0;
-  const organization = row.organization || row.source || (type === 'organization' ? name : 'Nguồn xác minh');
+function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): TrustedAuthorityItem {
+  const type = item.type === 'organizations' ? 'organization' : 'website';
+  const reports = Number.parseInt(item.count_report || '0', 10) || 0;
+  const organization = item.organization || (type === 'organization' ? item.name : 'TinNhiemMang.vn');
+  // Use server time if provided, otherwise use item's created_at, never generate new date during render
+  const firstSeen = serverTime 
+    ? new Date(serverTime).toISOString() 
+    : (item.created_at || '');
   return {
-    id: row.id || `${type}-${name}-${Math.random().toString(36).slice(2, 10)}`,
-    type,
-    name,
+    id: item.id || `${type}-${item.name}`.toLowerCase().replace(/\s+/g, '-'),
+    type: normalizeRowType(type),
+    name: item.name,
     organization,
     reports,
-    firstSeen: row.firstSeen || row.created_at || new Date().toISOString(),
-    status: normalizeStatus(row.status),
-    riskScore,
+    firstSeen,
+    status: (item.status || '').trim().toLowerCase(),
+    riskScore: 0,
   };
-}
-
-const RISK_SCORE_EXPR = "CASE risk_level WHEN 'low' THEN 10 WHEN 'medium' THEN 45 WHEN 'high' THEN 80 ELSE 15 END";
-
-async function queryTrustedByType(type: TrustedAuthorityType, limit: number): Promise<TrustedAuthorityItem[]> {
-  const db = getDb();
-  const [rows] = await db.query<TrustedRow[]>(
-    `SELECT id, type, value as name, source as organization, report_count as reports, created_at as firstSeen, status,
-            ${RISK_SCORE_EXPR} as riskScore
-     FROM scams
-     WHERE type = ? AND (status = 'trusted' OR ${RISK_SCORE_EXPR} <= 20)
-     ORDER BY RAND()
-     LIMIT ?`,
-    [type, limit]
-  );
-  return rows.map((row) => toTrustedItem(row));
-}
-
-async function queryTrustedAny(limit: number): Promise<TrustedAuthorityItem[]> {
-  const db = getDb();
-  const [rows] = await db.query<TrustedRow[]>(
-    `SELECT id, type, value as name, source as organization, report_count as reports, created_at as firstSeen, status,
-            ${RISK_SCORE_EXPR} as riskScore
-     FROM scams
-     WHERE type IN ('website','organization') AND (status = 'trusted' OR ${RISK_SCORE_EXPR} <= 20)
-     ORDER BY RAND()
-     LIMIT ?`,
-    [limit]
-  );
-  return rows.map((row) => toTrustedItem(row));
 }
 
 async function fetchTrustedAuthorities(): Promise<TrustedAuthorityItem[]> {
   try {
-    const [websites, organizations] = await Promise.all([
-      queryTrustedByType('website', 3),
-      queryTrustedByType('organization', 3),
-    ]);
+    // Capture server time once at the start of the request
+    const serverTime = Date.now();
+    
+    const results = await Promise.allSettled(
+      CATEGORY_SOURCE.map((category) => fetchCategoryDirectory(category, 1, ''))
+    );
 
-    let combined = pickBalanced(websites, organizations, 6);
-    if (combined.length < 6) {
-      const extras = await queryTrustedAny(6 - combined.length);
-      const existingIds = new Set(combined.map((item) => item.id));
-      combined = [...combined, ...extras.filter((item) => !existingIds.has(item.id))].slice(0, 6);
-    }
+    const safeItems: TrustedAuthorityItem[] = [];
+    results.forEach((result) => {
+      if (result.status !== 'fulfilled') return;
+      result.value.items.forEach((item) => {
+        if (mapCategoryRisk(item.status) === 'safe') {
+          safeItems.push(toTrustedItem(item, serverTime));
+        }
+      });
+    });
 
-    return combined.filter((item) => item.status === 'trusted' || item.riskScore <= 20);
+    const sorted = safeItems.sort(
+      (a, b) => parseDateValue(b.firstSeen) - parseDateValue(a.firstSeen)
+    );
+
+    return sorted.slice(0, DISPLAY_LIMIT);
   } catch (error) {
     console.error('Trusted authorities fetch failed:', error);
     return [];
@@ -134,26 +107,37 @@ async function fetchTrustedAuthorities(): Promise<TrustedAuthorityItem[]> {
 }
 
 export default async function TrustedSection() {
+  if (cachedTrusted && Date.now() - cachedTrusted.fetchedAt < CACHE_TTL_MS) {
+    const cachedItems = cachedTrusted.items;
+    return renderTrustedSection(cachedItems);
+  }
+
   const items = await fetchTrustedAuthorities();
+  cachedTrusted = { items, fetchedAt: Date.now() };
+  return renderTrustedSection(items);
+}
+
+function renderTrustedSection(items: TrustedAuthorityItem[]) {
+  const hasItems = items.length > 0;
 
   return (
     <section className="rounded-2xl border border-bg-border bg-white/70 dark:bg-[#0c1221]/80 shadow-sm backdrop-blur">
-      <div className="p-5 space-y-4">
+      <div className="p-4 md:p-5 space-y-3 md:space-y-4">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Trang & Tổ chức uy tín</p>
           <h3 className="text-lg font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h3>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 md:flex-col md:overflow-visible md:pb-0">
+        <div className="grid gap-3 md:flex md:flex-col md:gap-4">
           {items.map((item) => {
             const Icon = item.type === 'website' ? Globe : Building2;
             return (
               <div
                 key={item.id}
-                className="min-w-[260px] snap-start rounded-2xl border border-bg-border/70 bg-white/80 dark:bg-[#101827]/80 p-4 shadow-sm transition-all duration-200 hover:translate-y-1 hover:border-primary/40"
+                className="w-full rounded-xl border border-bg-border/60 bg-white/80 dark:bg-[#101827]/80 p-3 md:p-4 shadow-sm transition-all duration-200 hover:translate-y-1 hover:border-primary/40"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                     <Icon className="w-5 h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -183,7 +167,7 @@ export default async function TrustedSection() {
               </div>
             );
           })}
-          {items.length === 0 && (
+          {!hasItems && (
             <div className="rounded-2xl border border-dashed border-bg-border/70 bg-bg-card/60 p-6 text-sm text-text-muted">
               Chưa có dữ liệu uy tín để hiển thị.
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -11,8 +11,8 @@ type AdminThemeContextValue = {
 const AdminThemeContext = createContext<AdminThemeContextValue | undefined>(undefined);
 
 export function AdminThemeProvider({ children, theme }: { children: React.ReactNode; theme: Theme }) {
-  // Keep <html> .dark class in sync for components and global CSS that rely on it.
-  useEffect(() => {
+  // Use useLayoutEffect to sync theme before paint
+  useLayoutEffect(() => {
     try {
       document.documentElement.classList.toggle('dark', theme === 'dark');
     } catch {

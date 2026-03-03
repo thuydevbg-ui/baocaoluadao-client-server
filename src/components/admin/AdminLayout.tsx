@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -26,31 +26,55 @@ const pageTitles: Record<string, string> = {
   '/admin/settings': 'Cài đặt'
 };
 
+// Get initial theme synchronously to prevent hydration mismatch
+function getInitialTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'light';
+  try {
+    const saved = localStorage?.getItem('adminTheme');
+    return saved === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [mounted, setMounted] = useState(false);
+  const authCheckDoneRef = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
 
-  // Initialize theme from localStorage on mount
+  // Handle theme initialization and DOM sync after mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('adminTheme');
-    const initialTheme: 'light' | 'dark' = savedTheme === 'dark' ? 'dark' : 'light';
+    const initialTheme = getInitialTheme();
     setTheme(initialTheme);
     document.documentElement.classList.toggle('dark', initialTheme === 'dark');
+    setMounted(true);
   }, []);
 
-  const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-    localStorage.setItem('adminTheme', nextTheme);
-    document.documentElement.classList.toggle('dark', nextTheme === 'dark');
-  };
+  const toggleTheme = useCallback(() => {
+    setTheme((prevTheme) => {
+      const nextTheme = prevTheme === 'light' ? 'dark' : 'light';
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('adminTheme', nextTheme);
+          document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+        } catch {
+          // Ignore storage errors
+        }
+      }
+      return nextTheme;
+    });
+  }, []);
 
   // Client-side auth verification (defense-in-depth)
   useEffect(() => {
+    if (authCheckDoneRef.current) return;
+    authCheckDoneRef.current = true;
+
     const checkAuth = async () => {
       try {
         const controller = new AbortController();
@@ -77,11 +101,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     checkAuth();
   }, []);
 
+  // Handle auth redirect
   useEffect(() => {
-    if (!isLoading && !isAuthorized) {
+    if (!isLoading && !isAuthorized && mounted) {
       router.push('/admin/login');
     }
-  }, [isAuthorized, isLoading, router]);
+  }, [isAuthorized, isLoading, router, mounted]);
 
   const getTitle = () => {
     for (const [path, title] of Object.entries(pageTitles)) {
@@ -90,6 +115,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
     return 'Admin';
   };
+
+  // Don't render until hydration is complete
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
+        <div className="animate-pulse text-gray-400">Loading...</div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

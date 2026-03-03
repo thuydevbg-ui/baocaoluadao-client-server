@@ -23,13 +23,34 @@ if (!process.env.DB_HOST || !process.env.DB_USER) {
 let pool: mysql.Pool | undefined;
 let poolCreationFailed = false;
 
+function getDbConfig() {
+  // Note: getDbConfig() is called when pool is created (line 45), not on every getDb() call.
+  // The pool is created once and stored in module-level variable.
+  // We fetch fresh config here to support:
+  // 1. Runtime env var changes (useful during development with hot reload)
+  // 2. Dynamic configuration updates without restarting the server
+  // 3. Ensuring env vars are properly loaded in all deployment scenarios
+  // For production with static env vars, this has minimal overhead as it's only
+  // called once during pool initialization.
+  return {
+    host: process.env.DB_HOST || "127.0.0.1",
+    user: process.env.DB_USER || "root",
+    password: process.env.DB_PASSWORD || "",
+    database: process.env.DB_NAME || "baocaoluadao",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  };
+}
+
 export function getDb(): mysql.Pool {
   if (!pool) {
     if (poolCreationFailed) {
       throw new Error('Database pool creation previously failed. Check DB configuration and restart the server.');
     }
     try {
-      pool = mysql.createPool(dbConfig);
+      // Get fresh config each time to ensure env vars are loaded
+      pool = mysql.createPool(getDbConfig());
       console.log('✅ Database pool created successfully');
     } catch (error) {
       poolCreationFailed = true;

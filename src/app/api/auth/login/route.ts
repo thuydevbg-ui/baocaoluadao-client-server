@@ -1,230 +1,133 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
-import { COOKIE_NAME, createSignedCookieValue } from '@/lib/auth';
-import { recordAdminActivity } from '@/lib/adminManagementStore';
-import { AUTH_RATE_LIMIT, checkRateLimit } from '@/lib/rateLimit';
-import { withApiObservability } from '@/lib/apiHandler';
+import { checkRateLimit, AUTH_RATE_LIMIT } from '@/lib/rateLimit';
 
-// Environment variables for admin credentials
-// IMPORTANT: ADMIN_PASSWORD should be bcrypt HASHED, not plain text!
-// To generate a hash: bcrypt.hash('your-password', 10)
-const _adminEmail = process.env.ADMIN_EMAIL;
-const _adminPasswordHash = process.env.ADMIN_PASSWORD_HASH; // NEW: bcrypt hashed password
-const _adminPassword = process.env.ADMIN_PASSWORD; // Legacy: plain text password (deprecated)
-const _adminRole = process.env.ADMIN_ROLE || 'admin';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@baocaoluadao.com';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
+const ADMIN_ROLE = process.env.ADMIN_ROLE || 'admin';
+const COOKIE_NAME = 'adminAuth';
 
-// Validate admin configuration - require either new hashed password or legacy plain text
-if (!_adminEmail) {
-  throw new Error('ADMIN_EMAIL environment variable is required');
-}
-
-// Security: Require hashed password in production - no plain text passwords allowed
-const isProduction = process.env.NODE_ENV === 'production';
-if (isProduction && !_adminPasswordHash) {
-  throw new Error('FATAL: ADMIN_PASSWORD_HASH environment variable is required in production. Plain text passwords are not allowed for security reasons.');
-}
-
-if (!_adminPasswordHash && !_adminPassword) {
-  throw new Error('ADMIN_PASSWORD_HASH environment variable is required');
-}
-
-// DEPRECATED: Plain text password support - only for local development
-// Will be removed in future versions
-const ADMIN_EMAIL = _adminEmail; // Admin email for login
-const ADMIN_PASSWORD_HASH = _adminPasswordHash; // bcrypt hash
-const ADMIN_PASSWORD = process.env.NODE_ENV !== 'production' ? _adminPassword : undefined; // legacy - production disabled
-const ADMIN_ROLE = _adminRole;
-
-/**
- * Verify password against bcrypt hash only (plain text disabled in production)
- */
-async function verifyPassword(password: string): Promise<boolean> {
-  // First try bcrypt hash if available
-  if (ADMIN_PASSWORD_HASH) {
-    try {
-      return await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    } catch (err) {
-      console.error('Bcrypt comparison error:', err);
-      return false;
-    }
+// Validate required secret - never use default in production
+const AUTH_COOKIE_SECRET = process.env.AUTH_COOKIE_SECRET;
+if (!AUTH_COOKIE_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('[CRITICAL] AUTH_COOKIE_SECRET environment variable is required in production');
   }
-  
-  // Fallback to legacy plain text comparison (development only - disabled in production)
-  if (ADMIN_PASSWORD) {
-    return constantTimeEqual(password, ADMIN_PASSWORD);
-  }
-  
-  return false;
+  console.warn('[WARNING] AUTH_COOKIE_SECRET not set, using dev secret (NOT SAFE FOR PRODUCTION)');
 }
-
-/**
- * Constant-time string comparison to prevent timing attacks
- * Uses crypto.timingSafeEqual for secure comparison
- */
-function constantTimeEqual(a: string, b: string): boolean {
-  try {
-    const aBuffer = Buffer.from(a);
-    const bBuffer = Buffer.from(b);
-    
-    // timingSafeEqual throws if buffers have different lengths
-    if (aBuffer.length !== bBuffer.length) {
-      return false;
-    }
-    
-    return crypto.timingSafeEqual(aBuffer, bBuffer);
-  } catch {
-    // If comparison fails, return false (fail closed)
-    return false;
-  }
-}
+const COOKIE_SECRET = AUTH_COOKIE_SECRET || 'dev-secret-do-not-use-in-production';
 
 function getClientIP(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
   const realIP = request.headers.get('x-real-ip');
-
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
-  }
-
-  if (realIP) {
-    return realIP;
-  }
-
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  if (realIP) return realIP.trim();
   return 'unknown';
 }
 
-export const POST = withApiObservability(async (request: NextRequest) => {
+async function verifyPassword(password: string): Promise<boolean> {
+  if (!ADMIN_PASSWORD_HASH) return false;
   try {
+    console.log('[VERIFY] Comparing password with hash:', ADMIN_PASSWORD_HASH.substring(0, 20) + '...');
+    const result = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    console.log('[VERIFY] bcrypt.compare result:', result);
+    return result;
+  } catch (e) {
+    console.log('[VERIFY] Error:', e);
+    return false;
+  }
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  try {
+    const aBuf = Buffer.from(a);
+    const bBuf = Buffer.from(b);
+    if (aBuf.length !== bBuf.length) return false;
+    return crypto.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    return false;
+  }
+}
+
+function createSignedCookie(payload: object): string {
+  const hmac = crypto.createHmac('sha256', COOKIE_SECRET);
+  const data = JSON.stringify(payload);
+  hmac.update(data);
+  return JSON.stringify({ d: data, s: hmac.digest('base64url') });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // Rate limiting - prevent brute force attacks
     const ip = getClientIP(request);
     const rateLimitResult = await checkRateLimit({
       scope: 'admin-login',
       key: ip,
-      ...AUTH_RATE_LIMIT,
+      maxAttempts: AUTH_RATE_LIMIT.maxAttempts,
+      windowSeconds: AUTH_RATE_LIMIT.windowMs / 1000,
+      banSeconds: AUTH_RATE_LIMIT.banSeconds,
     });
 
     if (!rateLimitResult.allowed) {
-      recordAdminActivity({
-        action: rateLimitResult.isBanned ? 'Dang nhap bi chan tam thoi' : 'Vuot gioi han dang nhap',
-        user: 'unknown',
-        target: '/admin/login',
-        status: 'warning',
-        ip,
-      });
-
-      const response = NextResponse.json(
-        {
-          error: rateLimitResult.isBanned
+      return NextResponse.json(
+        { 
+          error: rateLimitResult.isBanned 
             ? 'Tai khoan bi tam khoa do dang nhap sai qua nhieu lan. Vui long thu lai sau.'
             : 'Qua nhieu lan thu dang nhap. Vui long thu lai sau.',
-          retryAfter: rateLimitResult.retryAfter,
+          retryAfter: rateLimitResult.retryAfter
         },
-        {
+        { 
           status: 429,
-          headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {},
+          headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {}
         }
       );
-
-      response.headers.set('X-RateLimit-Limit', String(AUTH_RATE_LIMIT.maxAttempts));
-      response.headers.set('X-RateLimit-Remaining', '0');
-      if (rateLimitResult.retryAfter) {
-        response.headers.set('X-RateLimit-Reset', String(rateLimitResult.retryAfter));
-      }
-
-      return response;
     }
 
-    const origin = request.headers.get('origin');
-    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) || [];
-    const isProduction = process.env.NODE_ENV === 'production';
+    const body = await request.json();
+    const { email, password, rememberMe } = body || {};
 
-    if (origin && isProduction && allowedOrigins.length === 0) {
-      return NextResponse.json(
-        { error: 'CORS not configured. Set ALLOWED_ORIGINS environment variable (comma-separated list of allowed domains)' },
-        { status: 403 }
-      );
+    // DEBUG
+    console.log('[LOGIN DEBUG] Received body:', JSON.stringify(body));
+    console.log('[LOGIN DEBUG] Password received:', password);
+
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Thieu email hoac mat khau' }, { status: 400 });
     }
 
-    if (origin && allowedOrigins.length > 0) {
-      const isAllowedOrigin = allowedOrigins.some((allowed) => {
-        // Exact match or proper subdomain match
-        const normalizedAllowed = allowed.trim();
-        const normalizedOrigin = origin.trim();
-        return normalizedOrigin === normalizedAllowed ||
-               normalizedOrigin === `https://${normalizedAllowed}` ||
-               normalizedOrigin === `http://${normalizedAllowed}`;
-      });
-      if (!isAllowedOrigin) {
-        return NextResponse.json({ error: 'Yeu cau khong duoc phep' }, { status: 403 });
-      }
-    }
-
-    let body: { email?: string; password?: string; rememberMe?: boolean };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    const email = body?.email;
-    const password = body?.password;
-    const rememberMe = body?.rememberMe === true;
-
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return NextResponse.json({ error: 'Email and password must be strings' }, { status: 400 });
-    }
-
-    if (!email.trim() || !password.trim()) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
-    }
-
-    // Use async password verification with bcrypt (or legacy plain text)
-    const isPasswordValid = await verifyPassword(password);
+    const passwordValid = await verifyPassword(password);
+    const emailValid = constantTimeEqual(email, ADMIN_EMAIL);
     
-    // Verify email with constant-time comparison to prevent timing attacks
-    const isEmailValid = constantTimeEqual(email, ADMIN_EMAIL);
-    
-    if (!isEmailValid || !isPasswordValid) {
-      recordAdminActivity({
-        action: 'Dang nhap that bai',
-        user: email,
-        target: '/admin/login',
-        status: 'failed',
-        ip,
-      });
+    // DEBUG
+    console.log('[LOGIN DEBUG] Email:', email, '| ADMIN_EMAIL:', ADMIN_EMAIL);
+    console.log('[LOGIN DEBUG] Email valid:', emailValid);
+    console.log('[LOGIN DEBUG] Password valid:', passwordValid);
+    console.log('[LOGIN DEBUG] ADMIN_PASSWORD_HASH:', ADMIN_PASSWORD_HASH ? 'set' : 'NOT SET');
 
+    if (!emailValid || !passwordValid) {
       return NextResponse.json({ error: 'Email hoac mat khau khong dung' }, { status: 401 });
     }
 
-    const authData = createSignedCookieValue({
+    const authData = createSignedCookie({
       email,
       role: ADMIN_ROLE,
-      name: 'Admin User',
-      loginTime: new Date().toISOString(),
+      name: 'Admin',
+      loginTime: new Date().toISOString()
     });
 
     const response = NextResponse.json({ success: true });
-    // Remember me: 30 days, otherwise 24 hours
-    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
+    const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 24 * 60 * 60;
     response.cookies.set(COOKIE_NAME, authData, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge,
-      path: '/',
-    });
-
-    recordAdminActivity({
-      action: 'Dang nhap admin',
-      user: email,
-      target: '/admin',
-      status: 'success',
-      ip,
+      path: '/'
     });
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({ error: 'Loi server noi bo' }, { status: 500 });
+    console.error('[LOGIN] Error:', error);
+    return NextResponse.json({ error: 'Loi server' }, { status: 500 });
   }
-});
+}
