@@ -11,8 +11,7 @@
     "start": "dotenv -e .env -- next start",
     "lint": "next lint",
     "sanitize:temp": "node scripts/relocate-temp-files.js",
-    "clean:temp": "node -e \"const fs=require('fs'); const path=require('path'); const root=process.cwd(); const rm=(dir)=>{ if(!fs.existsSync(dir)) return; for(const f of fs.readdirSync(dir)){ if(/^tm_.*\\.html$/i.test(f)){ try{ fs.unlinkSync(path.join(dir,f)); }catch{} } } }; rm(root); rm(path.join(root,'.cache','tinnhiem'));\"",
-    "github:auto-deploy": "bash scripts/auto-deploy-github.sh"
+    "clean:temp": "node -e \"const fs=require('fs'); const path=require('path'); const root=process.cwd(); const rm=(dir)=>{ if(!fs.existsSync(dir)) return; for(const f of fs.readdirSync(dir)){ if(/^tm_.*\\.html$/i.test(f)){ try{ fs.unlinkSync(path.join(dir,f)); }catch{} } } }; rm(root); rm(path.join(root,'.cache','tinnhiem'));\""
   },
   "dependencies": {
     "@flaticon/flaticon-uicons": "^3.3.1",
