@@ -21,9 +21,9 @@ jobs:
     env:
       CI: true
       NEXT_TELEMETRY_DISABLED: 1
-      AUTH_COOKIE_SECRET: ${{ secrets.AUTH_COOKIE_SECRET }}
-      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-      ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+      AUTH_COOKIE_SECRET: ${{ secrets.AUTH_COOKIE_SECRET || 'ci-build-only-secret' }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'ci@example.com' }}
+      ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH || '$2b$10$CwTycUXWue0Thq9StjUM0uJ8f5xHn0SI7RyhokW2N7DbStO2Qd6aW' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
