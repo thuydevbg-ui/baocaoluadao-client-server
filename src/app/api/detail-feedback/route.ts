@@ -3,9 +3,12 @@ import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSignedCookie } from '@/lib/auth';
 import { applySecurityHeaders, createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
+import { getDb } from '@/lib/db';
+import { RowDataPacket } from 'mysql2/promise';
 
-// In-memory feedback store using global Map
-// SECURITY & DEPLOYMENT WARNING:
+// Database-based feedback with in-memory fallback
+// PRODUCTION: Uses MySQL for persistent storage
+// FALLBACK: Uses in-memory store if database is unavailable
 // - This implementation does NOT persist across serverless function cold starts
 // - In serverless environments (Vercel, AWS Lambda), the process may be terminated and
 //   restarted between requests, causing all feedback data to be lost
@@ -71,6 +74,192 @@ const DEFAULT_DISTRIBUTION = {
   4: 0,
   5: 0,
 } as Record<number, number>;
+
+// ==========================================
+// Database Helper Functions
+// ==========================================
+
+interface DbRating extends RowDataPacket {
+  id: string;
+  detail_key: string;
+  identity_key: string;
+  score: number;
+  created_at: number;
+  identity_type: string;
+}
+
+interface DbComment extends RowDataPacket {
+  id: string;
+  detail_key: string;
+  user: string;
+  avatar: string;
+  text: string;
+  author_identity_key: string;
+  helpful: number;
+  created_at: number;
+  verified: number;
+  helpful_by_identity: string;
+}
+
+/**
+ * Check if database is available
+ */
+function isDbAvailable(): boolean {
+  try {
+    getDb();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get ratings from database for a detail key
+ */
+async function getRatingsFromDb(detailKey: string): Promise<Map<string, { score: number; createdAt: number; identityType: string }>> {
+  const ratings = new Map<string, { score: number; createdAt: number; identityType: string }>();
+  
+  if (!isDbAvailable()) return ratings;
+  
+  try {
+    const db = getDb();
+    const [rows] = await db.query<DbRating[]>(
+      'SELECT identity_key, score, created_at, identity_type FROM detail_ratings WHERE detail_key = ?',
+      [detailKey]
+    );
+    
+    for (const row of rows) {
+      ratings.set(row.identity_key, {
+        score: row.score,
+        createdAt: row.created_at,
+        identityType: row.identity_type,
+      });
+    }
+  } catch (error) {
+    console.error('[DetailFeedback] Error fetching ratings from DB:', error);
+  }
+  
+  return ratings;
+}
+
+/**
+ * Get comments from database for a detail key
+ */
+async function getCommentsFromDb(detailKey: string): Promise<StoredComment[]> {
+  const comments: StoredComment[] = [];
+  
+  if (!isDbAvailable()) return comments;
+  
+  try {
+    const db = getDb();
+    const [rows] = await db.query<DbComment[]>(
+      'SELECT * FROM detail_feedback WHERE detail_key = ? ORDER BY created_at DESC LIMIT 150',
+      [detailKey]
+    );
+    
+    for (const row of rows) {
+      let helpfulByIdentity: string[] = [];
+      try {
+        helpfulByIdentity = JSON.parse(row.helpful_by_identity || '[]');
+      } catch {}
+      
+      comments.push({
+        id: row.id,
+        user: row.user,
+        avatar: row.avatar,
+        text: row.text,
+        authorIdentityKey: row.author_identity_key,
+        helpful: row.helpful,
+        createdAt: row.created_at,
+        verified: Boolean(row.verified),
+        helpfulByIdentity,
+      });
+    }
+  } catch (error) {
+    console.error('[DetailFeedback] Error fetching comments from DB:', error);
+  }
+  
+  return comments;
+}
+
+/**
+ * Add rating to database
+ */
+async function addRatingToDb(
+  detailKey: string,
+  identityKey: string,
+  score: number,
+  identityType: string
+): Promise<boolean> {
+  if (!isDbAvailable()) return false;
+  
+  try {
+    const db = getDb();
+    const id = crypto.randomUUID();
+    await db.execute(
+      'INSERT INTO detail_ratings (id, detail_key, identity_key, score, created_at, identity_type) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, detailKey, identityKey, score, Date.now(), identityType]
+    );
+    return true;
+  } catch (error) {
+    console.error('[DetailFeedback] Error adding rating to DB:', error);
+    return false;
+  }
+}
+
+/**
+ * Add comment to database
+ */
+async function addCommentToDb(comment: StoredComment, detailKey: string): Promise<boolean> {
+  if (!isDbAvailable()) return false;
+  
+  try {
+    const db = getDb();
+    await db.execute(
+      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, created_at, verified, helpful_by_identity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        comment.id,
+        detailKey,
+        comment.user,
+        comment.avatar,
+        comment.text,
+        comment.authorIdentityKey,
+        comment.helpful,
+        comment.createdAt,
+        comment.verified ? 1 : 0,
+        JSON.stringify(comment.helpfulByIdentity),
+      ]
+    );
+    return true;
+  } catch (error) {
+    console.error('[DetailFeedback] Error adding comment to DB:', error);
+    return false;
+  }
+}
+
+/**
+ * Update comment helpful count in database
+ */
+async function updateCommentHelpfulInDb(
+  commentId: string,
+  identityKey: string,
+  newHelpfulCount: number,
+  helpfulByIdentity: string[]
+): Promise<boolean> {
+  if (!isDbAvailable()) return false;
+  
+  try {
+    const db = getDb();
+    await db.execute(
+      'UPDATE detail_feedback SET helpful = ?, helpful_by_identity = ? WHERE id = ?',
+      [newHelpfulCount, JSON.stringify(helpfulByIdentity), commentId]
+    );
+    return true;
+  } catch (error) {
+    console.error('[DetailFeedback] Error updating comment helpful in DB:', error);
+    return false;
+  }
+}
 
 function sanitizePlainText(input: string): string {
   return input
@@ -173,8 +362,27 @@ function withVisitorCookie(response: NextResponse, identity: IdentityInfo): Next
 }
 
 function ensureEntry(detailKey: string): FeedbackEntry {
+  // Try to get from memory cache first
   let entry = feedbackStore.get(detailKey);
+  
+  // If not in memory, try to load from database
   if (!entry) {
+    // Load from database asynchronously (fire and forget for now)
+    // The data will be available on next request
+    getRatingsFromDb(detailKey).then((ratings) => {
+      getCommentsFromDb(detailKey).then((comments) => {
+        if (ratings.size > 0 || comments.length > 0) {
+          const cachedEntry: FeedbackEntry = {
+            ratingsByIdentity: ratings as Map<string, StoredRating>,
+            comments,
+            lastActive: Date.now(),
+          };
+          feedbackStore.set(detailKey, cachedEntry);
+        }
+      });
+    }).catch(console.error);
+    
+    // Create empty entry while loading
     entry = {
       ratingsByIdentity: new Map<string, StoredRating>(),
       comments: [],
@@ -365,6 +573,9 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     });
     entry.lastActive = Date.now();
 
+    // Sync to database (fire and forget)
+    addRatingToDb(detailKey, identity.key, score, identity.type).catch(console.error);
+
     const payload = buildResponsePayload(entry, identity);
     const response = createSecureJsonResponse({
       success: true,
@@ -404,6 +615,9 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     targetComment.helpfulByIdentity.push(identity.key);
     targetComment.helpful += 1;
     entry.lastActive = Date.now();
+
+    // Sync to database (fire and forget)
+    updateCommentHelpfulInDb(commentId, identity.key, targetComment.helpful, targetComment.helpfulByIdentity).catch(console.error);
 
     const payload = buildResponsePayload(entry, identity);
     const response = createSecureJsonResponse({
@@ -467,6 +681,9 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     entry.comments = entry.comments.slice(0, MAX_COMMENTS_PER_DETAIL);
   }
   entry.lastActive = Date.now();
+
+  // Sync to database (fire and forget)
+  addCommentToDb(comment, detailKey).catch(console.error);
 
   const payload = buildResponsePayload(entry, identity);
   const response = createSecureJsonResponse({
