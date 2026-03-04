@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "next lint",
     "sanitize:temp": "node scripts/relocate-temp-files.js",
-    "clean:temp": "node -e \"const fs=require('fs'); const path=require('path'); const root=process.cwd(); const rm=(dir)=>{ if(!fs.existsSync(dir)) return; for(const f of fs.readdirSync(dir)){ if(/^tm_.*\\.html$/i.test(f)){ try{ fs.unlinkSync(path.join(dir,f)); }catch{} } } }; rm(root); rm(path.join(root,'.cache','tinnhiem'));\""
+    "clean:temp": "node -e \"const fs=require('fs'); const path=require('path'); const root=process.cwd(); const rm=(dir)=>{ if(!fs.existsSync(dir)) return; for(const f of fs.readdirSync(dir)){ if(/^tm_.*\\.html$/i.test(f)){ try{ fs.unlinkSync(path.join(dir,f)); }catch{} } } }; rm(root); rm(path.join(root,'.cache','tinnhiem'));\"",
+    "team:auto-push": "node scripts/team-auto-push.js",
+    "team:auto-push:once": "AUTO_PUSH_ONCE=1 node scripts/team-auto-push.js"
   },
   "dependencies": {
     "@flaticon/flaticon-uicons": "^3.3.1",
