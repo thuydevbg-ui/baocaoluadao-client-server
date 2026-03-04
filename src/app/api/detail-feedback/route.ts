@@ -81,6 +81,9 @@ declare global {
   var __scamGuardDbAvailable: boolean | undefined;
 }
 
+// Track DB availability in module scope
+let dbAvailable = true;
+
 const feedbackStore = globalThis.__scamGuardDetailFeedbackStore ?? new Map<string, FeedbackEntry>();
 if (!globalThis.__scamGuardDetailFeedbackStore) {
   globalThis.__scamGuardDetailFeedbackStore = feedbackStore;
@@ -103,40 +106,6 @@ const DEFAULT_DISTRIBUTION = {
 // Database Helper Functions
 // ==========================================
 
-interface DbRating extends RowDataPacket {
-  id: string;
-  detail_key: string;
-  identity_key: string;
-  score: number;
-  created_at: number;
-  identity_type: string;
-}
-
-interface DbComment extends RowDataPacket {
-  id: string;
-  detail_key: string;
-  user: string;
-  avatar: string;
-  text: string;
-  author_identity_key: string;
-  helpful: number;
-  created_at: number;
-  verified: number;
-  helpful_by_identity: string;
-}
-
-/**
- * Check if database is available
- */
-function isDbAvailable(): boolean {
-  try {
-    getDb();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Get ratings from database for a detail key
  */
@@ -155,7 +124,7 @@ async function getRatingsFromDb(detailKey: string): Promise<Map<string, { score:
     for (const row of rows) {
       ratings.set(row.identity_key, {
         score: row.score,
-        createdAt: row.created_at,
+        createdAt: typeof row.created_at === 'number' ? row.created_at : row.created_at.getTime(),
         identityType: row.identity_type,
       });
     }
@@ -194,7 +163,7 @@ async function getCommentsFromDb(detailKey: string): Promise<StoredComment[]> {
         text: row.text,
         authorIdentityKey: row.author_identity_key,
         helpful: row.helpful,
-        createdAt: row.created_at,
+        createdAt: typeof row.created_at === 'number' ? row.created_at : row.created_at.getTime(),
         verified: Boolean(row.verified),
         helpfulByIdentity,
       });
@@ -446,10 +415,16 @@ function pruneStore(): void {
 // ============================================
 
 /**
- * Check if database is available
+ * Check if database is available - try to actually connect
  */
 function isDbAvailable(): boolean {
-  return globalThis.__scamGuardDbAvailable !== false;
+  try {
+    const db = getDb();
+    return db !== undefined;
+  } catch {
+    dbAvailable = false;
+    return false;
+  }
 }
 
 /**
@@ -467,7 +442,7 @@ async function getRatingsByDetailKey(detailKey: string): Promise<DbRating[]> {
     return rows;
   } catch (error) {
     console.error('[DetailFeedback] getRatingsByDetailKey error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return [];
   }
 }
@@ -487,7 +462,7 @@ async function getCommentsByDetailKey(detailKey: string): Promise<DbComment[]> {
     return rows;
   } catch (error) {
     console.error('[DetailFeedback] getCommentsByDetailKey error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return [];
   }
 }
@@ -507,7 +482,7 @@ async function getExistingRating(detailKey: string, identityKey: string): Promis
     return rows[0] || null;
   } catch (error) {
     console.error('[DetailFeedback] getExistingRating error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return null;
   }
 }
@@ -527,7 +502,7 @@ async function addRating(detailKey: string, identityKey: string, score: number, 
     return true;
   } catch (error) {
     console.error('[DetailFeedback] addRating error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return false;
   }
 }
@@ -555,7 +530,7 @@ async function addComment(
     return id;
   } catch (error) {
     console.error('[DetailFeedback] addComment error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return null;
   }
 }
@@ -575,7 +550,7 @@ async function updateCommentHelpful(commentId: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('[DetailFeedback] updateCommentHelpful error:', error);
-    globalThis.__scamGuardDbAvailable = false;
+    dbAvailable = false;
     return false;
   }
 }
@@ -1073,7 +1048,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
 
     } catch (error) {
       console.error('[DetailFeedback] POST database error, falling back:', error);
-      globalThis.__scamGuardDbAvailable = false;
+      dbAvailable = false;
       // Continue to in-memory fallback below
     }
   }
