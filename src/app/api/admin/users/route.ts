@@ -2,7 +2,7 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
-import { getAdminAuth, requireRole } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated, requireRole } from '@/lib/adminApiAuth';
 
 const querySchema = z.object({
   page: z.string().optional().transform((v) => Number(v ?? 1)).pipe(z.number().int().min(1)),
@@ -34,9 +34,12 @@ const querySchema = z.object({
 });
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
-  if (!requireRole(auth, ['admin', 'super_admin'])) {
+  const auth = await getAdminAuthValidated(request);
+  if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!requireRole(auth, ['admin', 'super_admin'])) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 
   const parseResult = querySchema.safeParse(Object.fromEntries(request.nextUrl.searchParams));

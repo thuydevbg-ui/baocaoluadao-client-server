@@ -6,7 +6,7 @@ import {
   getAdminUserById,
   updateAdminUser,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth, requireRole, type AdminRole } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated, requireRole, type AdminRole } from '@/lib/adminApiAuth';
 
 function extractIdFromRequest(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
@@ -28,7 +28,7 @@ function parseRole(input: unknown): AdminUserRole | null {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -51,7 +51,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const PATCH = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }

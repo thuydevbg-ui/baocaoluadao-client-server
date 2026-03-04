@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/admin/content/blog': 'Quản lý Blog',
   '/admin/content/faq': 'Quản lý FAQ',
   '/admin/analytics': 'Thống kê',
+  '/admin/seo-dashboard': 'SEO Dashboard',
   '/admin/support': 'Hỗ trợ người dùng',
   '/admin/logs': 'Nhật ký hệ thống',
   '/admin/settings': 'Cài đặt'

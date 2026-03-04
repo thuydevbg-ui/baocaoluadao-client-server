@@ -1,21 +1,24 @@
-'use client';
+import { Metadata } from 'next';
+import { AdminLayoutClient } from './AdminLayoutClient';
 
-import { AdminLayout } from '@/components/admin';
-import { usePathname } from 'next/navigation';
+// Prevent all admin pages from being indexed by search engines
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
+  },
+};
 
 export default function AdminRootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  // Use regex for precise login route matching - only match /admin/login and its subpaths
-  const isAuthRoute = /^\/admin\/login(\/.*)?$/.test(pathname);
-
-  // Login route must bypass protected admin shell to prevent redirect loops.
-  if (isAuthRoute) {
-    return <>{children}</>;
-  }
-
-  return <AdminLayout>{children}</AdminLayout>;
+  return <AdminLayoutClient>{children}</AdminLayoutClient>;
 }

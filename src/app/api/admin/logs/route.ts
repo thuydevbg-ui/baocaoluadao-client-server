@@ -4,7 +4,7 @@ import {
   type AdminActivityStatus,
   listAdminActivityLogs,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function parseStatus(value: string | null): 'all' | AdminActivityStatus {
   if (!value) return 'all';
@@ -15,7 +15,7 @@ function parseStatus(value: string | null): 'all' | AdminActivityStatus {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }

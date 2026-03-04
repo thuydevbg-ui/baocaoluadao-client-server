@@ -7,7 +7,7 @@ import {
   createAdminScam,
   listAdminScams,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function parseType(value: string | null): 'all' | AdminScamType {
   if (!value) return 'all';
@@ -34,7 +34,7 @@ function parseRiskLevel(value: string | null): 'all' | AdminScamRiskLevel {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -63,7 +63,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const POST = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -121,4 +121,3 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     item: created,
   });
 });
-

@@ -1,7 +1,7 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 import { RowDataPacket } from 'mysql2/promise';
 
 interface OverviewStats extends RowDataPacket {
@@ -27,7 +27,7 @@ interface RecentReport extends RowDataPacket {
  * Get admin dashboard overview from database
  */
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json(
       {

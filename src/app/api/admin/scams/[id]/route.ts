@@ -7,7 +7,7 @@ import {
   getAdminScamById,
   updateAdminScam,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function extractIdFromRequest(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
@@ -29,7 +29,7 @@ function parseRiskLevel(input: unknown): AdminScamRiskLevel | null {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -48,7 +48,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const PATCH = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -113,7 +113,7 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
 });
 
 export const DELETE = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }

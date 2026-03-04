@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Search, Phone, Building2, Globe, Wallet, AlertTriangle, Clock } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Card, SearchResultSkeleton, RiskBadge } from '@/components/ui';
+import { Card, SearchResultSkeleton, RiskBadge, MobileSearchResult } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type SearchResult } from '@/lib/utils';
 import { CheckCircle, XCircle, ShieldCheck, AlertOctagon, ExternalLink, Copy } from 'lucide-react';
@@ -377,71 +377,91 @@ function SearchPageContent() {
               ))}
             </div>
           ) : results.length > 0 ? (
-            <div className="space-y-4">
-              {results.map((result, i) => {
-                const Icon = getIcon(result.type);
-                const trustedSource = result.risk === 'safe' && isTrustedSource(result.sourceMode, result.sourceStatus);
-                return (
-                  <motion.div
-                    key={result.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                  >
-                    <Link href={buildDetailHref(result)}>
-                      <Card hover className="flex items-center gap-4">
-                        <div className={cn(
-                          'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden',
-                          result.risk === 'scam' ? 'bg-danger/10 text-danger' :
-                          result.risk === 'suspicious' ? 'bg-warning/10 text-warning' :
-                          'bg-success/10 text-success'
-                        )}>
-                          {result.sourceIcon ? (
-                            <img
-                              src={result.sourceIcon}
-                              alt={result.value}
-                              className="w-10 h-10 rounded-lg object-cover"
-                              onError={(e) => {
-                                e.currentTarget.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
-                              }}
-                            />
-                          ) : (
-                            <Icon className="w-6 h-6" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-text-main text-lg inline-flex items-center gap-1.5">
-                            <span>{result.value}</span>
-                            {trustedSource && (
-                              <i className="fi fi-ss-badge-check text-primary text-[1em] leading-none align-middle shrink-0" />
+            <>
+              {/* Mobile Layout - Compact */}
+              <div className="sm:hidden space-y-2" data-mobile-card-list>
+                {results.map((result) => (
+                  <MobileSearchResult
+                    key={String(result.id)}
+                    id={String(result.id)}
+                    value={result.value}
+                    type={result.type}
+                    risk={result.risk}
+                    reports={Number(result.reports || 0)}
+                    sourceIcon={result.sourceIcon}
+                    sourceOrganization={result.sourceOrganization}
+                    href={buildDetailHref(result)}
+                  />
+                ))}
+              </div>
+
+              {/* Desktop Layout - Full Details */}
+              <div className="hidden sm:block space-y-4">
+                {results.map((result, i) => {
+                  const Icon = getIcon(result.type);
+                  const trustedSource = result.risk === 'safe' && isTrustedSource(result.sourceMode, result.sourceStatus);
+                  return (
+                    <motion.div
+                      key={result.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                    >
+                      <Link href={buildDetailHref(result)}>
+                        <Card hover className="flex items-center gap-4">
+                          <div className={cn(
+                            'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden',
+                            result.risk === 'scam' ? 'bg-danger/10 text-danger' :
+                            result.risk === 'suspicious' ? 'bg-warning/10 text-warning' :
+                            'bg-success/10 text-success'
+                          )}>
+                            {result.sourceIcon ? (
+                              <img
+                                src={result.sourceIcon}
+                                alt={result.value}
+                                className="w-10 h-10 rounded-lg object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                                }}
+                              />
+                            ) : (
+                              <Icon className="w-6 h-6" />
                             )}
-                          </p>
-                          {result.sourceOrganization && (
-                            <p className="text-warning text-sm mt-1">
-                              <span className="truncate">{result.sourceOrganization}</span>
-                            </p>
-                          )}
-                          <div className="flex items-center gap-4 text-sm text-text-muted mt-1">
-                            <span className="flex items-center gap-1">
-                              <AlertTriangle className="w-4 h-4" />
-                              {result.reports} reports
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
-                              First seen: {result.firstSeen}
-                            </span>
                           </div>
-                        </div>
-                        <RiskBadge
-                          risk={result.risk}
-                          label={t(`risk.${result.risk}`)}
-                        />
-                      </Card>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-text-main text-lg inline-flex items-center gap-1.5">
+                              <span>{result.value}</span>
+                              {trustedSource && (
+                                <i className="fi fi-ss-badge-check text-primary text-[1em] leading-none align-middle shrink-0" />
+                              )}
+                            </p>
+                            {result.sourceOrganization && (
+                              <p className="text-warning text-sm mt-1">
+                                <span className="truncate">{result.sourceOrganization}</span>
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 text-sm text-text-muted mt-1">
+                              <span className="flex items-center gap-1">
+                                <AlertTriangle className="w-4 h-4" />
+                                {result.reports} reports
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" />
+                                First seen: {result.firstSeen}
+                              </span>
+                            </div>
+                          </div>
+                          <RiskBadge
+                            risk={result.risk}
+                            label={t(`risk.${result.risk}`)}
+                          />
+                        </Card>
+                      </Link>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </>
           ) : scanResult ? (
             <Card
           className={cn(
