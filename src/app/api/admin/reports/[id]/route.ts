@@ -1,27 +1,61 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  AdminReportStatus,
-  getAdminReportById,
-  updateAdminReport,
-} from '@/lib/adminDataStore';
-import { recordAdminActivity } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+  getReportById,
+  updateReportAdminFields,
+  type Report,
+  type ReportStatus,
+} from '@/lib/services/report.service';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function extractIdFromRequest(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
   return segments.at(-1) ?? '';
 }
 
-function parseStatus(input: unknown): AdminReportStatus | null {
-  if (input === 'pending' || input === 'verified' || input === 'rejected') {
+function parseStatus(input: unknown): ReportStatus | null {
+  if (
+    input === 'pending' ||
+    input === 'processing' ||
+    input === 'verified' ||
+    input === 'rejected' ||
+    input === 'completed'
+  ) {
     return input;
   }
   return null;
 }
 
+function mapReportItem(report: Report) {
+  const reporterEmail = report.reporter_email ?? '';
+  const reporterName = report.reporter_name ?? (reporterEmail ? reporterEmail.split('@')[0] : 'Ẩn danh');
+  return {
+    id: report.id,
+    title: `${report.type.toUpperCase()} - ${report.target}`,
+    type: report.type,
+    status: report.status,
+    riskLevel: report.status === 'verified' || report.status === 'completed' ? 'low' : 'medium',
+    description: report.description,
+    createdAt: report.created_at,
+    updatedAt: report.updated_at,
+    reporter: {
+      id: reporterEmail || `reporter:${report.id}`,
+      name: reporterName,
+      email: reporterEmail || 'anonymous@local',
+    },
+    target: {
+      type: report.type,
+      value: report.target,
+      ip: report.ip || undefined,
+    },
+    source: report.source,
+    adminNotes: report.admin_notes || '',
+    history: [],
+  };
+}
+
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -31,19 +65,19 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
 
-  const item = getAdminReportById(id);
+  const item = await getReportById(id);
   if (!item) {
     return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
   }
 
   return NextResponse.json({
     success: true,
-    item,
+    item: mapReportItem(item),
   });
 });
 
 export const PATCH = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -54,7 +88,7 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
   }
 
   let body: {
-    status?: AdminReportStatus;
+    status?: ReportStatus;
     adminNotes?: string;
   } = {};
 
@@ -68,7 +102,7 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
   if (body.status !== undefined && !parsedStatus) {
     return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
   }
-  const nextStatus: AdminReportStatus | undefined = parsedStatus || undefined;
+  const nextStatus: ReportStatus | undefined = parsedStatus || undefined;
 
   if (body.adminNotes !== undefined && typeof body.adminNotes !== 'string') {
     return NextResponse.json({ success: false, error: 'adminNotes must be a string' }, { status: 400 });
@@ -78,25 +112,20 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 });
   }
 
-  const updated = updateAdminReport(id, {
+  const updated = await updateReportAdminFields({
+    reportId: id,
     status: nextStatus,
     adminNotes: body.adminNotes,
     actor: auth.email,
-  });
-
-  if (!updated) {
-    return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
-  }
-  recordAdminActivity({
-    action: nextStatus ? 'Cap nhat trang thai bao cao' : 'Cap nhat ghi chu bao cao',
-    user: auth.email,
-    target: id,
-    status: 'success',
     ip: request.headers.get('x-forwarded-for') || undefined,
   });
 
+  if (!updated.success || !updated.item) {
+    return NextResponse.json({ success: false, error: updated.error || 'Report not found' }, { status: 404 });
+  }
+
   return NextResponse.json({
     success: true,
-    item: updated,
+    item: mapReportItem(updated.item),
   });
 });

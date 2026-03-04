@@ -1,9 +1,7 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  type AdminActivityStatus,
-  listAdminActivityLogs,
-} from '@/lib/adminManagementStore';
+import { type AdminActivityStatus } from '@/lib/adminManagementStore';
+import { listAdminActivityLogs } from '@/lib/dbQueries';
 import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function parseStatus(value: string | null): 'all' | AdminActivityStatus {
@@ -26,7 +24,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
   const page = Number.parseInt(searchParams.get('page') || '1', 10);
   const pageSize = Number.parseInt(searchParams.get('pageSize') || '20', 10);
 
-  const data = listAdminActivityLogs({
+  const data = await listAdminActivityLogs({
     q,
     status,
     page: Number.isFinite(page) ? page : 1,
@@ -38,4 +36,3 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     ...data,
   });
 });
-

@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { checkRateLimit, AUTH_RATE_LIMIT } from '@/lib/rateLimit';
+import { createSignedCookieValue } from '@/lib/auth';
+import { getDb } from '@/lib/db';
+import { recordAdminActivity } from '@/lib/dbQueries';
+import { validateEnvironment } from '@/lib/env-validation';
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@baocaoluadao.com';
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
-const ADMIN_ROLE = process.env.ADMIN_ROLE || 'admin';
+// Validate environment on module load
+validateEnvironment();
+
 const COOKIE_NAME = 'adminAuth';
-
-// Validate required secret - never use default in production
-const AUTH_COOKIE_SECRET = process.env.AUTH_COOKIE_SECRET;
-if (!AUTH_COOKIE_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('[CRITICAL] AUTH_COOKIE_SECRET environment variable is required in production');
-  }
-  console.warn('[WARNING] AUTH_COOKIE_SECRET not set, using dev secret (NOT SAFE FOR PRODUCTION)');
-}
-const COOKIE_SECRET = AUTH_COOKIE_SECRET || 'dev-secret-do-not-use-in-production';
 
 function getClientIP(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -26,41 +19,10 @@ function getClientIP(request: NextRequest): string {
   return 'unknown';
 }
 
-async function verifyPassword(password: string): Promise<boolean> {
-  if (!ADMIN_PASSWORD_HASH) return false;
-  try {
-    console.log('[VERIFY] Comparing password with hash:', ADMIN_PASSWORD_HASH.substring(0, 20) + '...');
-    const result = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    console.log('[VERIFY] bcrypt.compare result:', result);
-    return result;
-  } catch (e) {
-    console.log('[VERIFY] Error:', e);
-    return false;
-  }
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  try {
-    const aBuf = Buffer.from(a);
-    const bBuf = Buffer.from(b);
-    if (aBuf.length !== bBuf.length) return false;
-    return crypto.timingSafeEqual(aBuf, bBuf);
-  } catch {
-    return false;
-  }
-}
-
-function createSignedCookie(payload: object): string {
-  const hmac = crypto.createHmac('sha256', COOKIE_SECRET);
-  const data = JSON.stringify(payload);
-  hmac.update(data);
-  return JSON.stringify({ d: data, s: hmac.digest('base64url') });
-}
-
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+
   try {
-    // Rate limiting - prevent brute force attacks
-    const ip = getClientIP(request);
     const rateLimitResult = await checkRateLimit({
       scope: 'admin-login',
       key: ip,
@@ -71,48 +33,79 @@ export async function POST(request: NextRequest) {
 
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
-        { 
-          error: rateLimitResult.isBanned 
+        {
+          error: rateLimitResult.isBanned
             ? 'Tai khoan bi tam khoa do dang nhap sai qua nhieu lan. Vui long thu lai sau.'
             : 'Qua nhieu lan thu dang nhap. Vui long thu lai sau.',
-          retryAfter: rateLimitResult.retryAfter
+          retryAfter: rateLimitResult.retryAfter,
         },
-        { 
+        {
           status: 429,
-          headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {}
+          headers: rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : {},
         }
       );
     }
 
     const body = await request.json();
-    const { email, password, rememberMe } = body || {};
-
-    // DEBUG
-    console.log('[LOGIN DEBUG] Received body:', JSON.stringify(body));
-    console.log('[LOGIN DEBUG] Password received:', password);
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase().slice(0, 254) : '';
+    const password = typeof body?.password === 'string' ? body.password.slice(0, 128) : '';
+    const rememberMe = Boolean(body?.rememberMe);
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Thieu email hoac mat khau' }, { status: 400 });
     }
 
-    const passwordValid = await verifyPassword(password);
-    const emailValid = constantTimeEqual(email, ADMIN_EMAIL);
-    
-    // DEBUG
-    console.log('[LOGIN DEBUG] Email:', email, '| ADMIN_EMAIL:', ADMIN_EMAIL);
-    console.log('[LOGIN DEBUG] Email valid:', emailValid);
-    console.log('[LOGIN DEBUG] Password valid:', passwordValid);
-    console.log('[LOGIN DEBUG] ADMIN_PASSWORD_HASH:', ADMIN_PASSWORD_HASH ? 'set' : 'NOT SET');
+    const db = getDb();
+    const [rows] = await db.query<import('mysql2/promise').RowDataPacket[]>(
+      `SELECT id, email, password_hash, name, role, status
+       FROM admin_users
+       WHERE email = ?
+       LIMIT 1`,
+      [email]
+    );
 
-    if (!emailValid || !passwordValid) {
+    const admin = rows[0];
+
+    // Always perform bcrypt comparison to prevent timing attacks
+    // Use a dummy hash with same length as real bcrypt (60 chars) when admin doesn't exist
+    // Stored in env var to avoid exposing in source code
+    const dummyHash = process.env.DUMMY_BCRYPT_HASH || '';
+    if (!dummyHash && process.env.NODE_ENV === 'production') {
+      throw new Error('DUMMY_BCRYPT_HASH environment variable is required in production');
+    }
+    const fallbackHash = dummyHash || '$2b$12$ULm72h4KeqGAhIkAX28tnef1waSjucCCs4JMSq6vxd/gE0cNC3vCm';
+    const storedHash = admin?.password_hash || fallbackHash;
+    const validPassword = await bcrypt.compare(password, storedHash);
+
+    // Only allow if admin exists, is active, and password is valid
+    const isAllowed = Boolean(admin && admin.status === 'active' && validPassword);
+
+    if (!isAllowed) {
+      await recordAdminActivity({
+        action: 'Dang nhap admin that bai',
+        user: email,
+        target: email,
+        status: 'failed',
+        ip,
+      });
       return NextResponse.json({ error: 'Email hoac mat khau khong dung' }, { status: 401 });
     }
 
-    const authData = createSignedCookie({
-      email,
-      role: ADMIN_ROLE,
-      name: 'Admin',
-      loginTime: new Date().toISOString()
+    await db.execute(`UPDATE admin_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = ?`, [admin.id]);
+
+    await recordAdminActivity({
+      action: 'Dang nhap admin',
+      user: admin.email,
+      target: admin.id,
+      status: 'success',
+      ip,
+    });
+
+    const authData = createSignedCookieValue({
+      email: admin.email,
+      role: admin.role,
+      name: admin.name,
+      loginTime: new Date().toISOString(),
     });
 
     const response = NextResponse.json({ success: true });
@@ -122,12 +115,19 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge,
-      path: '/'
+      path: '/',
     });
 
     return response;
   } catch (error) {
     console.error('[LOGIN] Error:', error);
+    await recordAdminActivity({
+      action: 'Dang nhap admin loi he thong',
+      user: 'unknown',
+      target: 'auth/login',
+      status: 'failed',
+      ip,
+    });
     return NextResponse.json({ error: 'Loi server' }, { status: 500 });
   }
 }

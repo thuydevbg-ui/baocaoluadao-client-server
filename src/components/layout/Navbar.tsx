@@ -11,7 +11,7 @@ const navLinks = [
   { label: 'Trang chủ', href: '/', icon: Home },
   { label: 'Tra cứu', href: '/search', icon: Search },
   { label: 'Báo cáo', href: '/report', icon: FileText },
-  { label: 'AI', href: '/ai', icon: AlertTriangle },
+  { label: 'Danh sách lừa đảo', href: '/report-lua-dao', icon: AlertTriangle },
   { label: 'FAQ', href: '/faq', icon: LifeBuoy },
 ];
 

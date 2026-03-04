@@ -4,12 +4,13 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Search, PlusCircle, Bell, User, X, Menu } from 'lucide-react';
+import { Home, Search, PlusCircle, Bell, User, X, Menu, AlertTriangle } from 'lucide-react';
 
 const tabs = [
   { href: '/', icon: Home, label: 'Trang chủ' },
   { href: '/search', icon: Search, label: 'Tra cứu' },
   { href: '/report', icon: PlusCircle, label: 'Báo cáo' },
+  { href: '/report-lua-dao', icon: AlertTriangle, label: 'Danh sách lừa đảo' },
   { href: '/alerts', icon: Bell, label: 'Cảnh báo' },
   { href: '/profile', icon: User, label: 'Hồ sơ' },
 ];

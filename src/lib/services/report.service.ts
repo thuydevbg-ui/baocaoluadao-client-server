@@ -6,49 +6,28 @@
 
 import { getDb } from '../db';
 import { invalidateDashboardCache } from './dashboard.service';
-import { recordAdminActivity } from '../adminManagementStore';
+import { recordAdminActivity } from '../dbQueries';
 import { RowDataPacket } from 'mysql2/promise';
 
-export type ReportType = 'website' | 'phone' | 'email' | 'social' | 'sms' | 'bank';
-export type ReportStatus = 'pending' | 'processing' | 'verified' | 'rejected' | 'completed';
-export type RiskLevel = 'low' | 'medium' | 'high';
+// Import shared types
+import {
+  type ReportType,
+  type ReportStatus,
+  type RiskLevel,
+  type Report,
+  type ReportListOptions,
+  type ReportListResult
+} from '../types';
 
-export interface Report {
-  id: string;
-  type: ReportType;
-  target: string;
-  description: string;
-  reporter_name: string | null;
-  reporter_email: string | null;
-  source: string;
-  status: ReportStatus;
-  ip: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ReportListOptions {
-  page?: number;
-  pageSize?: number;
-  status?: ReportStatus;
-  type?: ReportType;
-  search?: string;
-}
-
-export interface ReportListResult {
-  items: Report[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  summary: {
-    pending: number;
-    processing: number;
-    verified: number;
-    rejected: number;
-    completed: number;
-  };
-}
+// Re-export for external consumers
+export {
+  type ReportType,
+  type ReportStatus,
+  type RiskLevel,
+  type Report,
+  type ReportListOptions,
+  type ReportListResult
+};
 
 export interface ApproveReportPayload {
   reportId: string;
@@ -61,6 +40,14 @@ export interface ApproveReportPayload {
 export interface RejectReportPayload {
   reportId: string;
   reason?: string;
+  actor: string;
+  ip?: string;
+}
+
+export interface UpdateReportAdminPayload {
+  reportId: string;
+  status?: ReportStatus;
+  adminNotes?: string | null;
   actor: string;
   ip?: string;
 }
@@ -106,7 +93,7 @@ export async function getReportById(id: string): Promise<Report | null> {
   const db = getDb();
 
   const [rows] = await db.query<RowDataPacket[]>(
-    `SELECT id, type, target, description, reporter_name, reporter_email, source, status, ip, created_at, updated_at 
+    `SELECT id, type, target, description, reporter_name, reporter_email, source, status, admin_notes, ip, created_at, updated_at 
      FROM reports WHERE id = ?`,
     [id]
   );
@@ -160,7 +147,7 @@ export async function listReports(options: ReportListOptions = {}): Promise<Repo
     // Get paginated results
     const offset = (page - 1) * pageSize;
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT id, type, target, description, reporter_name, reporter_email, source, status, ip, created_at, updated_at 
+      `SELECT id, type, target, description, reporter_name, reporter_email, source, status, admin_notes, ip, created_at, updated_at 
        FROM reports ${whereClause} 
        ORDER BY created_at DESC 
        LIMIT ? OFFSET ?`,
@@ -246,11 +233,18 @@ export async function approveReport(payload: ApproveReportPayload): Promise<{ su
         ]
       );
 
-      // Update report status to verified
-      await connection.execute(
-        `UPDATE reports SET status = 'verified', updated_at = NOW() WHERE id = ?`,
-        [reportId]
-      );
+      // Update report status to verified and keep optional admin note
+      if (adminNotes !== undefined) {
+        await connection.execute(
+          `UPDATE reports SET status = 'verified', admin_notes = ?, updated_at = NOW() WHERE id = ?`,
+          [adminNotes ?? null, reportId]
+        );
+      } else {
+        await connection.execute(
+          `UPDATE reports SET status = 'verified', updated_at = NOW() WHERE id = ?`,
+          [reportId]
+        );
+      }
 
       await connection.commit();
     } catch (error) {
@@ -313,8 +307,8 @@ export async function rejectReport(payload: RejectReportPayload): Promise<{ succ
 
     // Update report status
     await db.execute(
-      `UPDATE reports SET status = 'rejected', updated_at = NOW() WHERE id = ?`,
-      [reportId]
+      `UPDATE reports SET status = 'rejected', admin_notes = ?, updated_at = NOW() WHERE id = ?`,
+      [reason ?? null, reportId]
     );
 
     // Invalidate dashboard cache (pending count will change)
@@ -334,6 +328,64 @@ export async function rejectReport(payload: RejectReportPayload): Promise<{ succ
     console.error('[Report Service] rejectReport error:', error);
 
     return { success: false, error: 'Failed to reject report' };
+  }
+}
+
+/**
+ * Update report admin fields directly from admin panel.
+ */
+export async function updateReportAdminFields(
+  payload: UpdateReportAdminPayload
+): Promise<{ success: boolean; item?: Report | null; error?: string }> {
+  const db = getDb();
+  const { reportId, status, adminNotes, actor, ip } = payload;
+
+  if (status === undefined && adminNotes === undefined) {
+    return { success: false, error: 'Nothing to update' };
+  }
+
+  try {
+    const existing = await getReportById(reportId);
+    if (!existing) {
+      return { success: false, error: 'Report not found' };
+    }
+
+    const updates: string[] = [];
+    const params: (string | ReportStatus | null)[] = [];
+
+    if (status !== undefined) {
+      const validStatuses: ReportStatus[] = ['pending', 'processing', 'verified', 'rejected', 'completed'];
+      if (!validStatuses.includes(status)) {
+        return { success: false, error: 'Invalid status value' };
+      }
+      updates.push('status = ?');
+      params.push(status);
+    }
+
+    if (adminNotes !== undefined) {
+      updates.push('admin_notes = ?');
+      params.push(adminNotes ?? null);
+    }
+
+    updates.push('updated_at = NOW()');
+    params.push(reportId);
+
+    await db.execute(`UPDATE reports SET ${updates.join(', ')} WHERE id = ?`, params);
+    await invalidateDashboardCache();
+
+    await recordAdminActivity({
+      action: 'Cap nhat bao cao',
+      user: actor,
+      target: reportId,
+      status: 'success',
+      ip,
+    });
+
+    const updated = await getReportById(reportId);
+    return { success: true, item: updated };
+  } catch (error) {
+    console.error('[Report Service] updateReportAdminFields error:', error);
+    return { success: false, error: 'Failed to update report' };
   }
 }
 

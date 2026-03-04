@@ -3,10 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   type AdminScamRiskLevel,
   type AdminScamStatus,
-  deleteAdminScam,
-  getAdminScamById,
-  updateAdminScam,
 } from '@/lib/adminManagementStore';
+import { deleteAdminScam, getAdminScamById, updateAdminScam } from '@/lib/dbQueries';
 import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 function extractIdFromRequest(request: NextRequest): string {
@@ -39,7 +37,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
 
-  const item = getAdminScamById(id);
+  const item = await getAdminScamById(id);
   if (!item) {
     return NextResponse.json({ success: false, error: 'Scam not found' }, { status: 404 });
   }
@@ -76,12 +74,12 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
   if (body.status !== undefined && !parsedStatus) {
     return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
   }
-  const finalStatus: AdminScamStatus | undefined = parsedStatus || undefined;
+  const finalStatus: AdminScamStatus | undefined = parsedStatus !== null && parsedStatus !== undefined ? parsedStatus : undefined;
   const parsedRiskLevel = body.riskLevel !== undefined ? parseRiskLevel(body.riskLevel) : undefined;
   if (body.riskLevel !== undefined && !parsedRiskLevel) {
     return NextResponse.json({ success: false, error: 'Invalid riskLevel' }, { status: 400 });
   }
-  const finalRiskLevel: AdminScamRiskLevel | undefined = parsedRiskLevel || undefined;
+  const finalRiskLevel: AdminScamRiskLevel | undefined = parsedRiskLevel !== null && parsedRiskLevel !== undefined ? parsedRiskLevel : undefined;
 
   if (body.description !== undefined && typeof body.description !== 'string') {
     return NextResponse.json({ success: false, error: 'description must be a string' }, { status: 400 });
@@ -95,7 +93,7 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'reportCount must be a number' }, { status: 400 });
   }
 
-  const updated = updateAdminScam(id, {
+  const updated = await updateAdminScam(id, {
     description: body.description,
     riskLevel: finalRiskLevel,
     status: finalStatus,
@@ -123,7 +121,7 @@ export const DELETE = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
 
-  const deleted = deleteAdminScam(id, {
+  const deleted = await deleteAdminScam(id, {
     actor: auth.email,
     ip: request.headers.get('x-forwarded-for') || undefined,
   });
