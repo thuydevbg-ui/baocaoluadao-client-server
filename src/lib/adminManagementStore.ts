@@ -1,47 +1,28 @@
-export type AdminUserRole = 'super_admin' | 'admin' | 'moderator' | 'user';
-export type AdminUserStatus = 'active' | 'banned' | 'suspended';
-export type AdminScamType = 'website' | 'phone' | 'email' | 'bank';
-export type AdminScamRiskLevel = 'low' | 'medium' | 'high';
-export type AdminScamStatus = 'active' | 'investigating' | 'blocked';
-export type AdminActivityStatus = 'success' | 'failed' | 'warning';
+// Import shared types (both for internal use and re-export)
+import {
+  type AdminScamType,
+  type AdminScamRiskLevel,
+  type AdminScamStatus,
+  type AdminScamRecord,
+  type AdminUserRole,
+  type AdminUserStatus,
+  type AdminUserRecord,
+  type AdminActivityStatus,
+  type AdminActivityRecord
+} from './types';
 
-export interface AdminUserRecord {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: AdminUserRole;
-  status: AdminUserStatus;
-  reputationScore: number;
-  reportCount: number;
-  verifiedReportCount: number;
-  joinedAt: string;
-  lastActiveAt: string;
-  updatedAt: string;
-}
-
-export interface AdminScamRecord {
-  id: string;
-  type: AdminScamType;
-  value: string;
-  description: string;
-  reportCount: number;
-  riskLevel: AdminScamRiskLevel;
-  status: AdminScamStatus;
-  source: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdminActivityRecord {
-  id: string;
-  action: string;
-  user: string;
-  ip: string;
-  target: string;
-  status: AdminActivityStatus;
-  timestamp: string;
-}
+// Re-export for external consumers
+export {
+  type AdminScamType,
+  type AdminScamRiskLevel,
+  type AdminScamStatus,
+  type AdminScamRecord,
+  type AdminUserRole,
+  type AdminUserStatus,
+  type AdminUserRecord,
+  type AdminActivityStatus,
+  type AdminActivityRecord
+};
 
 interface ManagementStore {
   users: Map<string, AdminUserRecord>;

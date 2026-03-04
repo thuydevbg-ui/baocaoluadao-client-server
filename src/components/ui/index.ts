@@ -6,3 +6,5 @@ export { Badge, RiskBadge } from './Badge';
 export { ToastProvider, useToast } from './Toast';
 export { Card, GlassCard } from './Card';
 export { FiIcon } from './FiIcon';
+export { MobileSearchResult, MobileResultList } from './MobileSearchResult';
+export { Tooltip } from './Tooltip';

@@ -154,3 +154,102 @@ FROM reports
 WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
 GROUP BY target, type, DATE(created_at)
 HAVING COUNT(*) > 1;
+
+-- ============================================
+-- SEO_PAGES TABLE (NEW)
+-- For storing SEO metadata for each page
+-- ============================================
+CREATE TABLE IF NOT EXISTS seo_pages (
+    id VARCHAR(20) PRIMARY KEY,
+    url VARCHAR(500) NOT NULL UNIQUE,
+    title VARCHAR(100) NOT NULL DEFAULT '',
+    description TEXT,
+    keywords TEXT,
+    og_image VARCHAR(500),
+    og_title VARCHAR(100),
+    og_description TEXT,
+    canonical_url VARCHAR(500),
+    robots_meta VARCHAR(50) DEFAULT 'index,follow',
+    priority DECIMAL(2,1) DEFAULT 0.5,
+    changefreq ENUM('always', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'never') DEFAULT 'weekly',
+    is_indexed BOOLEAN NOT NULL DEFAULT TRUE,
+    last_crawled DATETIME DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_url (url),
+    INDEX idx_is_indexed (is_indexed),
+    INDEX idx_updated_at (updated_at),
+    INDEX idx_priority (priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- SEO_REDIRECTS TABLE (NEW)
+-- For managing URL redirects
+-- ============================================
+CREATE TABLE IF NOT EXISTS seo_redirects (
+    id VARCHAR(20) PRIMARY KEY,
+    from_url VARCHAR(500) NOT NULL,
+    to_url VARCHAR(500) NOT NULL,
+    type ENUM('301', '302', '307', '308') NOT NULL DEFAULT '301',
+    hits INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT,
+    last_accessed DATETIME DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_from_url (from_url),
+    INDEX idx_to_url (to_url),
+    INDEX idx_is_active (is_active),
+    INDEX idx_type (type),
+    UNIQUE KEY unique_from_url (from_url)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- SEO_SETTINGS TABLE (NEW)
+-- For storing SEO configuration
+-- ============================================
+CREATE TABLE IF NOT EXISTS seo_settings (
+    id VARCHAR(20) PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL UNIQUE,
+    setting_value TEXT,
+    setting_type ENUM('string', 'number', 'boolean', 'json') NOT NULL DEFAULT 'string',
+    description VARCHAR(255) DEFAULT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_key (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert default SEO settings
+INSERT INTO seo_settings (id, setting_key, setting_value, setting_type, description) VALUES
+('SEO001', 'default_title', 'Báo Cáo Lừa Đảo - Nền tảng cảnh báo lừa đảo trực tuyến', 'string', 'Tiêu đề mặc định cho các trang'),
+('SEO002', 'default_description', 'Nền tảng cảnh báo và báo cáo lừa đảo trực tuyến. Kiểm tra website, số điện thoại, email lừa đảo.', 'string', 'Mô tả mặc định cho các trang'),
+('SEO003', 'default_keywords', 'lừa đảo, scam, báo cáo lừa đảo, kiểm tra website, số điện thoại lừa đảo', 'string', 'Từ khóa mặc định'),
+('SEO004', 'google_verification', '', 'string', 'Mã xác minh Google Search Console'),
+('SEO005', 'bing_verification', '', 'string', 'Mã xác minh Bing Webmaster Tools'),
+('SEO006', 'robots_txt', 'User-agent: *\nDisallow: /admin/\nDisallow: /api/\nAllow: /\n\nSitemap: https://baocaoluadao.com/sitemap.xml', 'string', 'Nội dung file robots.txt'),
+('SEO007', 'facebook_app_id', '', 'string', 'Facebook App ID cho Open Graph'),
+('SEO008', 'twitter_site', '', 'string', 'Twitter handle (@username)'),
+('SEO009', 'schema_organization', '{"@context":"https://schema.org","@type":"Organization","name":"Báo Cáo Lừa Đảo","url":"https://baocaoluadao.com"}', 'json', 'Schema.org JSON-LD cho organization')
+ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = CURRENT_TIMESTAMP;
+
+-- ============================================
+-- SEO_HEALTH_CHECKS TABLE (NEW)
+-- For storing SEO health check results
+-- ============================================
+CREATE TABLE IF NOT EXISTS seo_health_checks (
+    id VARCHAR(20) PRIMARY KEY,
+    check_type ENUM('broken_link', 'missing_alt', 'duplicate_content', 'page_speed', 'mobile_friendly', 'ssl') NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    status ENUM('pass', 'fail', 'warning') NOT NULL,
+    details TEXT,
+    severity ENUM('low', 'medium', 'high', 'critical') DEFAULT 'medium',
+    resolved_at DATETIME DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_check_type (check_type),
+    INDEX idx_status (status),
+    INDEX idx_url (url),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

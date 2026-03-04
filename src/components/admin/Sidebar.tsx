@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +22,8 @@ import {
   Activity,
   Menu,
   X,
-  BookOpen
+  BookOpen,
+  Server
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -75,6 +75,12 @@ const menuItems = [
     href: '/admin/analytics'
   },
   {
+    title: 'Database SQL',
+    icon: Server,
+    href: '/thuybgt',
+    external: true
+  },
+  {
     title: 'Hỗ trợ',
     icon: MessageSquare,
     href: '/admin/support',
@@ -103,36 +109,31 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
 
-  // Close mobile sidebar when viewport becomes desktop-sized to avoid
-  // leaving the mobile overlay open after resizing (e.g. F12 toggling).
-  React.useEffect(() => {
+  // Handle responsive behavior - remove mobile menu on desktop
+  useEffect(() => {
     if (typeof window === 'undefined') return;
+
     const mq = window.matchMedia('(min-width: 1024px)');
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      const mobile = !('matches' in e) ? !(e as MediaQueryList).matches : !(e as MediaQueryListEvent).matches;
-      setIsMobileView(mobile);
-      if (!mobile) {
-        setIsMobileOpen(false);
-      }
+    
+    const handleMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      const isDesktop = 'matches' in e ? e.matches : (e as MediaQueryList).matches;
+      setIsMobileView(!isDesktop);
+      if (isDesktop) setIsMobileOpen(false); // Close menu when switching to desktop
     };
-    // Initial check
-    const mobile = !mq.matches;
-    setIsMobileView(mobile);
-    if (!mobile) setIsMobileOpen(false);
+
+    // Set initial state
+    const isDesktop = mq.matches;
+    setIsMobileView(!isDesktop);
+
     // Add listener
     if ('addEventListener' in mq) {
-      mq.addEventListener('change', handler as any);
+      mq.addEventListener('change', handleMediaChange);
+      return () => mq.removeEventListener('change', handleMediaChange);
     } else {
-      // Safari fallback
-      (mq as any).addListener(handler as any);
+      // Safari 13 and below fallback
+      (mq as any).addListener(handleMediaChange);
+      return () => (mq as any).removeListener(handleMediaChange);
     }
-    return () => {
-      if ('removeEventListener' in mq) {
-        mq.removeEventListener('change', handler as any);
-      } else {
-        (mq as any).removeListener(handler as any);
-      }
-    };
   }, []);
 
   const toggleSubmenu = (title: string) => {
@@ -142,8 +143,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
     setExpandedMenu(expandedMenu === title ? null : title);
   };
 
-  // Always close mobile menu on route change (safety)
-  React.useEffect(() => {
+  // Always close mobile menu on route change
+  useEffect(() => {
     setIsMobileOpen(false);
   }, [pathname]);
 

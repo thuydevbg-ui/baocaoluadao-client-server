@@ -3,10 +3,18 @@ module.exports = {
     {
       name: 'baocaoluadao',
       script: 'npm',
-      args: ['start', '--', '--hostname', '127.0.0.1'],
+      args: ['start'],
       cwd: '/var/www/baocaoluadao.com',
-      instances: 'max',
-      exec_mode: 'cluster',
+      // Using fork mode (exec_mode: 'fork') instead of cluster for stability:
+      // 1. Single instance ensures consistent database connection pooling
+      // 2. Avoids potential race conditions with shared resources
+      // 3. Simpler memory management - no inter-process communication overhead
+      // 4. Easier debugging and logging consistency
+      // 5. Next.js handles its own request parallelization internally
+      // Note: To scale horizontally, use multiple PM2 instances behind a load balancer
+      // rather than PM2 cluster mode.
+      instances: 1,
+      exec_mode: 'fork',
       kill_timeout: 5000,
       max_memory_restart: '700M',
       min_uptime: '10s',

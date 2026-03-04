@@ -2,14 +2,12 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   listReports,
-  getReportById,
   approveReport,
   rejectReport,
+  type Report,
   type ReportType,
 } from '@/lib/services/report.service';
-import { recordAdminActivity } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
-import { ReportTypeSchema, ReportStatusSchema } from '@/lib/validators';
+import { getAdminAuthValidated } from '@/lib/adminApiAuth';
 
 /**
  * Parse status query param
@@ -26,9 +24,86 @@ function parseStatus(value: string | null): 'all' | 'pending' | 'processing' | '
  */
 function parseType(value: string | null): 'all' | ReportType {
   if (!value) return 'all';
-  const validTypes = ['website', 'phone', 'email', 'social', 'sms', 'bank'];
+  const validTypes = [
+    'website',
+    'phone',
+    'email',
+    'social',
+    'sms',
+    'bank',
+    'device',
+    'system',
+    'application',
+    'organization',
+  ];
   if (validTypes.includes(value)) return value as ReportType;
   return 'all';
+}
+
+type AdminRiskLevel = 'low' | 'medium' | 'high';
+type AdminReportItem = {
+  id: string;
+  title: string;
+  type: ReportType;
+  status: 'pending' | 'processing' | 'verified' | 'rejected' | 'completed';
+  riskLevel: AdminRiskLevel;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  reporter: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  target: {
+    type: ReportType;
+    value: string;
+    ip?: string;
+    platform?: string;
+  };
+  source: string;
+  adminNotes: string;
+  history: Array<{
+    action: string;
+    user: string;
+    date: string;
+    note?: string;
+  }>;
+};
+
+function deriveRiskLevel(report: Report): AdminRiskLevel {
+  if (report.status === 'verified' || report.status === 'completed') return 'low';
+  if (report.status === 'rejected') return 'low';
+  if (report.type === 'bank' || report.type === 'system' || report.type === 'application') return 'high';
+  return 'medium';
+}
+
+function mapReportItem(report: Report): AdminReportItem {
+  const reporterEmail = report.reporter_email ?? '';
+  const reporterName = report.reporter_name ?? (reporterEmail ? reporterEmail.split('@')[0] : 'Ẩn danh');
+  return {
+    id: report.id,
+    title: `${report.type.toUpperCase()} - ${report.target}`,
+    type: report.type,
+    status: report.status,
+    riskLevel: deriveRiskLevel(report),
+    description: report.description,
+    createdAt: report.created_at,
+    updatedAt: report.updated_at,
+    reporter: {
+      id: reporterEmail || `reporter:${report.id}`,
+      name: reporterName,
+      email: reporterEmail || 'anonymous@local',
+    },
+    target: {
+      type: report.type,
+      value: report.target,
+      ip: report.ip || undefined,
+    },
+    source: report.source,
+    adminNotes: report.admin_notes || '',
+    history: [],
+  };
 }
 
 /**
@@ -36,7 +111,7 @@ function parseType(value: string | null): 'all' | ReportType {
  * List all reports with pagination
  */
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json(
       {
@@ -66,9 +141,19 @@ export const GET = withApiObservability(async (request: NextRequest) => {
       pageSize: Number.isFinite(pageSize) ? pageSize : 10,
     });
 
+    const mappedItems = data.items.map(mapReportItem);
+    const payload = {
+      items: mappedItems,
+      total: data.total,
+      page: data.page,
+      pageSize: data.pageSize,
+      totalPages: data.totalPages,
+      summary: data.summary,
+    };
+
     return NextResponse.json({
       success: true,
-      data,
+      data: payload,
     });
   } catch (error) {
     console.error('[Admin Reports] GET error:', error);
@@ -91,7 +176,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
  * Create a new report manually or approve/reject existing
  */
 export const POST = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json(
       {

@@ -1,49 +1,62 @@
 /**
  * Shared Type Definitions
- * Centralized types for admin management, reports, and scams
+ * Centralized types for admin scam management system
+ * Production-grade implementation for baocaoluadao.com
  */
 
-// ==========================================
-// Scam Types
-// ==========================================
+// ============= Scam Types =============
 
 export type ScamType = 
-  | 'website' 
-  | 'phone' 
-  | 'email' 
-  | 'bank' 
-  | 'social' 
-  | 'sms' 
-  | 'device' 
-  | 'system' 
-  | 'application' 
+  | 'website'
+  | 'phone'
+  | 'email'
+  | 'bank'
+  | 'social'
+  | 'sms'
+  | 'device'
+  | 'system'
+  | 'application'
   | 'organization';
 
+// Aliases for backward compatibility
+export type AdminScamType = ScamType;
+export type ReportType = ScamType;
+
+// ============= Risk Level =============
+
 export type RiskLevel = 'low' | 'medium' | 'high';
+
+// Aliases for backward compatibility  
+export type AdminScamRiskLevel = RiskLevel;
+
+// ============= Scam Status =============
+
 export type ScamStatus = 'active' | 'investigating' | 'blocked';
 
-// ==========================================
-// Report Types
-// ==========================================
+// Aliases for backward compatibility
+export type AdminScamStatus = ScamStatus;
+
+// ============= Report Status =============
 
 export type ReportStatus = 'pending' | 'processing' | 'verified' | 'rejected' | 'completed';
 
-// ==========================================
-// User Types
-// ==========================================
+// ============= User Types =============
 
 export type UserRole = 'super_admin' | 'admin' | 'moderator' | 'user';
 export type UserStatus = 'active' | 'banned' | 'suspended';
 
-// ==========================================
-// Activity Types
-// ==========================================
+// Aliases for backward compatibility
+export type AdminUserRole = UserRole;
+export type AdminUserStatus = UserStatus;
+
+// ============= Activity Types =============
 
 export type ActivityStatus = 'success' | 'failed' | 'warning';
 
-// ==========================================
-// Interfaces
-// ==========================================
+// Alias for backward compatibility
+export type AdminActivityStatus = ActivityStatus;
+
+// ============= Interfaces =============
 
 export interface ScamRecord {
   id: string;
@@ -57,6 +70,9 @@ export interface ScamRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+// Aliases for backward compatibility
+export interface AdminScamRecord extends ScamRecord {}
 
 export interface Report {
   id: string;
@@ -73,8 +89,6 @@ export interface Report {
   updated_at: string;
 }
 
-export type ReportType = ScamType;
-
 export interface UserRecord {
   id: string;
   name: string;
@@ -90,6 +104,9 @@ export interface UserRecord {
   updatedAt: string;
 }
 
+// Alias for backward compatibility
+export interface AdminUserRecord extends UserRecord {}
+
 export interface ActivityRecord {
   id: string;
   action: string;
@@ -100,18 +117,30 @@ export interface ActivityRecord {
   timestamp: string;
 }
 
-// ==========================================
-// Backward Compatibility Aliases
-// ==========================================
+// Alias for backward compatibility
+export interface AdminActivityRecord extends ActivityRecord {}
 
-// Admin management store aliases
-export type AdminScamType = ScamType;
-export type AdminScamRiskLevel = RiskLevel;
-export type AdminScamStatus = ScamStatus;
-export type AdminUserRole = UserRole;
-export type AdminUserStatus = UserStatus;
-export type AdminActivityStatus = ActivityStatus;
+// ============= Report List Options =============
 
-export type AdminScamRecord = ScamRecord;
-export type AdminUserRecord = UserRecord;
-export type AdminActivityRecord = ActivityRecord;
+export interface ReportListOptions {
+  page?: number;
+  pageSize?: number;
+  status?: ReportStatus;
+  type?: ReportType;
+  search?: string;
+}
+
+export interface ReportListResult {
+  items: Report[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  summary: {
+    pending: number;
+    processing: number;
+    verified: number;
+    rejected: number;
+    completed: number;
+  };
+}

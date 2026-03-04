@@ -1153,7 +1153,8 @@ export default function DetailPage() {
                       </div>
                       <div className="flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-text-main">Tích hợp các công nghệ tiên tiến phát hiện lừa đảo</p>
+                          <p className="font-semibold text-text-main hidden sm:block">Tích hợp các công nghệ tiên tiến phát hiện lừa đảo</p>
+                          <p className="font-semibold text-text-main sm:hidden">AI Phân tích</p>
                           <span
                             className={cn(
                               'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide',
@@ -1164,13 +1165,13 @@ export default function DetailPage() {
                                   : 'bg-success/10 text-success border border-success/50'
                             )}
                           >
-                            {aiScan.loading ? 'Đang quét' : aiScan.verdict === 'scam' ? 'Nguy hiểm' : 'An toàn'}
+                            {aiScan.loading ? <><span className="sm:hidden">...</span><span className="hidden sm:inline">Đang quét</span></> : aiScan.verdict === 'scam' ? 'Nguy hiểm' : 'An toàn'}
                           </span>
                           {aiScan.error && <span className="text-xs text-danger font-medium">({aiScan.error})</span>}
                         </div>
 
                         {aiScan.loading && (
-                          <p className="text-sm text-text-muted flex items-center gap-2">
+                          <p className="text-sm text-text-muted flex items-center gap-2 hidden sm:flex">
                             <Loader2 className="w-4 h-4 animate-spin" /> AI đang phê duyệt liên kết này...
                           </p>
                         )}
@@ -1179,7 +1180,9 @@ export default function DetailPage() {
                           <>
                             <div className="flex flex-wrap gap-2 text-sm">
                               <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
-                                Điểm rủi ro: <strong className="text-danger">{aiScan.risk ?? 0}%</strong>
+                                <span className="sm:hidden">Rủi ro:</span>
+                                <span className="hidden sm:inline">Điểm rủi ro:</span>
+                                <strong className="text-danger">{aiScan.risk ?? 0}%</strong>
                               </span>
                               <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
                                 Uy tín:{' '}
@@ -1187,16 +1190,16 @@ export default function DetailPage() {
                                   {aiScan.trust ?? 0}%
                                 </strong>
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
+                              <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
                                 Kết luận: {aiScan.verdict === 'scam' ? 'Nguy hiểm, có dấu hiệu lừa đảo' : 'Chưa thấy dấu hiệu nguy hiểm'}
                               </span>
                             </div>
                             {aiScan.description && (
-                              <p className="text-sm text-text-secondary bg-bg-cardHover border border-bg-border rounded-lg px-3 py-2 leading-relaxed">
+                              <p className="hidden sm:block text-sm text-text-secondary bg-bg-cardHover border border-bg-border rounded-lg px-3 py-2 leading-relaxed">
                                 {aiScan.description}
                               </p>
                             )}
-                            <p className="text-xs text-text-muted">Nguồn: mô hình GPT ScamGuard + dữ liệu TinNhiemMang.vn</p>
+                            <p className="hidden sm:block text-xs text-text-muted">Nguồn: mô hình GPT ScamGuard + dữ liệu TinNhiemMang.vn</p>
                           </>
                         )}
 

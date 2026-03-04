@@ -1,4 +1,4 @@
-import { getRedisClient } from './redis';
+import { getRedisClientSafe } from './redis';
 
 const rateLimitMap = new Map<string, RateLimitRecord>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -63,7 +63,8 @@ export async function checkRateLimit(options: RateLimitOptions): Promise<RateLim
   const banSeconds = options.banSeconds ?? AUTH_RATE_LIMIT.banSeconds;
   const compositeKey = `${options.scope}:${options.key || 'unknown'}`;
 
-  const redis = await getRedisClient();
+  // Use safe version to avoid throwing when Redis is not configured
+  const redis = await getRedisClientSafe();
   if (redis) {
     try {
       const count = await redis.incr(`ratelimit:${compositeKey}`);
@@ -83,7 +84,16 @@ export async function checkRateLimit(options: RateLimitOptions): Promise<RateLim
       return { allowed: true };
     } catch (error) {
       console.error('Redis rate limit error:', error);
-      // Fail open but fallback to memory limiter
+      // Fall through to memory limiter
+    }
+  } else {
+    // SECURITY WARNING: Redis is not available, falling back to in-memory rate limiting.
+    // This is less secure in distributed environments as each instance has its own rate limit state.
+    // In production with multiple instances, consider using Redis for proper rate limiting.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[CRITICAL SECURITY WARNING] Redis unavailable in production - in-memory rate limiting is insufficient for distributed deployments. Consider blocking requests or using Redis.');
+    } else {
+      console.warn('[SECURITY WARNING] Redis unavailable - falling back to in-memory rate limiting. This may be bypassed in distributed deployments.');
     }
   }
 

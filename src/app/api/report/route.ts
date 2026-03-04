@@ -143,7 +143,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
 
     // Create report
     const reportId = `RPT${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-    const createdAt = new Date().toISOString();
+    const createdAt = new Date().toISOString().replace('T', ' ').replace('Z', '').slice(0, 19);
 
     // Insert into database
     await db.execute(
@@ -169,6 +169,11 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     });
   } catch (error) {
     console.error('Report submission error:', error);
+    // Log more details for debugging
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     return NextResponse.json(
       { success: false, error: 'Lỗi server. Vui lòng thử lại sau.' },
       { status: 500 }

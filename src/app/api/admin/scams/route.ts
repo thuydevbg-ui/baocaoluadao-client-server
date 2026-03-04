@@ -4,17 +4,26 @@ import {
   type AdminScamRiskLevel,
   type AdminScamStatus,
   type AdminScamType,
-  createAdminScam,
-  listAdminScams,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth } from '@/lib/adminApiAuth';
+import { createAdminScam, listAdminScams } from '@/lib/dbQueries';
+import { getAdminAuthValidated, requireRole } from '@/lib/adminApiAuth';
+
+const ALLOWED_SCAM_TYPES = [
+  'website',
+  'phone',
+  'email',
+  'bank',
+  'social',
+  'sms',
+  'device',
+  'system',
+  'application',
+  'organization',
+] as const;
 
 function parseType(value: string | null): 'all' | AdminScamType {
   if (!value) return 'all';
-  if (value === 'website' || value === 'phone' || value === 'email' || value === 'bank') {
-    return value;
-  }
-  return 'all';
+  return ALLOWED_SCAM_TYPES.includes(value as AdminScamType) ? (value as AdminScamType) : 'all';
 }
 
 function parseStatus(value: string | null): 'all' | AdminScamStatus {
@@ -34,7 +43,7 @@ function parseRiskLevel(value: string | null): 'all' | AdminScamRiskLevel {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -47,7 +56,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
   const page = Number.parseInt(searchParams.get('page') || '1', 10);
   const pageSize = Number.parseInt(searchParams.get('pageSize') || '10', 10);
 
-  const data = listAdminScams({
+  const data = await listAdminScams({
     q,
     type,
     status,
@@ -63,9 +72,14 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const POST = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Only admin and super_admin can create new scam entries
+  if (!requireRole(auth, ['admin', 'super_admin'])) {
+    return NextResponse.json({ success: false, error: 'Forbidden: Only admin can create scam entries' }, { status: 403 });
   }
 
   let body: {
@@ -92,7 +106,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
   }
 
-  if (!['website', 'phone', 'email', 'bank'].includes(type)) {
+  if (!ALLOWED_SCAM_TYPES.includes(type)) {
     return NextResponse.json({ success: false, error: 'Invalid type' }, { status: 400 });
   }
 
@@ -104,7 +118,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
   }
 
-  const created = createAdminScam({
+  const created = await createAdminScam({
     type,
     value,
     description,
@@ -121,4 +135,3 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     item: created,
   });
 });
-

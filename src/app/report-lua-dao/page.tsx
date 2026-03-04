@@ -2,23 +2,35 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, AlertTriangle, CheckCircle, Globe, Phone, Building2, Clock, Eye, Filter, Shield, ExternalLink, Copy } from 'lucide-react';
+import { Search, AlertTriangle, CheckCircle, Globe, Phone, Building2, Clock, Eye, Filter, Shield, ExternalLink, Copy, Loader2 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
 import { Card, Button, Input } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
-// Mock data - in production, this would come from an API
-const MOCK_SCAMS = [
-  { id: 1, name: 'Shopee Giả Mạo', domain: 'shopee-sale.com', type: 'web', reports: 1234, status: 'confirmed', date: '2024-01-15', description: 'Website giả mạo Shopee với các sản phẩm giảm giá' },
-  { id: 2, name: 'VCB Lừa Đảo', domain: 'vietcombank-login.net', type: 'web', reports: 892, status: 'confirmed', date: '2024-01-20', description: 'Giả mạo trang đăng nhập VietComBank' },
-  { id: 3, name: 'Viettel CSKH Giả', domain: 'viettel-support.net', type: 'phone', reports: 567, status: 'confirmed', date: '2024-01-22', description: 'Giả mạo CSKH Viettel yêu cầu cung cấp OTP' },
-  { id: 4, name: 'Momo Lừa Đảo', domain: 'momo-vn.net', type: 'web', reports: 445, status: 'confirmed', date: '2024-01-25', description: 'Giả mạo ứng dụng Momo' },
-  { id: 5, name: 'Tiki Giả', domain: 'tiki-deal.com', type: 'web', reports: 321, status: 'confirmed', date: '2024-01-28', description: 'Website giả mạo Tiki' },
-  { id: 6, name: 'ACB Lừa Đảo', domain: 'acb-security.com', type: 'web', reports: 234, status: 'confirmed', date: '2024-02-01', description: 'Giả mạo thông tin tài khoản ACB' },
-  { id: 7, name: 'Zalo Lừa Đảo', domain: 'zalo-verified.net', type: 'web', reports: 189, status: 'confirmed', date: '2024-02-05', description: 'Giả mạo tài khoản Zalo' },
-  { id: 8, name: 'Bidv Giả', domain: 'bidv-online.net', type: 'web', reports: 156, status: 'confirmed', date: '2024-02-08', description: 'Giả mạo trang BIDV' },
+interface ScamData {
+  id: number;
+  name: string;
+  domain: string;
+  type: string;
+  reports: number;
+  status: string;
+  date: string;
+  description: string;
+  organization: string;
+}
+
+// Fallback data in case API fails
+const FALLBACK_SCAMS: ScamData[] = [
+  { id: 1, name: 'Shopee Giả Mạo', domain: 'shopee-sale.com', type: 'web', reports: 1234, status: 'confirmed', date: '2024-01-15', description: 'Website giả mạo Shopee với các sản phẩm giảm giá', organization: 'Shopee' },
+  { id: 2, name: 'VCB Lừa Đảo', domain: 'vietcombank-login.net', type: 'web', reports: 892, status: 'confirmed', date: '2024-01-20', description: 'Giả mạo trang đăng nhập VietComBank', organization: 'VietComBank' },
+  { id: 3, name: 'Viettel CSKH Giả', domain: 'viettel-support.net', type: 'web', reports: 567, status: 'confirmed', date: '2024-01-22', description: 'Giả mạo CSKH Viettel yêu cầu cung cấp OTP', organization: 'Viettel' },
+  { id: 4, name: 'Momo Lừa Đảo', domain: 'momo-vn.net', type: 'web', reports: 445, status: 'confirmed', date: '2024-01-25', description: 'Giả mạo ứng dụng Momo', organization: 'MoMo' },
+  { id: 5, name: 'Tiki Giả', domain: 'tiki-deal.com', type: 'web', reports: 321, status: 'confirmed', date: '2024-01-28', description: 'Website giả mạo Tiki', organization: 'Tiki' },
+  { id: 6, name: 'ACB Lừa Đảo', domain: 'acb-security.com', type: 'web', reports: 234, status: 'confirmed', date: '2024-02-01', description: 'Giả mạo thông tin tài khoản ACB', organization: 'ACB' },
+  { id: 7, name: 'Zalo Lừa Đảo', domain: 'zalo-verified.net', type: 'web', reports: 189, status: 'confirmed', date: '2024-02-05', description: 'Giả mạo tài khoản Zalo', organization: 'Zalo' },
+  { id: 8, name: 'Bidv Giả', domain: 'bidv-online.net', type: 'web', reports: 156, status: 'confirmed', date: '2024-02-08', description: 'Giả mạo trang BIDV', organization: 'BIDV' },
 ];
 
 export default function ScamListPage() {
@@ -26,9 +38,44 @@ export default function ScamListPage() {
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [scams] = useState(MOCK_SCAMS);
-  const [filteredScams, setFilteredScams] = useState(MOCK_SCAMS);
+  const [scams, setScams] = useState<ScamData[]>([]);
+  const [filteredScams, setFilteredScams] = useState<ScamData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, totalPages: 1, totalItems: 0 });
 
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/scams?page=${pagination.page}&limit=${pagination.limit}`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setScams(result.data);
+          setFilteredScams(result.data);
+          setPagination(prev => ({ ...prev, ...result.pagination }));
+          setError(null);
+        } else {
+          setScams(FALLBACK_SCAMS);
+          setFilteredScams(FALLBACK_SCAMS);
+          setError('Không thể tải dữ liệu mới nhất, hiển thị dữ liệu cache');
+        }
+      } catch (err) {
+        console.error('Error fetching scams:', err);
+        setScams(FALLBACK_SCAMS);
+        setFilteredScams(FALLBACK_SCAMS);
+        setError('Lỗi kết nối, hiển thị dữ liệu mẫu');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [pagination.page]);
+
+  // Filter data locally
   useEffect(() => {
     let result = scams;
     
@@ -36,7 +83,8 @@ export default function ScamListPage() {
       result = result.filter(scam => 
         scam.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         scam.domain.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        scam.description.toLowerCase().includes(searchTerm.toLowerCase())
+        scam.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        scam.organization.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
@@ -76,14 +124,28 @@ export default function ScamListPage() {
               🚨 Danh sách Website lừa đảo
             </h1>
             <p className="text-text-secondary max-w-2xl mx-auto">
-              Cập nhật danh sách các website và số điện thoại lừa đảo được cộng đồng báo cáo
+              Dữ liệu được cập nhật từ <a href="https://tinnhiemmang.vn" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">TinNhiemMang.vn</a> - Cập nhật danh sách các website và số điện thoại lừa đảo được cộng đồng báo cáo
             </p>
+            {error && (
+              <div className="mt-4 px-4 py-2 bg-warning/10 border border-warning/20 rounded-lg text-warning text-sm">
+                ⚠️ {error}
+              </div>
+            )}
           </motion.div>
 
+          {/* Loading State */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
+              <p className="text-text-secondary">Đang tải dữ liệu...</p>
+            </div>
+          )}
+
           {/* Stats Banner */}
+          {!loading && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <Card className="p-4 text-center bg-danger/5 border-danger/20">
-              <p className="text-3xl font-bold text-danger">{scams.length}</p>
+              <p className="text-3xl font-bold text-danger">{pagination.totalItems > 0 ? pagination.totalItems : scams.length}</p>
               <p className="text-sm text-text-muted">Tổng cảnh báo</p>
             </Card>
             <Card className="p-4 text-center bg-warning/5 border-warning/20">
@@ -99,8 +161,10 @@ export default function ScamListPage() {
               <p className="text-sm text-text-muted">Đã xác nhận</p>
             </Card>
           </div>
+          )}
 
           {/* Search and Filter */}
+          {!loading && (
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
@@ -129,11 +193,14 @@ export default function ScamListPage() {
               ))}
             </div>
           </div>
+          )}
 
           {/* Results count */}
+          {!loading && (
           <p className="text-sm text-text-muted mb-4">
             Tìm thấy {filteredScams.length} kết quả
           </p>
+          )}
 
           {/* Scam List */}
           <div className="space-y-4">

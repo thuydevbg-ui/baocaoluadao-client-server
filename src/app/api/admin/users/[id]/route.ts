@@ -3,10 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   type AdminUserRole,
   type AdminUserStatus,
-  getAdminUserById,
-  updateAdminUser,
 } from '@/lib/adminManagementStore';
-import { getAdminAuth, requireRole, type AdminRole } from '@/lib/adminApiAuth';
+import { getAdminUserById, updateAdminUser } from '@/lib/dbQueries';
+import { getAdminAuthValidated, requireRole } from '@/lib/adminApiAuth';
 
 function extractIdFromRequest(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
@@ -28,7 +27,7 @@ function parseRole(input: unknown): AdminUserRole | null {
 }
 
 export const GET = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -42,7 +41,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
   }
 
-  const item = getAdminUserById(id);
+  const item = await getAdminUserById(id);
   if (!item) {
     return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
   }
@@ -51,7 +50,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
 });
 
 export const PATCH = withApiObservability(async (request: NextRequest) => {
-  const auth = getAdminAuth(request);
+  const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
@@ -102,7 +101,7 @@ export const PATCH = withApiObservability(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 });
   }
 
-  const updated = updateAdminUser(id, {
+  const updated = await updateAdminUser(id, {
     status: finalStatus,
     role: finalRole,
     actor: auth.email,

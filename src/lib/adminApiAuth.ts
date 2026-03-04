@@ -27,6 +27,10 @@ export function getAdminAuth(request: NextRequest): AdminAuthPayload | null {
   return null;
 }
 
+export async function getAdminAuthValidated(request: NextRequest): Promise<AdminAuthPayload | null> {
+  return getAdminAuth(request);
+}
+
 /**
  * Check if the authenticated user has one of the required roles
  */
@@ -34,4 +38,3 @@ export function requireRole(auth: AdminAuthPayload | null, allowedRoles: AdminRo
   if (!auth) return false;
   return allowedRoles.includes(auth.role as AdminRole);
 }
-

@@ -52,9 +52,33 @@ interface IdentityInfo {
   setVisitorCookie: boolean;
 }
 
+// Database row interfaces
+interface DbRating extends RowDataPacket {
+  id: number;
+  detail_key: string;
+  identity_key: string;
+  score: number;
+  identity_type: 'user' | 'ip' | 'visitor';
+  created_at: Date;
+}
+
+interface DbComment extends RowDataPacket {
+  id: string;
+  detail_key: string;
+  user: string;
+  avatar: string;
+  text: string;
+  author_identity_key: string;
+  helpful: number;
+  verified: boolean;
+  created_at: Date;
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __scamGuardDetailFeedbackStore: Map<string, FeedbackEntry> | undefined;
+  // eslint-disable-next-line no-var
+  var __scamGuardDbAvailable: boolean | undefined;
 }
 
 const feedbackStore = globalThis.__scamGuardDetailFeedbackStore ?? new Map<string, FeedbackEntry>();
@@ -280,15 +304,17 @@ function normalizeDetailKey(raw: unknown): string {
   return sanitizePlainText(raw).toLowerCase().slice(0, 220);
 }
 
-function parseUserFromCookie(request: NextRequest): string | null {
+function parseUserFromCookie(request: NextRequest): { identity: string; name: string } | null {
   const cookie = request.cookies.get('adminAuth')?.value;
   if (!cookie) return null;
 
   try {
-    // Use the shared utility to properly parse and verify the signed cookie
     const auth = parseSignedCookie(cookie);
     if (auth && auth.email) {
-      return `user:${auth.email.toLowerCase()}`;
+      return {
+        identity: `user:${auth.email.toLowerCase()}`,
+        name: auth.name || auth.email.split('@')[0]
+      };
     }
   } catch {
     // Invalid cookie format - return null
@@ -309,10 +335,10 @@ function getClientIP(request: NextRequest): string {
   return 'unknown';
 }
 
-function resolveIdentity(request: NextRequest): IdentityInfo {
-  const cookieUserIdentity = parseUserFromCookie(request);
-  if (cookieUserIdentity) {
-    return { key: cookieUserIdentity, type: 'user', setVisitorCookie: false };
+function resolveIdentity(request: NextRequest): IdentityInfo & { userName?: string } {
+  const cookieUser = parseUserFromCookie(request);
+  if (cookieUser) {
+    return { key: cookieUser.identity, type: 'user', setVisitorCookie: false, userName: cookieUser.name };
   }
 
   const userIdHeader = request.headers.get('x-user-id');
@@ -415,6 +441,166 @@ function pruneStore(): void {
   removable.forEach(([key]) => feedbackStore.delete(key));
 }
 
+// ============================================
+// DATABASE HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Check if database is available
+ */
+function isDbAvailable(): boolean {
+  return globalThis.__scamGuardDbAvailable !== false;
+}
+
+/**
+ * Get all ratings for a detail key from database
+ */
+async function getRatingsByDetailKey(detailKey: string): Promise<DbRating[]> {
+  if (!isDbAvailable()) return [];
+  
+  try {
+    const db = getDb();
+    const [rows] = await db.query<DbRating[]>(
+      'SELECT id, detail_key, identity_key, score, identity_type, created_at FROM detail_ratings WHERE detail_key = ?',
+      [detailKey]
+    );
+    return rows;
+  } catch (error) {
+    console.error('[DetailFeedback] getRatingsByDetailKey error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return [];
+  }
+}
+
+/**
+ * Get all comments for a detail key from database
+ */
+async function getCommentsByDetailKey(detailKey: string): Promise<DbComment[]> {
+  if (!isDbAvailable()) return [];
+  
+  try {
+    const db = getDb();
+    const [rows] = await db.query<DbComment[]>(
+      'SELECT id, detail_key, user, avatar, text, author_identity_key, helpful, verified, created_at FROM detail_feedback WHERE detail_key = ? ORDER BY created_at DESC',
+      [detailKey]
+    );
+    return rows;
+  } catch (error) {
+    console.error('[DetailFeedback] getCommentsByDetailKey error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return [];
+  }
+}
+
+/**
+ * Check if identity has already rated a detail
+ */
+async function getExistingRating(detailKey: string, identityKey: string): Promise<DbRating | null> {
+  if (!isDbAvailable()) return null;
+  
+  try {
+    const db = getDb();
+    const [rows] = await db.query<DbRating[]>(
+      'SELECT id, detail_key, identity_key, score, identity_type, created_at FROM detail_ratings WHERE detail_key = ? AND identity_key = ?',
+      [detailKey, identityKey]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    console.error('[DetailFeedback] getExistingRating error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return null;
+  }
+}
+
+/**
+ * Add a new rating to database
+ */
+async function addRating(detailKey: string, identityKey: string, score: number, identityType: IdentityType): Promise<boolean> {
+  if (!isDbAvailable()) return false;
+  
+  try {
+    const db = getDb();
+    await db.execute(
+      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [detailKey, identityKey, score, identityType]
+    );
+    return true;
+  } catch (error) {
+    console.error('[DetailFeedback] addRating error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return false;
+  }
+}
+
+/**
+ * Add a new comment to database
+ */
+async function addComment(
+  detailKey: string,
+  user: string,
+  avatar: string,
+  text: string,
+  authorIdentityKey: string,
+  verified: boolean
+): Promise<string | null> {
+  if (!isDbAvailable()) return null;
+  
+  try {
+    const db = getDb();
+    const id = crypto.randomUUID();
+    await db.execute(
+      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, NOW())',
+      [id, detailKey, user, avatar, text, authorIdentityKey, verified]
+    );
+    return id;
+  } catch (error) {
+    console.error('[DetailFeedback] addComment error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return null;
+  }
+}
+
+/**
+ * Increment helpful count for a comment
+ */
+async function updateCommentHelpful(commentId: string): Promise<boolean> {
+  if (!isDbAvailable()) return false;
+  
+  try {
+    const db = getDb();
+    await db.execute(
+      'UPDATE detail_feedback SET helpful = helpful + 1 WHERE id = ?',
+      [commentId]
+    );
+    return true;
+  } catch (error) {
+    console.error('[DetailFeedback] updateCommentHelpful error:', error);
+    globalThis.__scamGuardDbAvailable = false;
+    return false;
+  }
+}
+
+// ============================================
+// RESPONSE BUILDING FUNCTIONS
+// ============================================
+
+function buildRatingStatsFromDb(ratings: DbRating[]) {
+  const distribution = { ...DEFAULT_DISTRIBUTION };
+  let total = 0;
+  let sum = 0;
+
+  ratings.forEach((rating) => {
+    if (rating.score >= 1 && rating.score <= 5) {
+      distribution[rating.score] = (distribution[rating.score] || 0) + 1;
+      total += 1;
+      sum += rating.score;
+    }
+  });
+
+  const average = total > 0 ? Math.round((sum / total) * 10) / 10 : 0;
+  return { average, total, distribution };
+}
+
 function buildRatingStats(entry: FeedbackEntry) {
   const distribution = { ...DEFAULT_DISTRIBUTION };
   let total = 0;
@@ -430,6 +616,36 @@ function buildRatingStats(entry: FeedbackEntry) {
 
   const average = total > 0 ? Math.round((sum / total) * 10) / 10 : 0;
   return { average, total, distribution };
+}
+
+function buildResponsePayloadFromDb(
+  ratings: DbRating[],
+  comments: DbComment[],
+  identity: IdentityInfo
+) {
+  const myRating = ratings.find(r => r.identity_key === identity.key)?.score ?? null;
+  
+  return {
+    ratingStats: buildRatingStatsFromDb(ratings),
+    myRating,
+    canRate: myRating === null,
+    comments: comments.map((item) => {
+      const authorRating = ratings.find(r => r.identity_key === item.author_identity_key)?.score ?? null;
+      
+      return {
+        id: item.id,
+        user: item.user,
+        avatar: item.avatar,
+        text: item.text,
+        helpful: item.helpful,
+        rating: authorRating,
+        verified: Boolean(item.verified),
+        helpfulMarked: false, // Will be tracked in memory for DB mode
+        canMarkHelpful: true,
+        createdAt: new Date(item.created_at).toISOString(),
+      };
+    }),
+  };
 }
 
 function buildResponsePayload(entry: FeedbackEntry, identity: IdentityInfo) {
@@ -493,6 +709,28 @@ export const GET = withApiObservability(async (request: NextRequest) => {
   }
 
   const identity = resolveIdentity(request);
+
+  // Try database first, fallback to in-memory
+  if (isDbAvailable()) {
+    try {
+      const ratings = await getRatingsByDetailKey(detailKey);
+      const comments = await getCommentsByDetailKey(detailKey);
+      
+      if (ratings.length > 0 || comments.length > 0) {
+        const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+        const response = createSecureJsonResponse({
+          success: true,
+          detailKey,
+          ...payload,
+        }, { status: 200 }, rateLimit);
+        return withVisitorCookie(response, identity);
+      }
+    } catch (error) {
+      console.error('[DetailFeedback] GET database fallback:', error);
+    }
+  }
+
+  // Fallback to in-memory store
   const entry = ensureEntry(detailKey);
   const payload = buildResponsePayload(entry, identity);
   const response = createSecureJsonResponse({
@@ -543,6 +781,304 @@ export const POST = withApiObservability(async (request: NextRequest) => {
   }
 
   const identity = resolveIdentity(request);
+
+  // Try database operations first
+  if (isDbAvailable()) {
+    try {
+      // Handle rate action with database
+      if (action === 'rate') {
+        const score = Number(body.score);
+        if (!Number.isInteger(score) || score < 1 || score > 5) {
+          return createSecureJsonResponse({ success: false, error: 'score must be an integer from 1 to 5' }, { status: 400 }, rateLimit);
+        }
+
+        const existingRating = await getExistingRating(detailKey, identity.key);
+        if (existingRating) {
+          const ratings = await getRatingsByDetailKey(detailKey);
+          const comments = await getCommentsByDetailKey(detailKey);
+          const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+          const response = createSecureJsonResponse(
+            {
+              success: false,
+              error: 'Bạn đã đánh giá trước đó. Mỗi IP hoặc tài khoản chỉ đánh giá 1 lần và không thể chỉnh sửa.',
+              detailKey,
+              ...payload,
+            },
+            { status: 409 },
+            rateLimit
+          );
+          return withVisitorCookie(response, identity);
+        }
+
+        const added = await addRating(detailKey, identity.key, score, identity.type);
+        if (!added) {
+          // Fallback to in-memory
+          const entry = ensureEntry(detailKey);
+          if (entry.ratingsByIdentity.has(identity.key)) {
+            const payload = buildResponsePayload(entry, identity);
+            const response = createSecureJsonResponse(
+              {
+                success: false,
+                error: 'Bạn đã đánh giá trước đó. Mỗi IP hoặc tài khoản chỉ đánh giá 1 lần và không thể chỉnh sửa.',
+                detailKey,
+                ...payload,
+              },
+              { status: 409 },
+              rateLimit
+            );
+            return withVisitorCookie(response, identity);
+          }
+          entry.ratingsByIdentity.set(identity.key, {
+            score,
+            createdAt: Date.now(),
+            identityType: identity.type,
+          });
+          entry.lastActive = Date.now();
+          const payload = buildResponsePayload(entry, identity);
+          const response = createSecureJsonResponse({
+            success: true,
+            message: 'Đánh giá của bạn đã được ghi nhận.',
+            detailKey,
+            ...payload,
+          }, { status: 200 }, rateLimit);
+          return withVisitorCookie(response, identity);
+        }
+
+        const ratings = await getRatingsByDetailKey(detailKey);
+        const comments = await getCommentsByDetailKey(detailKey);
+        const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+        const response = createSecureJsonResponse({
+          success: true,
+          message: 'Đánh giá của bạn đã được ghi nhận.',
+          detailKey,
+          ...payload,
+        }, { status: 200 }, rateLimit);
+        return withVisitorCookie(response, identity);
+      }
+
+      // Handle helpful action with database
+      if (action === 'helpful') {
+        const commentId = sanitizePlainText(typeof body.commentId === 'string' ? body.commentId : '').slice(0, 80);
+        if (!commentId) {
+          return createSecureJsonResponse({ success: false, error: 'commentId is required' }, { status: 400 }, rateLimit);
+        }
+
+        const comments = await getCommentsByDetailKey(detailKey);
+        const targetComment = comments.find(item => item.id === commentId);
+        
+        if (!targetComment) {
+          // Try in-memory fallback
+          const entry = ensureEntry(detailKey);
+          const memComment = entry.comments.find(item => item.id === commentId);
+          if (!memComment) {
+            return createSecureJsonResponse({ success: false, error: 'Comment not found' }, { status: 404 }, rateLimit);
+          }
+          
+          if (memComment.helpfulByIdentity.includes(identity.key)) {
+            const payload = buildResponsePayload(entry, identity);
+            const response = createSecureJsonResponse(
+              {
+                success: false,
+                error: 'Bạn đã đánh dấu hữu ích cho bình luận này trước đó.',
+                detailKey,
+                ...payload,
+              },
+              { status: 409 },
+              rateLimit
+            );
+            return withVisitorCookie(response, identity);
+          }
+          
+          memComment.helpfulByIdentity.push(identity.key);
+          memComment.helpful += 1;
+          entry.lastActive = Date.now();
+          
+          const payload = buildResponsePayload(entry, identity);
+          const response = createSecureJsonResponse({
+            success: true,
+            message: 'Đã ghi nhận bình chọn hữu ích của bạn.',
+            detailKey,
+            ...payload,
+          }, { status: 200 }, rateLimit);
+          return withVisitorCookie(response, identity);
+        }
+
+        // Check if user already marked helpful (track in memory for DB mode)
+        const entry = ensureEntry(detailKey);
+        const memComment = entry.comments.find(c => c.id === commentId);
+        if (memComment && memComment.helpfulByIdentity.includes(identity.key)) {
+          const ratings = await getRatingsByDetailKey(detailKey);
+          const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+          const response = createSecureJsonResponse(
+            {
+              success: false,
+              error: 'Bạn đã đánh dấu hữu ích cho bình luận này trước đó.',
+              detailKey,
+              ...payload,
+            },
+            { status: 409 },
+            rateLimit
+          );
+          return withVisitorCookie(response, identity);
+        }
+
+        // Update in database
+        const updated = await updateCommentHelpful(commentId);
+        if (updated) {
+          // Track in memory for this session
+          if (!memComment) {
+            entry.comments.push({
+              id: commentId,
+              user: targetComment.user,
+              avatar: targetComment.avatar,
+              text: targetComment.text,
+              authorIdentityKey: targetComment.author_identity_key,
+              helpful: targetComment.helpful,
+              createdAt: targetComment.created_at.getTime(),
+              verified: Boolean(targetComment.verified),
+              helpfulByIdentity: [identity.key],
+            });
+          } else {
+            memComment.helpfulByIdentity.push(identity.key);
+          }
+          entry.lastActive = Date.now();
+        }
+
+        const ratings = await getRatingsByDetailKey(detailKey);
+        const updatedComments = await getCommentsByDetailKey(detailKey);
+        const payload = buildResponsePayloadFromDb(ratings, updatedComments, identity);
+        const response = createSecureJsonResponse({
+          success: true,
+          message: 'Đã ghi nhận bình chọn hữu ích của bạn.',
+          detailKey,
+          ...payload,
+        }, { status: 200 }, rateLimit);
+        return withVisitorCookie(response, identity);
+      }
+
+      // Handle comment action with database
+      // First check if user has rated
+      const existingRating = await getExistingRating(detailKey, identity.key);
+      if (!existingRating) {
+        const ratings = await getRatingsByDetailKey(detailKey);
+        const comments = await getCommentsByDetailKey(detailKey);
+        
+        // Check in-memory as well
+        const entry = ensureEntry(detailKey);
+        if (!entry.ratingsByIdentity.has(identity.key)) {
+          const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+          const response = createSecureJsonResponse(
+            {
+              success: false,
+              error: 'Vui lòng đánh giá sao trước khi gửi bình luận đầu tiên.',
+              detailKey,
+              ...payload,
+            },
+            { status: 403 },
+            rateLimit
+          );
+          return withVisitorCookie(response, identity);
+        }
+      }
+
+      const text = sanitizePlainText(typeof body.text === 'string' ? body.text : '');
+      if (text.length < 3) {
+        return createSecureJsonResponse({ success: false, error: 'Bình luận cần tối thiểu 3 ký tự.' }, { status: 400 }, rateLimit);
+      }
+      if (text.length > MAX_COMMENT_LENGTH) {
+        return createSecureJsonResponse(
+          { success: false, error: `Bình luận tối đa ${MAX_COMMENT_LENGTH} ký tự.` },
+          { status: 400 },
+          rateLimit
+        );
+      }
+      if (countSentences(text) > MAX_COMMENT_SENTENCES) {
+        return createSecureJsonResponse(
+          { success: false, error: `Đánh giá tối đa ${MAX_COMMENT_SENTENCES} câu.` },
+          { status: 400 },
+          rateLimit
+        );
+      }
+
+      let userName = sanitizePlainText(typeof body.userName === 'string' ? body.userName : '').slice(0, 40);
+      if (!userName && identity.userName) {
+        userName = sanitizePlainText(identity.userName).slice(0, 40);
+      }
+      if (!userName) {
+        userName = 'Người dùng';
+      }
+
+      const avatar = buildAvatar(userName);
+      const verified = identity.type === 'user';
+
+      const commentId = await addComment(detailKey, userName, avatar, text, identity.key, verified);
+      
+      if (!commentId) {
+        // Fallback to in-memory
+        const entry = ensureEntry(detailKey);
+        if (!entry.ratingsByIdentity.has(identity.key)) {
+          const payload = buildResponsePayload(entry, identity);
+          const response = createSecureJsonResponse(
+            {
+              success: false,
+              error: 'Vui lòng đánh giá sao trước khi gửi bình luận đầu tiên.',
+              detailKey,
+              ...payload,
+            },
+            { status: 403 },
+            rateLimit
+          );
+          return withVisitorCookie(response, identity);
+        }
+
+        const comment: StoredComment = {
+          id: crypto.randomUUID(),
+          user: userName,
+          avatar,
+          text,
+          authorIdentityKey: identity.key,
+          helpful: 0,
+          createdAt: Date.now(),
+          verified,
+          helpfulByIdentity: [],
+        };
+
+        entry.comments.unshift(comment);
+        if (entry.comments.length > MAX_COMMENTS_PER_DETAIL) {
+          entry.comments = entry.comments.slice(0, MAX_COMMENTS_PER_DETAIL);
+        }
+        entry.lastActive = Date.now();
+
+        const payload = buildResponsePayload(entry, identity);
+        const response = createSecureJsonResponse({
+          success: true,
+          message: 'Bình luận của bạn đã được đăng.',
+          detailKey,
+          ...payload,
+        }, { status: 200 }, rateLimit);
+        return withVisitorCookie(response, identity);
+      }
+
+      // Successfully added to database
+      const ratings = await getRatingsByDetailKey(detailKey);
+      const comments = await getCommentsByDetailKey(detailKey);
+      const payload = buildResponsePayloadFromDb(ratings, comments, identity);
+      const response = createSecureJsonResponse({
+        success: true,
+        message: 'Bình luận của bạn đã được đăng.',
+        detailKey,
+        ...payload,
+      }, { status: 200 }, rateLimit);
+      return withVisitorCookie(response, identity);
+
+    } catch (error) {
+      console.error('[DetailFeedback] POST database error, falling back:', error);
+      globalThis.__scamGuardDbAvailable = false;
+      // Continue to in-memory fallback below
+    }
+  }
+
+  // Fallback to in-memory store for all actions
   const entry = ensureEntry(detailKey);
 
   if (action === 'rate') {
@@ -663,7 +1199,14 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     );
   }
 
-  const userName = sanitizePlainText(typeof body.userName === 'string' ? body.userName : '').slice(0, 40) || 'NgÆ°á»i dÃ¹ng';
+  let userName = sanitizePlainText(typeof body.userName === 'string' ? body.userName : '').slice(0, 40);
+  // Use name from logged-in session if available
+  if (!userName && identity.userName) {
+    userName = sanitizePlainText(identity.userName).slice(0, 40);
+  }
+  if (!userName) {
+    userName = 'Người dùng';
+  }
   const comment: StoredComment = {
     id: crypto.randomUUID(),
     user: userName,
