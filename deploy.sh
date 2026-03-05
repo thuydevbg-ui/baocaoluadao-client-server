@@ -44,6 +44,12 @@ deploy_head() {
   git reset --hard origin/production
 }
 
+restore_production_head() {
+  echo "Restoring production branch"
+  git checkout production
+  git reset --hard origin/production
+}
+
 if [[ "${1:-}" == "--rollback" ]]; then
   TAG="${2:-}"
   if [[ -z "$TAG" ]]; then
@@ -61,9 +67,29 @@ if [[ "${1:-}" == "--rollback" ]]; then
   echo "Rolling back to $TAG"
   git checkout "$TAG"
   deploy_worktree
-  echo "Restoring production branch"
-  git checkout production
-  git reset --hard origin/production
+  restore_production_head
+  exit 0
+fi
+
+if [[ "${1:-}" == "--rollback-branch" ]]; then
+  BRANCH="${2:-}"
+  if [[ -z "$BRANCH" ]]; then
+    echo "Usage: $0 --rollback-branch <branch>"
+    exit 1
+  fi
+
+  deploy_head
+  git fetch origin "$BRANCH" --prune
+
+  if ! git rev-parse --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
+    echo "Branch $BRANCH does not exist on origin"
+    exit 1
+  fi
+
+  echo "Rolling back to branch origin/$BRANCH"
+  git checkout -B "rollback-$BRANCH" "origin/$BRANCH"
+  deploy_worktree
+  restore_production_head
   exit 0
 fi
 
