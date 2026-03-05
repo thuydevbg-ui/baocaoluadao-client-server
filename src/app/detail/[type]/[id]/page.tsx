@@ -626,7 +626,7 @@ export default function DetailPage() {
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [helpfulSubmittingId, setHelpfulSubmittingId] = useState<string | null>(null);
   const [commentSort, setCommentSort] = useState<'latest' | 'helpful'>('latest');
-  const [aiScan, setAiScan] = useState<{ loading: boolean; error?: string | null; verdict?: 'safe' | 'scam'; risk?: number; trust?: number; description?: string }>({ loading: false });
+  const [aiScan, setAiScan] = useState<{ loading: boolean; error?: string | null; verdict?: 'safe' | 'scam' | 'unknown'; risk?: number; trust?: number; description?: string }>({ loading: false });
 
   const decodedValue = useMemo(() => decodeRouteValue(rawId), [rawId]);
   const normalizedType = useMemo(() => normalizeKind(rawType), [rawType]);
@@ -756,9 +756,14 @@ export default function DetailPage() {
         if (!response.ok) throw new Error('AI scan failed');
         const data = await response.json();
         const riskScore = data.risk_score || data.riskScore || data.score || 0;
-        const verdict = riskScore > 50 || data.verdict === 'scam' ? 'scam' : 'safe';
+        const verdictRaw = typeof data.verdict === 'string' ? data.verdict.trim().toLowerCase() : '';
+        const verdict: 'safe' | 'scam' | 'unknown' = verdictRaw === 'scam' || verdictRaw === 'safe' || verdictRaw === 'unknown'
+          ? verdictRaw
+          : (riskScore > 50 ? 'scam' : 'safe');
         const trustRaw = typeof data.trust_score === 'number' ? data.trust_score : data.trustScore;
-        const trustScore = typeof trustRaw === 'number' ? Math.max(0, Math.min(100, Math.round(trustRaw))) : Math.max(0, 100 - Math.round(riskScore));
+        const trustScore = typeof trustRaw === 'number'
+          ? Math.max(0, Math.min(100, Math.round(trustRaw)))
+          : (verdict === 'unknown' ? 50 : Math.max(0, 100 - Math.round(riskScore)));
         if (!cancelled) {
           setAiScan({
             loading: false,
@@ -1175,6 +1180,8 @@ export default function DetailPage() {
                           'w-11 h-11 rounded-xl flex items-center justify-center shrink-0',
                           aiScan.verdict === 'scam'
                             ? 'bg-danger/10 text-danger border border-danger/30'
+                            : aiScan.verdict === 'unknown'
+                              ? 'bg-warning/10 text-warning border border-warning/30'
                             : aiScan.loading
                               ? 'bg-warning/10 text-warning border border-warning/30'
                               : 'bg-success/10 text-success border border-success/30'
@@ -1193,10 +1200,18 @@ export default function DetailPage() {
                                 ? 'bg-warning/10 text-warning border border-warning/40'
                                 : aiScan.verdict === 'scam'
                                   ? 'bg-danger/10 text-danger border border-danger/50'
+                                  : aiScan.verdict === 'unknown'
+                                    ? 'bg-warning/10 text-warning border border-warning/50'
                                   : 'bg-success/10 text-success border border-success/50'
                             )}
                           >
-                            {aiScan.loading ? <><span className="sm:hidden">...</span><span className="hidden sm:inline">Đang quét</span></> : aiScan.verdict === 'scam' ? 'Nguy hiểm' : 'An toàn'}
+                            {aiScan.loading
+                              ? <><span className="sm:hidden">...</span><span className="hidden sm:inline">Đang quét</span></>
+                              : aiScan.verdict === 'scam'
+                                ? 'Nguy hiểm'
+                                : aiScan.verdict === 'unknown'
+                                  ? 'Chưa đủ dữ liệu'
+                                  : 'An toàn'}
                           </span>
                           {aiScan.error && <span className="text-xs text-danger font-medium">({aiScan.error})</span>}
                         </div>
@@ -1217,12 +1232,23 @@ export default function DetailPage() {
                               </span>
                               <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
                                 Uy tín:{' '}
-                                <strong className={cn(aiScan.verdict === 'scam' ? 'text-danger' : 'text-success', 'font-semibold')}>
+                                <strong className={cn(
+                                  aiScan.verdict === 'scam'
+                                    ? 'text-danger'
+                                    : aiScan.verdict === 'unknown'
+                                      ? 'text-warning'
+                                      : 'text-success',
+                                  'font-semibold'
+                                )}>
                                   {aiScan.trust ?? 0}%
                                 </strong>
                               </span>
                               <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
-                                Kết luận: {aiScan.verdict === 'scam' ? 'Nguy hiểm, có dấu hiệu lừa đảo' : 'Chưa thấy dấu hiệu nguy hiểm'}
+                                Kết luận: {aiScan.verdict === 'scam'
+                                  ? 'Nguy hiểm, có dấu hiệu lừa đảo'
+                                  : aiScan.verdict === 'unknown'
+                                    ? 'Chưa đủ dữ liệu để kết luận'
+                                    : 'Chưa thấy dấu hiệu nguy hiểm'}
                               </span>
                             </div>
                             {aiScan.description && (

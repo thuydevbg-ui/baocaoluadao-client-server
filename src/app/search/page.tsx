@@ -323,12 +323,15 @@ function SearchPageContent() {
         if (!response.ok) throw new Error('Scan failed');
         const data = await response.json();
         const riskScore = data.risk_score || data.riskScore || data.score || 0;
-        const verdict = riskScore > 50 || data.verdict === 'scam' ? 'scam' : 'safe';
+        const verdictRaw = typeof data.verdict === 'string' ? data.verdict.trim().toLowerCase() : '';
+        const verdict: 'scam' | 'safe' | 'unknown' = verdictRaw === 'scam' || verdictRaw === 'safe' || verdictRaw === 'unknown'
+          ? verdictRaw
+          : (riskScore > 50 ? 'scam' : 'safe');
         const trustScoreRaw = typeof data.trust_score === 'number' ? data.trust_score : (data.trustScore || null);
         const trustScore = trustScoreRaw !== null && trustScoreRaw !== undefined
           ? Math.max(0, Math.min(100, Math.round(trustScoreRaw)))
-          : verdict === 'scam'
-            ? Math.max(0, 100 - Math.round(riskScore))
+          : verdict === 'unknown'
+            ? 50
             : Math.max(0, 100 - Math.round(riskScore));
         setScanResult({
           domain: data.domain || cleanUrl.replace(/^https?:\/\//, ''),
@@ -500,17 +503,29 @@ function SearchPageContent() {
             <Card
           className={cn(
             'relative p-4 border-2 overflow-hidden',
-            scanResult.verdict === 'scam' ? 'border-danger/50 bg-danger/5' : 'border-success/40 bg-success/5'
+            scanResult.verdict === 'scam'
+              ? 'border-danger/50 bg-danger/5'
+              : scanResult.verdict === 'unknown'
+                ? 'border-warning/40 bg-warning/5'
+                : 'border-success/40 bg-success/5'
           )}
         >
               <div className="flex items-start gap-3 relative z-10">
                 <div
                   className={cn(
                     'w-10 h-10 rounded-lg flex items-center justify-center',
-                    scanResult.verdict === 'scam' ? 'bg-danger/15 text-danger' : 'bg-success/15 text-success'
+                    scanResult.verdict === 'scam'
+                      ? 'bg-danger/15 text-danger'
+                      : scanResult.verdict === 'unknown'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-success/15 text-success'
                   )}
                 >
-                  {scanResult.verdict === 'scam' ? <AlertOctagon className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+                  {scanResult.verdict === 'scam'
+                    ? <AlertOctagon className="w-5 h-5" />
+                    : scanResult.verdict === 'unknown'
+                      ? <AlertTriangle className="w-5 h-5" />
+                      : <ShieldCheck className="w-5 h-5" />}
                 </div>
                 <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -525,23 +540,37 @@ function SearchPageContent() {
                           <CheckCircle className="w-4 h-4" /> An toàn
                         </span>
                       )}
+                      {scanResult.verdict === 'unknown' && (
+                        <span className="inline-flex items-center gap-1 text-warning text-xs font-bold uppercase">
+                          <AlertTriangle className="w-4 h-4" /> Chưa đủ dữ liệu
+                        </span>
+                      )}
                     </div>
                   <p className="text-text-secondary text-sm mt-1">
                     {scanResult.description ||
                       (scanResult.verdict === 'scam'
                         ? 'Hệ thống AI phát hiện rủi ro cao, cần thận trọng.'
-                        : 'Không phát hiện rủi ro rõ ràng.')}
+                        : scanResult.verdict === 'unknown'
+                          ? 'Không đủ dữ liệu từ các nguồn kiểm tra để kết luận.'
+                          : 'Không phát hiện rủi ro rõ ràng.')}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2 text-sm">
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
                       <AlertOctagon className="w-4 h-4 text-danger" /> Điểm rủi ro: <strong className="text-danger">{scanResult.riskScore}%</strong>
                     </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
-                      <XCircle className="w-4 h-4 text-danger" /> Lừa đảo: <strong className="text-danger">{Math.min(100, Math.max(0, Math.round(scanResult.riskScore)))}%</strong>
-                    </span>
+                    {scanResult.verdict === 'unknown' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                        <AlertTriangle className="w-4 h-4 text-warning" /> Trạng thái: <strong className="text-warning">Chưa đủ dữ liệu</strong>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                        <XCircle className="w-4 h-4 text-danger" /> Lừa đảo: <strong className="text-danger">{Math.min(100, Math.max(0, Math.round(scanResult.riskScore)))}%</strong>
+                      </span>
+                    )}
                     {scanResult.verdict !== 'scam' && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
-                        <ShieldCheck className="w-4 h-4 text-success" /> Uy tín: <strong className="text-success">{scanResult.trustScore}%</strong>
+                        <ShieldCheck className={cn('w-4 h-4', scanResult.verdict === 'unknown' ? 'text-warning' : 'text-success')} />
+                        Uy tín: <strong className={scanResult.verdict === 'unknown' ? 'text-warning' : 'text-success'}>{scanResult.trustScore}%</strong>
                       </span>
                     )}
                     {scanResult.organization && (
