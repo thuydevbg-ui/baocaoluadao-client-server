@@ -79,6 +79,7 @@ interface CategoryLookupItem {
   link?: string;
   organization?: string;
   icon?: string;
+  organization_icon?: string;
 }
 
 interface CategoryLookupResponse {
@@ -552,6 +553,11 @@ function mapKindToCategory(kind: ScamKind): string {
   return 'apps';
 }
 
+function buildDomainFavicon(value: string): string {
+  const normalized = normalizeDomainKey(value) || value;
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(normalized)}&sz=128`;
+}
+
 async function lookupSourceMetaByValue(kind: ScamKind, value: string): Promise<DetailSourceMeta | null> {
   const category = mapKindToCategory(kind);
   const targetKey = normalizeCompareKey(value);
@@ -593,7 +599,7 @@ async function lookupSourceMetaByValue(kind: ScamKind, value: string): Promise<D
     sourceLink: matched.link,
     sourceCategory: payload.category || category,
     sourceMode: payload.mode,
-    sourceIcon: matched.icon,
+    sourceIcon: matched.organization_icon || matched.icon,
   };
 }
 
@@ -731,6 +737,21 @@ export default function DetailPage() {
   useEffect(() => {
     let cancelled = false;
     const runAiScan = async () => {
+      // Skip AI scan for trusted/verified entities from source metadata to avoid false alarm
+      const statusParam = searchParams.get('status') ?? undefined;
+      const sourceModeParam = searchParams.get('sourceMode') ?? undefined;
+      const trustedFlag = normalizeSourceStatus(statusParam || sourceModeParam) === 'trusted';
+      if (trustedFlag) {
+        setAiScan({
+          loading: false,
+          verdict: 'safe',
+          risk: 0,
+          trust: 97,
+          description: 'Đã xác minh uy tín bởi nguồn gốc, bỏ qua quét AI.',
+        });
+        return;
+      }
+
       if (normalizedType !== 'website' || !decodedValue) return;
       setAiScan({ loading: true });
       let cleanUrl = decodedValue.trim();
@@ -768,21 +789,6 @@ export default function DetailPage() {
       cancelled = true;
     };
   }, [normalizedType, decodedValue]);
-
-  const getIcon = (type: ScamKind) => {
-    switch (type) {
-      case 'phone':
-        return Phone;
-      case 'bank':
-        return Building2;
-      case 'website':
-        return Globe;
-      case 'crypto':
-        return Wallet;
-      default:
-        return AlertTriangle;
-    }
-  };
 
   const applyFeedbackPayload = (payload: DetailFeedbackResponse) => {
     setComments((payload.comments || []).map(toCommentView));
@@ -985,7 +991,6 @@ export default function DetailPage() {
 
   if (!data || !insight) return null;
 
-  const Icon = getIcon(normalizedType);
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -1022,11 +1027,25 @@ export default function DetailPage() {
                               : 'bg-success/10 text-success'
                         )}
                       >
-                        {insight.sourceIcon ? (
-                          <img src={insight.sourceIcon} alt={data.value} className="w-9 h-9 rounded-lg object-cover" />
-                        ) : (
-                          <Icon className="w-7 h-7" />
-                        )}
+                        <img
+                          src={insight.sourceIcon || buildDomainFavicon(data.value)}
+                          alt={data.value}
+                          className="w-9 h-9 rounded-lg object-cover"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (!target.dataset.fallbackDomain) {
+                              target.dataset.fallbackDomain = '1';
+                              target.src = buildDomainFavicon(data.value);
+                              return;
+                            }
+                            if (!target.dataset.fallbackDefault) {
+                              target.dataset.fallbackDefault = '1';
+                              target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                              return;
+                            }
+                            target.style.display = 'none';
+                          }}
+                        />
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -1136,7 +1155,7 @@ export default function DetailPage() {
                   </div>
                 </div>
 
-                {normalizedType === 'website' && (
+                {normalizedType === 'website' && insight?.isTrustedEntity !== true && (
                   <Card className="mt-4 border border-primary/15 bg-primary/5">
                     <div className="flex items-start gap-3">
                       <div
@@ -1544,8 +1563,3 @@ export default function DetailPage() {
     </div>
   );
 }
-
-
-
-
-

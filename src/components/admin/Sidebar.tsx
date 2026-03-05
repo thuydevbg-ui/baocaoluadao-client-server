@@ -75,12 +75,6 @@ const menuItems = [
     href: '/admin/analytics'
   },
   {
-    title: 'Database SQL',
-    icon: Server,
-    href: '/thuybgt',
-    external: true
-  },
-  {
     title: 'Hỗ trợ',
     icon: MessageSquare,
     href: '/admin/support',
@@ -354,7 +348,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
       {/* Desktop Sidebar */}
       <aside
         className={`fixed lg:sticky top-0 left-0 h-screen border-r z-40 transition-all duration-200 ${
-          isCollapsed ? 'w-16' : 'w-64'
+          isCollapsed ? 'w-14' : 'w-48'
         } ${
           theme === 'dark'
             ? 'bg-[#0B1120] border-gray-800'
@@ -363,6 +357,15 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, theme = 'dark' }:
       >
         <SidebarContent />
       </aside>
+
+      {/* Mobile overlay */}
+      {isMobileOpen && isMobileView && (
+        <button
+          onClick={() => setIsMobileOpen(false)}
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          aria-label="Close sidebar"
+        />
+      )}
 
       {/* (Mobile sidebar rendered via portal above) */}
     </>

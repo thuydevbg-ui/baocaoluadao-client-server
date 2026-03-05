@@ -118,9 +118,75 @@ function ReportPageContent() {
     }
     
     setIsSubmitting(true);
-    // TODO: Replace with actual API call to backend
-    // Example: await fetch('/api/reports', { method: 'POST', body: JSON.stringify(reportData) })
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Map frontend scam types to API report types
+    const typeMap: Record<ScamType, string> = {
+      'phone': 'phone',
+      'bank': 'phone', // Map bank to phone (for bank account)
+      'website': 'website',
+      'crypto': 'website', // Map crypto to website
+      'social': 'social',
+      'investment': 'website', // Map investment to website
+      'job': 'website', // Map job to website
+    };
+    
+    // Build target based on type
+    let target = '';
+    switch (reportData.type) {
+      case 'phone':
+        target = reportData.phone;
+        break;
+      case 'bank':
+        target = reportData.bankAccount;
+        break;
+      case 'website':
+        target = reportData.website;
+        break;
+      case 'crypto':
+      case 'investment':
+      case 'job':
+        target = reportData.website || reportData.telegram || reportData.facebook;
+        break;
+      case 'social':
+        target = reportData.facebook || reportData.telegram;
+        break;
+    }
+    
+    if (!target) {
+      showToast('warning', 'Please provide target information');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: typeMap[reportData.type!],
+          target: target,
+          description: reportData.description,
+          name: '', // Optional reporter name
+          email: '', // Optional reporter email
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        showToast('error', result.error || 'Failed to submit report');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      showToast('success', 'Report submitted successfully!');
+    } catch (error) {
+      console.error('Report submission error:', error);
+      showToast('error', 'Failed to submit report. Please try again.');
+    }
+    
     setIsSubmitting(false);
     setShowSuccess(true);
   };

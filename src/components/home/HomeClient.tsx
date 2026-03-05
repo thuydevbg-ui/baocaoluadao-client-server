@@ -43,7 +43,11 @@ interface ScamData {
   name: string;
   domain: string;
   type: string;
-  reports: number;
+  icon?: string;
+  reports?: number;
+  views?: number;
+  comments?: number;
+  ratings?: number;
   status: string;
   date: string;
   description: string;
@@ -247,7 +251,18 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
             count: cat.count || 0,
             icon: cat.icon || '🛡️',
           }));
+          const bySlug = new Map<string, number>(
+            statsData.data.map((cat: any) => [String(cat.slug || '').toLowerCase(), Number(cat.count || 0)])
+          );
+          const total = statsData.data.reduce((sum: number, cat: any) => sum + Number(cat.count || 0), 0);
+
           setCategories(scamCategories);
+          setScamStats({
+            total,
+            websites: bySlug.get('website') || 0,
+            phones: bySlug.get('phone') || 0,
+            banks: bySlug.get('bank') || 0,
+          });
           setDataSource('tinnhiemmang.vn');
           setStatsLoading(false);
           return;
@@ -291,13 +306,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
         
         if (data.success && data.data) {
           setScamData(data.data);
-          // Calculate stats from real data
-          const scams = data.data;
-          const total = data.pagination?.totalItems || scams.length;
-          const websites = scams.filter((s: ScamData) => s.type === 'web').length;
-          const phones = scams.filter((s: ScamData) => s.type === 'phone').length;
-          const banks = scams.filter((s: ScamData) => s.type === 'bank').length;
-          setScamStats({ total, websites, phones, banks });
         }
       } catch (error) {
         console.error('Failed to fetch scam data:', error);
@@ -404,12 +412,51 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
       case 'bank':
         return Building2;
       case 'website':
+      case 'web': // legacy mapping
         return Globe;
       case 'crypto':
         return Wallet;
       default:
         return AlertTriangle;
     }
+  };
+
+  const renderStatusBadge = (status?: string) => {
+    const normalized = (status || '').toLowerCase();
+    if (normalized === 'trusted' || normalized === 'safe') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success/10 text-success border border-success/30">
+          <CheckCircle className="w-3.5 h-3.5" />
+          Đã xác minh
+        </span>
+      );
+    }
+    if (normalized === 'confirmed' || normalized === 'blocked' || normalized === 'scam' || normalized === 'high') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-danger/10 text-danger border border-danger/30">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          Đã xác nhận
+        </span>
+      );
+    }
+    if (normalized === 'suspected' || normalized === 'warning' || normalized === 'investigating' || normalized === 'processing' || normalized === 'medium') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-warning/10 text-warning border border-warning/30">
+          <Clock className="w-3.5 h-3.5" />
+          Đang xử lý
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const getIconUrl = (alert: any) => {
+    if (alert.sourceIcon || alert.icon) return alert.sourceIcon || alert.icon;
+    const domain = alert.domain || alert.value || alert.name || '';
+    if (domain) {
+      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+    }
+    return 'https://tinnhiemmang.vn/img/icon_web2.png';
   };
 
   const featureCards = [
@@ -685,30 +732,47 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
                       {alertsToShow.map((alert: any) => {
                         const TypeIcon = getTypeIcon(alert.type);
                         const alertValue = alert.domain || alert.value;
+                        const alertIcon = getIconUrl(alert);
                         return (
                           <Link key={alert.id} href={`/detail/${alert.type}/${encodeURIComponent(alertValue)}`}>
                             <Card hover className="p-3 md:p-4 bg-bg-card/70 rounded-xl">
                               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                    <TypeIcon className="w-5 h-5" />
+                                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 overflow-hidden">
+                                    <img
+                                      src={alertIcon}
+                                      alt={alertValue}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        const target = e.currentTarget;
+                                        if (target.dataset.fallback) {
+                                          target.style.display = 'none';
+                                          return;
+                                        }
+                                        target.dataset.fallback = '1';
+                                        target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                                      }}
+                                    />
                                   </div>
                                   <div className="min-w-0">
                                     <p className="font-mono font-semibold text-text-main truncate">{alertValue}</p>
-                                    <p className="text-sm text-text-secondary line-clamp-1">{alert.description}</p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {renderStatusBadge(alert.status)}
+                                      <p className="text-sm text-text-secondary line-clamp-1">{alert.description}</p>
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-4 text-[0.7rem] md:text-xs text-text-muted shrink-0">
                                   <Tooltip label="Số lượt xem" position="top">
                                     <span className="flex items-center gap-1">
                                       <Eye className="w-3.5 h-3.5" />
-                                      {alert.reports ? alert.reports.toLocaleString('vi-VN') : '0'}
+                                      {(alert.views ?? alert.reports ?? 0).toLocaleString('vi-VN')}
                                     </span>
                                   </Tooltip>
                                   <Tooltip label="Bình luận cộng đồng" position="top">
                                     <span className="flex items-center gap-1">
                                       <MessageCircle className="w-3.5 h-3.5" />
-                                      {alert.reports ? Math.floor(alert.reports / 10) : 0}
+                                      {alert.comments ?? (alert.reports != null ? Math.floor(alert.reports / 10) : 0)}
                                     </span>
                                   </Tooltip>
                                   <Tooltip label="Thời gian cập nhật" position="top">

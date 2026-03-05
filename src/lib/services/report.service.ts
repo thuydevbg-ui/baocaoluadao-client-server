@@ -305,11 +305,40 @@ export async function rejectReport(payload: RejectReportPayload): Promise<{ succ
       return { success: false, error: 'Report was already verified' };
     }
 
-    // Update report status
-    await db.execute(
-      `UPDATE reports SET status = 'rejected', admin_notes = ?, updated_at = NOW() WHERE id = ?`,
-      [reason ?? null, reportId]
-    );
+    const connection = await db.getConnection();
+    let trashScamId = '';
+
+    try {
+      await connection.beginTransaction();
+
+      // Update report status
+      await connection.execute(
+        `UPDATE reports SET status = 'rejected', admin_notes = ?, updated_at = NOW() WHERE id = ?`,
+        [reason ?? null, reportId]
+      );
+
+      // Insert a blocked scam record so /admin/scams shows thùng rác entries
+      trashScamId = await generateUniqueId('SCM', 'scams', 'id');
+      await connection.execute(
+        `INSERT INTO scams (id, type, value, description, risk_level, status, source, report_count, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'blocked', ?, 1, NOW(), NOW())`,
+        [
+          trashScamId,
+          report.type,
+          report.target,
+          report.description,
+          'medium',
+          `report:${reportId}`,
+        ]
+      );
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     // Invalidate dashboard cache (pending count will change)
     await invalidateDashboardCache();
@@ -318,7 +347,7 @@ export async function rejectReport(payload: RejectReportPayload): Promise<{ succ
     await recordAdminActivity({
       action: 'Từ chối báo cáo',
       user: actor,
-      target: reportId,
+      target: trashScamId ? `${reportId} -> ${trashScamId}` : reportId,
       status: 'success',
       ip: ip,
     });

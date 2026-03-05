@@ -1,6 +1,7 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest } from 'next/server';
-import { findScamWebsiteByDomain, normalizeDomainInput, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
+import { normalizeDomainInput } from '@/lib/dataSources/tinnhiemmang';
+import { ensureTinnhiemScamsSynced, findWebsiteScamInLocalDb } from '@/lib/services/tinnhiemSync.service';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 
 function isValidScanDomain(domain: string): boolean {
@@ -27,10 +28,21 @@ function isValidScanDomain(domain: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(normalized);
 }
 
-function toScamResponse(domain: string, item: TinnhiemDirectoryItem) {
-  const isConfirmed = item.status === 'confirmed';
+function toScamResponse(domain: string, item: {
+  externalStatus: string | null;
+  status: 'active' | 'investigating' | 'blocked';
+  reportCount: number;
+  value: string;
+  organizationName: string | null;
+  description: string;
+  sourceUrl: string | null;
+  externalCreatedAt: string | null;
+}) {
+  const externalStatus = (item.externalStatus || '').toLowerCase();
+  const isConfirmed = item.status === 'blocked' || externalStatus.includes('xác nhận') || externalStatus.includes('confirmed');
   const riskScore = isConfirmed ? 95 : 85;
-  const reportCount = Number.parseInt(item.count_report || '0', 10) || 1;
+  const reportCount = Math.max(1, Number(item.reportCount || 0));
+  const createdAt = item.externalCreatedAt || new Date().toISOString();
 
   return {
     domain,
@@ -38,21 +50,21 @@ function toScamResponse(domain: string, item: TinnhiemDirectoryItem) {
     risk_score: riskScore,
     verdict: 'scam',
     status: isConfirmed ? 'confirmed' : 'suspected',
-    name: item.name || domain,
-    icon: item.icon || 'https://tinnhiemmang.vn/img/icon_web2.png',
-    organization_icon: item.organization_icon || '',
-    organization: item.organization || '',
-    description: item.description || 'Website có trong cơ sở dữ liệu cảnh báo của tinnhiemmang.vn',
+    name: item.value || domain,
+    icon: 'https://tinnhiemmang.vn/img/icon_web2.png',
+    organization_icon: '',
+    organization: item.organizationName || '',
+    description: item.description || 'Website có trong cơ sở dữ liệu nội bộ đã đồng bộ từ tinnhiemmang.vn',
     reports: reportCount,
-    date: item.created_at || new Date().toISOString(),
-    source: 'tinnhiemmang.vn',
+    date: createdAt,
+    source: 'local_db:tinnhiemmang.vn',
     ssl_valid: false,
     securityChecks: [
-      { name: 'Tên miền', status: 'fail', details: 'Phát hiện trong cơ sở dữ liệu cảnh báo' },
-      { name: 'Tổ chức bị mạo danh', status: item.organization ? 'fail' : 'warning', details: item.organization || 'Chưa công bố' },
-      { name: 'Ngày phát hiện', status: item.created_at ? 'warning' : 'pass', details: item.created_at || 'Không có thông tin' },
+      { name: 'Tên miền', status: 'fail', details: 'Phát hiện trong cơ sở dữ liệu nội bộ' },
+      { name: 'Tổ chức bị mạo danh', status: item.organizationName ? 'fail' : 'warning', details: item.organizationName || 'Chưa công bố' },
+      { name: 'Ngày phát hiện', status: item.externalCreatedAt ? 'warning' : 'pass', details: item.externalCreatedAt || 'Không có thông tin' },
       { name: 'Trạng thái', status: isConfirmed ? 'fail' : 'warning', details: isConfirmed ? 'Đã xác nhận lừa đảo' : 'Đang theo dõi / xử lý' },
-      { name: 'Nguồn', status: 'pass', details: 'tinnhiemmang.vn' },
+      { name: 'Nguồn', status: 'pass', details: item.sourceUrl || 'CSDL nội bộ đồng bộ từ tinnhiemmang.vn' },
     ],
   };
 }
@@ -70,14 +82,14 @@ function toSafeResponse(domain: string) {
     description: `Không thấy "${domain}" trong dữ liệu cảnh báo của tinnhiemmang.vn`,
     reports: 0,
     date: new Date().toISOString(),
-    source: 'tinnhiemmang.vn',
+    source: 'local_db:tinnhiemmang.vn',
     ssl_valid: true,
     securityChecks: [
       { name: 'Tên miền', status: 'pass', details: 'Không thấy trong cơ sở dữ liệu cảnh báo' },
       { name: 'Tổ chức bị mạo danh', status: 'pass', details: 'Không phát hiện' },
       { name: 'Ngày phát hiện', status: 'pass', details: 'Không có thông tin' },
       { name: 'Trạng thái', status: 'pass', details: 'An toàn tạm thời' },
-      { name: 'Nguồn', status: 'pass', details: 'tinnhiemmang.vn' },
+      { name: 'Nguồn', status: 'pass', details: 'CSDL nội bộ đồng bộ từ tinnhiemmang.vn' },
     ],
   };
 }
@@ -164,13 +176,14 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     }
 
     try {
-      const matched = await findScamWebsiteByDomain(domain);
+      await ensureTinnhiemScamsSynced();
+      const matched = await findWebsiteScamInLocalDb(domain);
       if (matched) {
         return createSecureJsonResponse(toScamResponse(domain, matched), { status: 200 }, rateLimit);
       }
       return createSecureJsonResponse(toSafeResponse(domain), { status: 200 }, rateLimit);
     } catch (lookupError) {
-      console.error('tinnhiemmang lookup error:', lookupError);
+      console.error('local db lookup error:', lookupError);
       return createSecureJsonResponse(toLocalHeuristicResponse(domain), { status: 200 }, rateLimit);
     }
   } catch (error) {

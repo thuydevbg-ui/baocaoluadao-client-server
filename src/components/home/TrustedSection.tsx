@@ -1,6 +1,7 @@
 import { Building2, CheckCircle2, Clock, FileText, Globe } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { fetchCategoryDirectory, type TinnhiemCategory, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
+import SafeImage from '@/components/ui/SafeImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ interface TrustedAuthorityItem {
   firstSeen: string;
   status: string;
   riskScore: number;
+  icon?: string;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -60,6 +62,7 @@ function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): Truste
   const type = item.type === 'organizations' ? 'organization' : 'website';
   const reports = Number.parseInt(item.count_report || '0', 10) || 0;
   const organization = item.organization || (type === 'organization' ? item.name : 'TinNhiemMang.vn');
+  const icon = item.organization_icon || item.icon || '';
   // Use server time if provided, otherwise use item's created_at, never generate new date during render
   const firstSeen = serverTime 
     ? new Date(serverTime).toISOString() 
@@ -73,6 +76,7 @@ function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): Truste
     firstSeen,
     status: (item.status || '').trim().toLowerCase(),
     riskScore: 0,
+    icon,
   };
 }
 
@@ -107,14 +111,19 @@ async function fetchTrustedAuthorities(): Promise<TrustedAuthorityItem[]> {
 }
 
 export default async function TrustedSection() {
-  if (cachedTrusted && Date.now() - cachedTrusted.fetchedAt < CACHE_TTL_MS) {
-    const cachedItems = cachedTrusted.items;
-    return renderTrustedSection(cachedItems);
-  }
+  try {
+    if (cachedTrusted && Date.now() - cachedTrusted.fetchedAt < CACHE_TTL_MS) {
+      const cachedItems = cachedTrusted.items;
+      return renderTrustedSection(cachedItems);
+    }
 
-  const items = await fetchTrustedAuthorities();
-  cachedTrusted = { items, fetchedAt: Date.now() };
-  return renderTrustedSection(items);
+    const items = await fetchTrustedAuthorities();
+    cachedTrusted = { items, fetchedAt: Date.now() };
+    return renderTrustedSection(items);
+  } catch (error) {
+    console.error('[TrustedSection] render failed:', error);
+    return renderTrustedSection([]);
+  }
 }
 
 function renderTrustedSection(items: TrustedAuthorityItem[]) {
@@ -137,8 +146,17 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
                 className="w-full rounded-xl border border-bg-border/60 bg-white/80 dark:bg-[#101827]/80 p-3 md:p-4 shadow-sm transition-all duration-200 hover:translate-y-1 hover:border-primary/40"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <Icon className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 overflow-hidden">
+                    {item.icon ? (
+                      <SafeImage
+                        src={item.icon}
+                        fallbackSrc="https://tinnhiemmang.vn/img/icon_web2.png"
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Icon className="w-5 h-5" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

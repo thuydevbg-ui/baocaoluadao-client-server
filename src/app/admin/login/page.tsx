@@ -26,6 +26,8 @@ function LoginForm() {
     users: 0
   });
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [ipStatus, setIpStatus] = useState<{ ip: string; allowed: boolean } | null>(null);
+  const [ipStatusLoading, setIpStatusLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/stats')
@@ -41,10 +43,24 @@ function LoginForm() {
       .finally(() => setStatsLoaded(true));
   }, []);
 
+  useEffect(() => {
+    fetch('/api/admin/ip-check', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => setIpStatus({ ip: data.ip || 'Không rõ', allowed: Boolean(data.allowed) }))
+      .catch(() => setIpStatus(null))
+      .finally(() => setIpStatusLoading(false));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
+
+    if (ipStatus && !ipStatus.allowed) {
+      setError(`IP của bạn không được phép: ${ipStatus.ip || 'Không rõ'}. Hãy thêm vào ADMIN_ALLOWED_IPS và redeploy.`);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -282,13 +298,23 @@ function LoginForm() {
                     )}
                   </button>
 
-                  <div className="relative py-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-slate-200" />
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-4 bg-white text-slate-500">Bảo mật cao</span>
-                    </div>
+                  <div
+                    className={`rounded-xl border text-center py-3 text-sm ${
+                      ipStatus?.allowed
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-rose-200 bg-rose-50 text-rose-700'
+                    }`}
+                  >
+                    {ipStatusLoading && 'Đang kiểm tra IP...'}
+                    {!ipStatusLoading && ipStatus && (
+                      <>
+                        <div className="font-semibold">{ipStatus.allowed ? 'IP HỢP LỆ' : 'IP KHÔNG HỢP LỆ'}</div>
+                        <div className="text-xs text-slate-500 mt-1">Bảo mật cao</div>
+                      </>
+                    )}
+                    {!ipStatusLoading && !ipStatus && (
+                      <div className="text-amber-600">Không lấy được IP. Vui lòng thử lại.</div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 text-center">

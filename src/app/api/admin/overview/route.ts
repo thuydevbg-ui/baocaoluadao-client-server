@@ -22,6 +22,11 @@ interface RecentReport extends RowDataPacket {
   created_at: string;
 }
 
+interface TypeCount extends RowDataPacket {
+  type: string;
+  count: number;
+}
+
 /**
  * GET /api/admin/overview
  * Get admin dashboard overview from database
@@ -66,6 +71,13 @@ export const GET = withApiObservability(async (request: NextRequest) => {
        LIMIT 5`
     );
 
+    // Distribution by type
+    const [typeCounts] = await db.query<TypeCount[]>(
+      `SELECT type, COUNT(*) as count
+       FROM reports
+       GROUP BY type`
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -81,6 +93,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
           blocked: stats?.blocked_scams || 0,
         },
         recentReports: recentReports,
+        reportTypes: typeCounts,
       },
       timestamp: new Date().toISOString(),
     });
@@ -99,4 +112,3 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     );
   }
 });
-

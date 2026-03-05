@@ -48,6 +48,25 @@ type CategoryKey = 'organizations' | 'websites' | 'devices' | 'systems' | 'apps'
 
 const SEARCH_CATEGORIES: CategoryKey[] = ['organizations', 'websites', 'devices', 'systems', 'apps'];
 
+// Category name mapping to Vietnamese
+const CATEGORY_NAMES: Record<string, { title: string; description: string }> = {
+  website: { title: 'Website lừa đảo', description: 'Danh sách các website được xác minh là lừa đảo hoặc đáng ngờ' },
+  websites: { title: 'Website lừa đảo', description: 'Danh sách các website được xác minh là lừa đảo hoặc đáng ngờ' },
+  organization: { title: 'Tổ chức/Doanh nghiệp', description: 'Danh sách tổ chức và doanh nghiệp uy tín hoặc cần cảnh báo' },
+  organizations: { title: 'Tổ chức/Doanh nghiệp', description: 'Danh sách tổ chức và doanh nghiệp uy tín hoặc cần cảnh báo' },
+  phone: { title: 'Số điện thoại lừa đảo', description: 'Danh sách số điện thoại được báo cáo lừa đảo' },
+  device: { title: 'Thiết bị điện tử', description: 'Danh sách thiết bị điện tử cần cảnh báo' },
+  devices: { title: 'Thiết bị điện tử', description: 'Danh sách thiết bị điện tử cần cảnh báo' },
+  bank: { title: 'Ngân hàng', description: 'Danh sách ngân hàng và thông tin bảo mật' },
+  email: { title: 'Email lừa đảo', description: 'Danh sách email được báo cáo lừa đảo' },
+  social: { title: 'Mạng xã hội', description: 'Danh sách tài khoản mạng xã hội lừa đảo' },
+  sms: { title: 'Tin nhắn SMS', description: 'Danh sách tin nhắn SMS lừa đảo' },
+  app: { title: 'Ứng dụng', description: 'Danh sách ứng dụng cần cảnh báo' },
+  apps: { title: 'Ứng dụng', description: 'Danh sách ứng dụng cần cảnh báo' },
+  system: { title: 'Hệ thống', description: 'Danh sách hệ thống cần cảnh báo' },
+  systems: { title: 'Hệ thống', description: 'Danh sách hệ thống cần cảnh báo' },
+};
+
 function repairMojibake(value: string): string {
   if (!value) return '';
   if (!/[ÃÂÄÅ]/.test(value)) return value;
@@ -116,7 +135,7 @@ function SearchPageContent() {
   const mapCategoryType = (key: string): SearchResult['type'] => {
     switch (key) {
       case 'websites': return 'website';
-      case 'organizations': return 'bank';
+      case 'organizations': return 'bank'; // keep legacy for risk icon
       case 'devices': return 'phone';
       case 'systems': return 'website';
       case 'apps': return 'crypto';
@@ -154,7 +173,7 @@ function SearchPageContent() {
       sourceOrganization: item.organization,
       sourceOrganizationIcon: item.organization_icon,
       sourceLink: item.link,
-      sourceIcon: item.icon,
+      sourceIcon: item.organization_icon || item.icon,
       sourceCategory: categoryKey,
       sourceMode: mode,
     };
@@ -351,16 +370,25 @@ function SearchPageContent() {
       <main className="flex-1 pt-20 pb-20 md:pb-8">
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-8">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-text-main mb-4">{t('nav.search')}</h1>
-            {query && (
-              <p className="text-text-secondary">
-                {t('search.results_for')}: "<span className="text-primary font-medium">{query}</span>"
-              </p>
-            )}
-            {!query && category && (
-              <p className="text-text-secondary">
-                Danh mục: <span className="text-primary font-medium">{category}</span>
-              </p>
+            {category && CATEGORY_NAMES[category] ? (
+              <>
+                <h1 className="text-2xl font-bold text-text-main mb-2">{CATEGORY_NAMES[category].title}</h1>
+                <p className="text-text-secondary">{CATEGORY_NAMES[category].description}</p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-text-main mb-4">{t('nav.search')}</h1>
+                {query && (
+                  <p className="text-text-secondary">
+                    {t('search.results_for')}: "<span className="text-primary font-medium">{query}</span>"
+                  </p>
+                )}
+                {!query && category && (
+                  <p className="text-text-secondary">
+                    Danh mục: <span className="text-primary font-medium">{category}</span>
+                  </p>
+                )}
+              </>
             )}
           </div>
 

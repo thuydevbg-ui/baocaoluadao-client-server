@@ -1,329 +1,316 @@
 import { NextResponse } from 'next/server';
-import * as cheerio from 'cheerio';
+import { RowDataPacket } from 'mysql2/promise';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getDb } from '@/lib/db';
+import {
+  ensureTinnhiemScamsSynced,
+  getCategoryNameByType,
+  getCategorySlugByType,
+  mapCategoryParamToScamType,
+  mapScamTypeToLegacyType,
+  buildDetailKeyFromScam,
+} from '@/lib/services/tinnhiemSync.service';
+
+type ScamType =
+  | 'website'
+  | 'phone'
+  | 'email'
+  | 'bank'
+  | 'social'
+  | 'sms'
+  | 'device'
+  | 'system'
+  | 'application'
+  | 'organization';
+
+interface CountRow extends RowDataPacket {
+  count: number;
+}
+
+interface ScamRow extends RowDataPacket {
+  id: string;
+  type: ScamType;
+  value: string;
+  description: string;
+  reportCount: number;
+  status: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  externalStatus: string | null;
+  organizationName: string | null;
+  organizationIcon: string | null;
+  sourceUrl: string | null;
+  externalCreatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  icon: string | null;
+  isScam: number;
+}
+
+interface TypeCountRow extends RowDataPacket {
+  type: ScamType;
+  count: number;
+}
+
+interface DbFeedbackCount extends RowDataPacket {
+  detail_key: string;
+  ratings?: number;
+  comments?: number;
+}
+
+const DEFAULT_LIMIT = 6;
+const MAX_LIMIT = 100;
+const SOURCE_NAME = 'tinnhiemmang.vn';
+
+function parsePositiveInt(input: string | null, fallback: number, max: number): number {
+  const value = Number.parseInt(String(input || fallback), 10);
+  if (!Number.isFinite(value) || value < 1) return fallback;
+  return Math.min(value, max);
+}
+
+function parsePage(input: string | null): number {
+  const page = Number.parseInt(String(input || '1'), 10);
+  if (!Number.isFinite(page) || page < 1) return 1;
+  return page;
+}
+
+function mapScamStatus(externalStatus: string | null, internalStatus: string): string {
+  if (externalStatus && externalStatus.trim()) return externalStatus.trim();
+  if (internalStatus === 'blocked') return 'confirmed';
+  if (internalStatus === 'investigating') return 'suspected';
+  return 'active';
+}
+
+function formatDate(dateValue: string | null): string {
+  const date = dateValue ? new Date(dateValue) : new Date();
+  if (Number.isNaN(date.getTime())) return 'N/A';
+
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+async function fetchFeedbackCounts(detailKeys: string[]): Promise<Record<string, { ratings: number; comments: number }>> {
+  if (detailKeys.length === 0) return {};
+
+  try {
+    const db = getDb();
+    const placeholders = detailKeys.map(() => '?').join(', ');
+    const result: Record<string, { ratings: number; comments: number }> = {};
+
+    const [ratingRows] = await db.query<DbFeedbackCount[]>(
+      `
+        SELECT detail_key, COUNT(*) AS ratings
+        FROM detail_ratings
+        WHERE detail_key IN (${placeholders})
+        GROUP BY detail_key
+      `,
+      detailKeys
+    );
+
+    for (const row of ratingRows || []) {
+      result[row.detail_key] = { ratings: row.ratings ?? 0, comments: 0 };
+    }
+
+    const [commentRows] = await db.query<DbFeedbackCount[]>(
+      `
+        SELECT detail_key, COUNT(*) AS comments
+        FROM detail_feedback
+        WHERE detail_key IN (${placeholders})
+        GROUP BY detail_key
+      `,
+      detailKeys
+    );
+
+    for (const row of commentRows || []) {
+      const base = result[row.detail_key] || { ratings: 0, comments: 0 };
+      base.comments = row.comments ?? 0;
+      result[row.detail_key] = base;
+    }
+
+    return result;
+  } catch (error) {
+    console.error('[api/scams] Failed to load feedback counters:', error);
+    return {};
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
-// ============================================
-// IN-MEMORY CACHE FOR EXTERNAL SCRAPER
-// ============================================
-// Simple cache to reduce external requests to tinnhiemmang.vn
-// In production, consider using Redis for distributed caching
-
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-const cache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
-const STATS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes for stats
-
-function getCacheKey(type: string, page: number, isStats = false): string {
-  return isStats ? `stats:${type}` : `scams:${type}:${page}`;
-}
-
-function getFromCache<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) {
-    return entry.data as T;
-  }
-  cache.delete(key);
-  return null;
-}
-
-function setToCache<T>(key: string, data: T, ttlMs: number): void {
-  cache.set(key, {
-    data,
-    expiresAt: Date.now() + ttlMs,
-  });
-}
-
-// Clean up expired cache entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of cache.entries()) {
-    if (now >= entry.expiresAt) {
-      cache.delete(key);
-    }
-  }
-}, 60 * 1000); // Clean up every minute
-
-interface ScamData {
-  id: number;
-  name: string;
-  domain: string;
-  type: string;
-  reports: number;
-  status: string;
-  date: string;
-  description: string;
-  organization: string;
-}
-
-// Map category slugs to tinnhiemmang.vn URLs
-const CATEGORY_URLS: Record<string, string> = {
-  website: '/website-lua-dao',
-  organization: '/doi-lua-dao',
-  phone: '/sdt-lua-dao',
-  bank: '/ngan-hang-lua-dao',
-  email: '/email-lua-dao',
-  social: '/mang-xa-hoi-lua-dao',
-  app: '/ung-dung-lua-dao',
-  device: '/thiet-bi-lua-dao',
-  sms: '/sms-lua-dao',
-  system: '/he-thong-lua-dao',
-};
-
-// Category display names
-const CATEGORY_NAMES: Record<string, string> = {
-  website: 'Website lừa đảo',
-  organization: 'Tổ chức/Doanh nghiệp',
-  phone: 'Số điện thoại',
-  bank: 'Ngân hàng',
-  email: 'Email',
-  social: 'Mạng xã hội',
-  app: 'Ứng dụng',
-  device: 'Thiết bị điện tử',
-  sms: 'SMS',
-  system: 'Hệ thống',
-};
-
 export async function GET(request: Request) {
-  // Rate limiting - prevent abuse of external scraper
-  const clientIP = request.headers.get('x-forwarded-for') || 
-                    request.headers.get('x-real-ip') || 
-                    'unknown';
-  const rateLimitResult = await checkRateLimit({
+  const clientIP =
+    request.headers.get('x-forwarded-for') ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
+
+  const rateLimit = await checkRateLimit({
     scope: 'api:scams',
     key: clientIP,
     maxAttempts: 10,
     windowSeconds: 60,
   });
-  
-  if (!rateLimitResult.allowed) {
+
+  if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many requests. Please try again later.' },
-      { status: 429, headers: { 'Retry-After': String(rateLimitResult.retryAfter || 60) } }
+      { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter || 60) } }
     );
   }
 
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '20');
-  const category = searchParams.get('category') || 'website';
+  const page = parsePage(searchParams.get('page'));
+  const limit = parsePositiveInt(searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
   const getStats = searchParams.get('stats') === 'true';
+  const categoryParam = searchParams.get('category') || 'all';
+  const categoryType = mapCategoryParamToScamType(categoryParam);
+  const includeTrusted = searchParams.get('includeTrusted') === 'true';
 
-  // Check cache first
-  const cacheKey = getCacheKey(category, page, getStats);
-  const cachedData = getFromCache(cacheKey);
-  if (cachedData) {
-    return NextResponse.json(cachedData);
-  }
-
-  // If requesting stats, fetch all category counts
-  if (getStats) {
-    const statsResult = await getCategoryStats();
-    setToCache(cacheKey, statsResult, STATS_CACHE_TTL_MS);
-    return statsResult;
-  }
-
-  // Build URL based on category
-  const categoryPath = CATEGORY_URLS[category] || '/website-lua-dao';
-  const url = `https://tinnhiemmang.vn${categoryPath}${page > 1 ? `?page=${page}` : ''}`;
-  
-  let response;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
-    // Use a proper rotating user-agent to avoid being blocked
-    const userAgents = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    ];
-    const userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
-    
-    response = await fetch(url, {
-      headers: {
-        'User-Agent': userAgent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (fetchError: any) {
-    // Return cached data if available when fetch fails
-    const fallbackCacheKey = getCacheKey(category, page, false);
-    const cachedFallback = getFromCache(fallbackCacheKey);
-    if (cachedFallback) {
+    const syncInfo = await ensureTinnhiemScamsSynced();
+    const db = getDb();
+
+    if (getStats) {
+      const [rows] = await db.query<TypeCountRow[]>(
+        `
+          SELECT type, COUNT(*) AS count
+          FROM scams
+          WHERE source = ? ${includeTrusted ? '' : 'AND is_scam = 1'}
+          GROUP BY type
+        `,
+        [SOURCE_NAME]
+      );
+
+      const byType = new Map<string, number>();
+      for (const row of rows || []) {
+        byType.set(row.type, row.count || 0);
+      }
+
+      const orderedTypes: ScamType[] = [
+        'website',
+        'organization',
+        'phone',
+        'bank',
+        'email',
+        'social',
+        'application',
+        'device',
+        'sms',
+        'system',
+      ];
+
+      const data = orderedTypes.map((type) => ({
+        name: getCategoryNameByType(type),
+        slug: getCategorySlugByType(type),
+        count: byType.get(type) || 0,
+        icon: '🛡️',
+      }));
+
       return NextResponse.json({
-        ...cachedFallback,
-        _warning: 'Data from cache - external service unavailable'
+        success: true,
+        source: SOURCE_NAME,
+        data,
+        sync: syncInfo,
       });
     }
-    
-    return NextResponse.json(
-      { error: 'External service temporarily unavailable. Please try again later.' },
-      { status: 503 }
+
+    const where: string[] = ['source = ?'];
+    const params: Array<string | number> = [SOURCE_NAME];
+
+    if (categoryType) {
+      where.push('type = ?');
+      params.push(categoryType);
+    }
+
+    if (!includeTrusted) {
+      where.push('is_scam = 1');
+    }
+
+    const whereClause = `WHERE ${where.join(' AND ')}`;
+
+    const [countRows] = await db.query<CountRow[]>(
+      `SELECT COUNT(*) AS count FROM scams ${whereClause}`,
+      params
     );
-  }
+    const totalItems = countRows[0]?.count || 0;
 
-  if (!response.ok) {
-    return NextResponse.json(
-      { error: `External service error: ${response.status}` },
-      { status: 503 }
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * limit;
+
+    const [rows] = await db.query<ScamRow[]>(
+      `
+        SELECT
+          id,
+          type,
+          value,
+          description,
+          report_count AS reportCount,
+          status,
+          risk_level AS riskLevel,
+          external_status AS externalStatus,
+          organization_name AS organizationName,
+          organization_icon AS organizationIcon,
+          source_url AS sourceUrl,
+          external_created_at AS externalCreatedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt,
+          icon,
+          is_scam AS isScam
+        FROM scams
+        ${whereClause}
+        ORDER BY COALESCE(external_created_at, created_at) DESC, updated_at DESC
+        LIMIT ? OFFSET ?
+      `,
+      [...params, limit, offset]
     );
-  }
 
-  const html = await response.text();
-  const $ = cheerio.load(html);
+    const detailKeys = Array.from(
+      new Set(rows.map((row) => buildDetailKeyFromScam(row.type, row.value)).filter(Boolean))
+    );
+    const feedbackMap = await fetchFeedbackCounts(detailKeys);
 
-  const scams: ScamData[] = [];
-  let id = (page - 1) * limit + 1;
+    const data = rows.map((row, index) => {
+      const detailKey = buildDetailKeyFromScam(row.type, row.value);
+      const feedback = feedbackMap[detailKey] || { ratings: 0, comments: 0 };
 
-  // Parse the scam data from HTML
-  $('#list-obj .item1').each((index, element) => {
-    const domain = $(element).find('.meta .sf-semibold span').text().trim();
-    const dateMatch = $(element).find('.meta .date').text().match(/(\d{2}\/\d{2}\/\d{4})/);
-    const orgLink = $(element).find('.org a').attr('href') || '';
-    const orgName = $(element).find('.org a').text().trim() || 'Chưa xác định';
-    const status = $(element).find('.status .handling').text().trim() || 'Đang xử lý';
-    
-    if (domain) {
-      // Determine scam type
-      let type = category;
-      let name = domain.replace(/\.com|\.net|\.org|\.vn|\.info|\.io/g, '').replace(/-/g, ' ');
-      
-      // Create description based on impersonated organization
-      let description = `${CATEGORY_NAMES[category] || 'Website lừa đảo'}`;
-      if (orgName && orgName !== 'Chưa xác định') {
-        description = `Giả mạo ${orgName}`;
-      }
-      
-      // Determine status
-      let statusCode = 'pending';
-      if (status.includes('Đã xác nhận') || status.includes('Xác nhận')) {
-        statusCode = 'confirmed';
-      } else if (status.includes('Cảnh báo')) {
-        statusCode = 'warning';
-      }
-      
-      // Note: The external source doesn't provide report counts in the HTML
-      // Using 0 to indicate no verified report data available (not random)
-      const reports = 0;
-      
-      // Convert date format
-      let date = dateMatch ? dateMatch[1] : '21/01/2025';
-      
-      scams.push({
-        id: id++,
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        domain: domain,
-        type: type,
-        reports: reports,
-        status: statusCode,
-        date: date,
-        description: description,
-        organization: orgName,
-      });
-    }
-  });
+      return {
+        id: offset + index + 1,
+        externalId: row.id,
+        name: row.value,
+        domain: row.value,
+        type: mapScamTypeToLegacyType(row.type),
+        reports: Number(row.reportCount || 0),
+        ratings: feedback.ratings,
+        comments: feedback.comments,
+        views: feedback.ratings + feedback.comments,
+        status: mapScamStatus(row.externalStatus, row.status),
+        date: formatDate(row.externalCreatedAt || row.createdAt),
+        description: row.description || '',
+        organization: row.organizationName || '',
+        source_url: row.sourceUrl || '',
+        updated_at: row.updatedAt,
+        icon: row.organizationIcon || row.icon || '',
+        is_scam: row.isScam === 1,
+      };
+    });
 
-  // Get total pages
-  const totalText = $('.pagination .page-item:last-child a').text();
-  const totalPages = parseInt(totalText) || 100;
-  const totalItems = totalPages * 10;
-
-  const responseData = {
-    success: true,
-    data: scams,
-    pagination: {
-      page,
-      limit,
-      totalPages,
-      totalItems,
-    },
-  };
-
-  // Cache the response
-  setToCache(cacheKey, responseData, CACHE_TTL_MS);
-
-  return NextResponse.json(responseData);
-}
-
-// Fetch stats for all categories
-async function getCategoryStats() {
-  const categories: { name: string; slug: string; count: number; icon: string }[] = [];
-  
-  for (const [slug, path] of Object.entries(CATEGORY_URLS)) {
-    try {
-      const response = await fetch(`https://tinnhiemmang.vn${path}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      });
-      
-      if (response.ok) {
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        
-        // Try to get count from various elements
-        let count = 0;
-        const totalText = $('.pagination .page-item:last-child a').text();
-        const pageCount = parseInt(totalText) || 0;
-        
-        // Count items on first page
-        const itemCount = $('#list-obj .item1').length;
-        count = pageCount * 10 || itemCount;
-        
-        // If we got valid count, add to categories
-        if (count > 0) {
-          categories.push({
-            name: CATEGORY_NAMES[slug] || slug,
-            slug,
-            count,
-            icon: '🛡️',
-          });
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching ${slug}:`, error);
-    }
-  }
-
-  // If no categories fetched, use fallback data
-  if (categories.length === 0) {
     return NextResponse.json({
       success: true,
-      data: [
-        { name: 'Website lừa đảo', slug: 'website', count: 62810, icon: '🌐' },
-        { name: 'Tổ chức/Doanh nghiệp', slug: 'organization', count: 2340, icon: '🏢' },
-        { name: 'Số điện thoại', slug: 'phone', count: 15620, icon: '📱' },
-        { name: 'Ngân hàng', slug: 'bank', count: 8920, icon: '🏦' },
-        { name: 'Email', slug: 'email', count: 4210, icon: '📧' },
-        { name: 'Mạng xã hội', slug: 'social', count: 7830, icon: '💬' },
-        { name: 'Ứng dụng', slug: 'app', count: 3150, icon: '📲' },
-        { name: 'Thiết bị điện tử', slug: 'device', count: 1890, icon: '🔌' },
-        { name: 'SMS', slug: 'sms', count: 5670, icon: '💌' },
-        { name: 'Hệ thống', slug: 'system', count: 980, icon: '🔒' },
-      ],
+      source: SOURCE_NAME,
+      data,
+      pagination: {
+        page: safePage,
+        limit,
+        totalPages,
+        totalItems,
+      },
+      sync: syncInfo,
     });
+  } catch (error) {
+    console.error('[api/scams] Database-first flow failed:', error);
+    return NextResponse.json(
+      { error: 'Failed to load scam data from local database' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({
-    success: true,
-    data: categories,
-  });
 }

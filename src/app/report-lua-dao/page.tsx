@@ -14,7 +14,12 @@ interface ScamData {
   name: string;
   domain: string;
   type: string;
-  reports: number;
+  icon?: string;
+  is_scam?: boolean;
+  reports?: number;
+  views?: number;
+  comments?: number;
+  ratings?: number;
   status: string;
   date: string;
   description: string;
@@ -42,7 +47,7 @@ export default function ScamListPage() {
   const [filteredScams, setFilteredScams] = useState<ScamData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, totalPages: 1, totalItems: 0 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 6, totalPages: 1, totalItems: 0 });
 
   // Fetch data from API
   useEffect(() => {
@@ -101,7 +106,49 @@ export default function ScamListPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('vi-VN');
+    const parsed = new Date(dateStr);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleDateString('vi-VN');
+    // If API already returns dd/mm/yyyy, just show it raw
+    return dateStr || '—';
+  };
+
+  const renderStatusBadge = (status: string, isScam?: boolean) => {
+    const normalized = (status || '').toLowerCase();
+    if (isScam === false || normalized === 'trusted' || normalized === 'safe') {
+      return (
+        <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-success/10 text-success border border-success/30">
+          Đã xác minh
+        </span>
+      );
+    }
+    if (normalized === 'confirmed' || normalized === 'blocked') {
+      return (
+        <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-danger/10 text-danger border border-danger/30">
+          Đã xác nhận
+        </span>
+      );
+    }
+    if (normalized === 'processing' || normalized === 'investigating' || normalized === 'suspected') {
+      return (
+        <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-warning/10 text-warning border border-warning/30">
+          Đang xử lý
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-slate-200 text-slate-700">
+        Chưa xác định
+      </span>
+    );
+  };
+
+  const getIconUrl = (scam: ScamData) => {
+    if (scam.icon) return scam.icon;
+    const domain = scam.domain || scam.name || '';
+    if (domain) {
+      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+    }
+    return 'https://tinnhiemmang.vn/img/icon_web2.png';
   };
 
   return (
@@ -149,11 +196,11 @@ export default function ScamListPage() {
               <p className="text-sm text-text-muted">Tổng cảnh báo</p>
             </Card>
             <Card className="p-4 text-center bg-warning/5 border-warning/20">
-              <p className="text-3xl font-bold text-warning">{scams.filter(s => s.type === 'web').length}</p>
+              <p className="text-3xl font-bold text-warning">{pagination.totalItems > 0 ? pagination.totalItems : scams.filter(s => s.type === 'web').length}</p>
               <p className="text-sm text-text-muted">Website lừa đảo</p>
             </Card>
             <Card className="p-4 text-center bg-primary/5 border-primary/20">
-              <p className="text-3xl font-bold text-primary">{scams.reduce((a, s) => a + s.reports, 0)}</p>
+              <p className="text-3xl font-bold text-primary">{scams.reduce((a, s) => a + (s.views ?? s.reports ?? 0), 0)}</p>
               <p className="text-sm text-text-muted">Lượt báo cáo</p>
             </Card>
             <Card className="p-4 text-center bg-success/5 border-success/20">
@@ -214,21 +261,30 @@ export default function ScamListPage() {
                 <Card hover className="p-4">
                   <div className="flex flex-col md:flex-row md:items-center gap-4">
                     {/* Icon */}
-                    <div className={cn(
-                      'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0',
-                      scam.type === 'web' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-blue-500/10 text-blue-500'
-                    )}>
-                      {scam.type === 'web' ? <Globe className="w-6 h-6" /> : <Phone className="w-6 h-6" />}
+                    <div
+                      className={cn(
+                        'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden border border-bg-border/60 bg-white'
+                      )}
+                    >
+                      <img
+                        src={getIconUrl(scam)}
+                        alt={scam.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (target.dataset.fallback) return;
+                          target.dataset.fallback = '1';
+                          target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                        }}
+                      />
                     </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-text-main">{scam.name}</h3>
-                        <span className="px-2 py-0.5 bg-danger/10 text-danger text-xs rounded-full">
-                          Đã xác nhận
-                        </span>
-                      </div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-text-main">{scam.name}</h3>
+                      {renderStatusBadge(scam.status, scam.is_scam)}
+                    </div>
                       
                       <div className="flex items-center gap-2 mb-2">
                         <code 
@@ -254,7 +310,7 @@ export default function ScamListPage() {
                       <div className="flex items-center gap-4 text-sm text-text-muted">
                         <span className="flex items-center gap-1">
                           <AlertTriangle className="w-4 h-4 text-danger" />
-                          {scam.reports}
+                          {scam.views ?? scam.reports ?? 0}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
@@ -279,6 +335,39 @@ export default function ScamListPage() {
             <div className="text-center py-12">
               <Search className="w-12 h-12 text-text-muted mx-auto mb-4" />
               <p className="text-text-secondary">Không tìm thấy kết quả nào</p>
+            </div>
+          )}
+
+          {!loading && pagination.totalPages > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                disabled={pagination.page <= 1}
+                onClick={() =>
+                  setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))
+                }
+                className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Trang trước
+              </button>
+
+              <span className="px-3 py-2 text-sm text-text-secondary">
+                Trang {pagination.page}/{pagination.totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() =>
+                  setPagination((prev) => ({
+                    ...prev,
+                    page: Math.min(prev.totalPages, prev.page + 1),
+                  }))
+                }
+                className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Trang sau
+              </button>
             </div>
           )}
 

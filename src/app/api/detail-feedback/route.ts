@@ -188,10 +188,9 @@ async function addRatingToDb(
   
   try {
     const db = getDb();
-    const id = crypto.randomUUID();
     await db.execute(
-      'INSERT INTO detail_ratings (id, detail_key, identity_key, score, created_at, identity_type) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, detailKey, identityKey, score, Date.now(), identityType]
+      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [detailKey, identityKey, score, identityType]
     );
     return true;
   } catch (error) {
@@ -1085,7 +1084,9 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     entry.lastActive = Date.now();
 
     // Sync to database (fire and forget)
-    addRatingToDb(detailKey, identity.key, score, identity.type).catch(console.error);
+    addRatingToDb(detailKey, identity.key, score, identity.type).catch((err) => {
+      console.error('[DetailFeedback] Failed to save rating to DB:', err);
+    });
 
     const payload = buildResponsePayload(entry, identity);
     const response = createSecureJsonResponse({
@@ -1201,7 +1202,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
   entry.lastActive = Date.now();
 
   // Sync to database (fire and forget)
-  addCommentToDb(comment, detailKey).catch(console.error);
+  addCommentToDb(comment, detailKey).catch((err) => { console.error("[DetailFeedback] Failed to save comment to DB:", err); });
 
   const payload = buildResponsePayload(entry, identity);
   const response = createSecureJsonResponse({

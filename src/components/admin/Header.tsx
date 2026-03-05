@@ -19,9 +19,11 @@ interface HeaderProps {
   title?: string;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  authName?: string;
+  authEmail?: string;
 }
 
-export default function Header({ title = 'Dashboard', theme = 'dark', onToggleTheme }: HeaderProps) {
+export default function Header({ title = 'Dashboard', theme = 'dark', onToggleTheme, authName, authEmail }: HeaderProps) {
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -204,8 +206,12 @@ export default function Header({ title = 'Dashboard', theme = 'dark', onToggleTh
                 <User className="w-4 h-4 text-white" />
               </div>
               <div className="hidden lg:block text-left">
-                <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Admin</p>
-                <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>admin@scamguard.vn</p>
+                <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                  {authName || 'Admin'}
+                </p>
+                <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {authEmail || 'admin@example.com'}
+                </p>
               </div>
               <ChevronDown className={`hidden lg:block w-4 h-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
             </button>
@@ -249,9 +255,9 @@ export default function Header({ title = 'Dashboard', theme = 'dark', onToggleTh
                   <div className={`border-t p-2 ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
                     <button 
                       onClick={async () => {
-                        // Call logout API to clear HttpOnly cookie
-                        await fetch('/api/auth/logout', { method: 'POST' });
-                        router.push('/admin/login');
+                        setShowUserMenu(false);
+                        // Hit GET /api/auth/logout which clears cookie and redirects server-side
+                        window.location.href = '/api/auth/logout';
                       }}
                       className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg transition-colors ${
                         theme === 'dark'

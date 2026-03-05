@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS detail_feedback (
     author_identity_key VARCHAR(100) NOT NULL,
     helpful INT DEFAULT 0,
     verified BOOLEAN DEFAULT FALSE,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()*1000),
     
     INDEX idx_detail_key (detail_key),
     INDEX idx_created_at (created_at)
@@ -34,9 +34,9 @@ CREATE TABLE IF NOT EXISTS detail_ratings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     detail_key VARCHAR(220) NOT NULL,
     identity_key VARCHAR(100) NOT NULL,
-    score TINYINT NOT NULL,
-    identity_type ENUM('user', 'ip', 'visitor') NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    score INT UNSIGNED NOT NULL,
+    identity_type VARCHAR(20) NOT NULL,
+    created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()*1000),
     
     INDEX idx_detail_key (detail_key),
     INDEX idx_identity_key (identity_key),
