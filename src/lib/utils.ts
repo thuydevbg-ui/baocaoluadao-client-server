@@ -3,7 +3,7 @@ import { twMerge } from 'tailwind-merge';
 
 // Type definitions for the ScamGuard application
 
-export type RiskLevel = 'safe' | 'suspicious' | 'scam';
+export type RiskLevel = 'safe' | 'suspicious' | 'scam' | 'unknown';
 export type ScamType = 'phone' | 'bank' | 'website' | 'crypto';
 
 export interface SearchResult {
@@ -78,7 +78,7 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat('vi-VN').format(num);
 }
 
-export function getRiskColor(risk: 'safe' | 'suspicious' | 'scam'): string {
+export function getRiskColor(risk: RiskLevel): string {
   switch (risk) {
     case 'safe':
       return 'text-success bg-success/10 border-success/30';
@@ -86,12 +86,14 @@ export function getRiskColor(risk: 'safe' | 'suspicious' | 'scam'): string {
       return 'text-warning bg-warning/10 border-warning/30';
     case 'scam':
       return 'text-danger bg-danger/10 border-danger/30';
+    case 'unknown':
+      return 'text-text-secondary bg-bg-cardHover border-bg-border';
     default:
       return 'text-text-secondary bg-bg-card border-bg-border';
   }
 }
 
-export function getRiskGradient(risk: 'safe' | 'suspicious' | 'scam'): string {
+export function getRiskGradient(risk: RiskLevel): string {
   switch (risk) {
     case 'safe':
       return 'from-success to-green-400';
@@ -99,6 +101,8 @@ export function getRiskGradient(risk: 'safe' | 'suspicious' | 'scam'): string {
       return 'from-warning to-amber-400';
     case 'scam':
       return 'from-danger to-red-400';
+    case 'unknown':
+      return 'from-gray-500 to-gray-400';
     default:
       return 'from-gray-500 to-gray-400';
   }

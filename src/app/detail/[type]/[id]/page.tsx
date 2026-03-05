@@ -38,6 +38,7 @@ type SourceStatus = 'trusted' | 'confirmed' | 'suspected' | 'unknown';
 interface DetailSourceMeta {
   status?: string;
   reports?: number;
+  riskScore?: number;
   firstSeen?: string;
   lastReported?: string;
   description?: string;
@@ -353,6 +354,9 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const idHash = hashText(`${kind}:${value}`);
   const normalizedStatus = normalizeSourceStatus(sourceMeta.status || sourceMeta.sourceMode);
   const hasSourceStatus = normalizedStatus !== 'unknown';
+  const explicitUnknownStatus = (sourceMeta.status || '').trim().toLowerCase() === 'unknown';
+  const sourceNameNormalized = (sourceMeta.source || '').trim().toLowerCase();
+  const fromScanSource = sourceNameNormalized.startsWith('scan');
   const reports = parsePositiveInt(sourceMeta.reports) ?? 35 + (idHash % 240);
   const baseScoreMap: Record<ScamKind, number> = {
     phone: 86,
@@ -365,6 +369,13 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   let riskScore = Math.min(98, baseScoreMap[kind] + keywordBoost + (idHash % 5));
   let risk: RiskLevel = riskScore >= 80 ? 'scam' : riskScore >= 55 ? 'suspicious' : 'safe';
   let confidence = Math.max(5, 100 - riskScore);
+
+  // If scan could not determine a verdict, do not auto-escalate to "scam" from heuristics.
+  if (normalizedStatus === 'unknown' && explicitUnknownStatus && fromScanSource) {
+    risk = 'unknown';
+    riskScore = 40;
+    confidence = 50;
+  }
 
   if (hasSourceStatus) {
     risk = mapStatusToRisk(normalizedStatus);
@@ -380,7 +391,9 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const isTrustedEntity = normalizedStatus === 'trusted' || isTrustedValue(sourceMeta.sourceMode);
   const typeLabel = isTrustedEntity
     ? TRUSTED_CATEGORY_LABEL[sourceMeta.sourceCategory || ''] || 'Đối tượng tín nhiệm'
-    : TYPE_LABEL[kind];
+    : risk === 'unknown'
+      ? (kind === 'website' ? 'Website cần kiểm tra' : 'Đối tượng cần kiểm tra')
+      : TYPE_LABEL[kind];
 
   const detailByType: Record<
     ScamKind,
@@ -474,7 +487,10 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const updatedAt = new Date().toLocaleString('vi-VN');
 
   const profile = detailByType[kind];
-  const statusLabel = getStatusLabel(normalizedStatus, risk);
+  let statusLabel = getStatusLabel(normalizedStatus, risk === 'unknown' ? 'suspicious' : risk);
+  if (risk === 'unknown' && explicitUnknownStatus && fromScanSource) {
+    statusLabel = 'Chưa đủ dữ liệu';
+  }
   const description = sourceMeta.description?.trim()
     ? sourceMeta.description.trim()
     : isTrustedEntity
@@ -493,12 +509,12 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
     firstSeen,
     lastReported,
     description,
-    amount: risk === 'safe' ? undefined : estimatedLoss,
+    amount: risk === 'scam' || risk === 'suspicious' ? estimatedLoss : undefined,
   };
 
   const insight: DetailInsight = {
-    riskSignals: risk === 'safe' ? profile.safeSignals : profile.riskSignals,
-    recommendations: risk === 'safe' ? profile.safeRecommendations : profile.recommendations,
+    riskSignals: (risk === 'safe' || risk === 'unknown') ? profile.safeSignals : profile.riskSignals,
+    recommendations: (risk === 'safe' || risk === 'unknown') ? profile.safeRecommendations : profile.recommendations,
     channels: isTrustedEntity ? ['Thông tin liên hệ', 'Kênh chính thức', 'Xác thực nguồn'] : profile.channels,
     related: [
       sourceMeta.organization || '',
@@ -506,7 +522,7 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
       sourceMeta.organization ? `${sourceMeta.organization} liên hệ` : '',
     ].filter(Boolean),
     timeline: [
-      { label: 'Phát hiện lần đầu', value: firstSeen, tone: risk === 'safe' ? 'neutral' : 'warning' },
+      { label: 'Phát hiện lần đầu', value: firstSeen, tone: (risk === 'safe' || risk === 'unknown') ? 'neutral' : 'warning' },
       { label: 'Cập nhật gần nhất', value: lastReported, tone: risk === 'scam' ? 'danger' : 'neutral' },
       { label: 'Cập nhật hệ thống', value: updatedAt, tone: 'neutral' },
     ],
@@ -529,20 +545,24 @@ function parseDetailSourceMeta(params: SearchParamReader): DetailSourceMeta {
   const sourceLink = params.get('sourceLink') || undefined;
   const status = params.get('status') || undefined;
   const sourceMode = params.get('sourceMode') || undefined;
-  const hasKnownSource = Boolean(status || sourceMode || sourceLink);
+  const source = params.get('source') || undefined;
+  const riskScore = parsePositiveInt(params.get('risk'));
+  const hasKnownSource = Boolean(status || sourceMode || sourceLink || source);
+  const normalizedStatus = normalizeSourceStatus(status || sourceMode);
 
   return {
     status,
     reports,
+    riskScore,
     firstSeen: params.get('firstSeen') || undefined,
     lastReported: params.get('lastReported') || undefined,
     description: params.get('description') || undefined,
     organization: params.get('organization') || undefined,
-    source: hasKnownSource ? 'tinnhiemmang.vn' : undefined,
+    source: source || (hasKnownSource && (normalizedStatus !== 'unknown' || Boolean(sourceLink)) ? 'tinnhiemmang.vn' : undefined),
     sourceLink,
     sourceCategory: params.get('sourceCategory') || undefined,
     sourceMode,
-    sourceIcon: params.get('sourceIcon') || undefined,
+    sourceIcon: params.get('sourceIcon') || params.get('organizationIcon') || undefined,
   };
 }
 
@@ -1041,6 +1061,8 @@ export default function DetailPage() {
                             ? 'bg-danger/10 text-danger'
                             : data.risk === 'suspicious'
                               ? 'bg-warning/10 text-warning'
+                              : data.risk === 'unknown'
+                                ? 'bg-bg-cardHover text-text-secondary'
                               : 'bg-success/10 text-success'
                         )}
                       >
@@ -1080,6 +1102,8 @@ export default function DetailPage() {
                                 ? 'text-danger'
                                 : data.risk === 'suspicious'
                                   ? 'text-warning'
+                                  : data.risk === 'unknown'
+                                    ? 'text-text-secondary'
                                   : 'text-success';
                             return (
                               <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border bg-bg-cardHover', tone, 'border-bg-border')}>
@@ -1149,6 +1173,8 @@ export default function DetailPage() {
                           ? 'text-danger'
                           : data.risk === 'suspicious'
                             ? 'text-warning'
+                            : data.risk === 'unknown'
+                              ? 'text-text-secondary'
                             : 'text-success'
                       )}
                     >
@@ -1166,6 +1192,8 @@ export default function DetailPage() {
                           ? 'risk-scam'
                           : data.risk === 'suspicious'
                             ? 'risk-suspicious'
+                            : data.risk === 'unknown'
+                              ? 'risk-unknown'
                             : 'risk-safe'
                       )}
                     />
@@ -1272,11 +1300,15 @@ export default function DetailPage() {
                   <div className="bg-bg-cardHover rounded-xl p-3 text-center">
                     {data.risk === 'safe' ? (
                       <ShieldCheck className="w-4 h-4 text-success mx-auto mb-1.5" />
+                    ) : data.risk === 'unknown' ? (
+                      <AlertTriangle className="w-4 h-4 text-text-secondary mx-auto mb-1.5" />
                     ) : (
                       <AlertTriangle className={cn('w-4 h-4 mx-auto mb-1.5', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
                     )}
                     <p className="text-xl font-bold text-text-main font-mono">{formatNumber(data.reports)}</p>
-                    <p className="text-xs text-text-muted">{data.risk === 'safe' ? 'Báo cáo tiêu cực' : t('risk.reports')}</p>
+                    <p className="text-xs text-text-muted">
+                      {data.risk === 'safe' ? 'Báo cáo tiêu cực' : data.risk === 'unknown' ? 'Báo cáo' : t('risk.reports')}
+                    </p>
                   </div>
                   <div className="bg-bg-cardHover rounded-xl p-3 text-center">
                     <Clock className="w-4 h-4 text-primary mx-auto mb-1.5" />
@@ -1374,16 +1406,20 @@ export default function DetailPage() {
                 <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
                   {data.risk === 'safe' ? (
                     <ShieldCheck className="w-5 h-5 text-success" />
+                  ) : data.risk === 'unknown' ? (
+                    <AlertTriangle className="w-5 h-5 text-text-secondary" />
                   ) : (
                     <AlertTriangle className={cn('w-5 h-5', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
                   )}
-                  {data.risk === 'safe' ? 'Tín hiệu xác thực' : 'Dấu hiệu rủi ro'}
+                  {data.risk === 'safe' ? 'Tín hiệu xác thực' : data.risk === 'unknown' ? 'Cần kiểm tra' : 'Dấu hiệu rủi ro'}
                 </h3>
                 <div className="space-y-2.5">
                   {insight.riskSignals.map((signal) => (
                     <div key={signal} className="flex items-start gap-2 text-sm text-text-secondary">
                       {data.risk === 'safe' ? (
                         <ShieldCheck className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                      ) : data.risk === 'unknown' ? (
+                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
                       ) : (
                         <AlertTriangle className={cn('w-4 h-4 mt-0.5 shrink-0', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
                       )}

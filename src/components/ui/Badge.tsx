@@ -32,7 +32,7 @@ export function Badge({ variant = 'default', children, className }: BadgeProps) 
 }
 
 interface RiskBadgeProps {
-  risk: 'safe' | 'suspicious' | 'scam';
+  risk: 'safe' | 'suspicious' | 'scam' | 'unknown';
   label: string;
 }
 
@@ -41,6 +41,7 @@ export function RiskBadge({ risk, label }: RiskBadgeProps) {
     safe: 'bg-success/10 text-success border-success/30',
     suspicious: 'bg-warning/10 text-warning border-warning/30',
     scam: 'bg-danger/10 text-danger border-danger/30',
+    unknown: 'bg-bg-cardHover text-text-secondary border-bg-border',
   };
 
   return (
@@ -55,7 +56,8 @@ export function RiskBadge({ risk, label }: RiskBadgeProps) {
           'w-2 h-2 rounded-full',
           risk === 'safe' && 'bg-success',
           risk === 'suspicious' && 'bg-warning',
-          risk === 'scam' && 'bg-danger'
+          risk === 'scam' && 'bg-danger',
+          risk === 'unknown' && 'bg-gray-400'
         )}
       />
       {label}

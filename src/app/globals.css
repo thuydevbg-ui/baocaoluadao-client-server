@@ -146,6 +146,10 @@ body {
   background: linear-gradient(90deg, #DC2626, #EF4444);
 }
 
+.risk-unknown {
+  background: linear-gradient(90deg, #64748B, #94A3B8);
+}
+
 /* Input autofill fix */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
