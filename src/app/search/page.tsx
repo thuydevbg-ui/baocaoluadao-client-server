@@ -363,6 +363,12 @@ function SearchPageContent() {
     }
   };
 
+  const getRiskLabel = (risk: SearchResult['risk']) => {
+    if (risk === 'scam') return 'Lừa đảo';
+    if (risk === 'suspicious') return 'Nghi ngờ';
+    return 'An toàn';
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -481,7 +487,7 @@ function SearchPageContent() {
                           </div>
                           <RiskBadge
                             risk={result.risk}
-                            label={t(`risk.${result.risk}`)}
+                            label={getRiskLabel(result.risk)}
                           />
                         </Card>
                       </Link>

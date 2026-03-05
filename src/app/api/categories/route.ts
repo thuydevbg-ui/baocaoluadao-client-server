@@ -56,6 +56,12 @@ function parseQuery(value: unknown): string {
   return value.trim().slice(0, 120);
 }
 
+function categoryModeForType(category: ScamType): 'scam' | 'trusted' {
+  // Organization page is used as trusted directory in current UX.
+  if (category === 'organization') return 'trusted';
+  return 'scam';
+}
+
 export const POST = withApiObservability(async (request: NextRequest) => {
   if (!isRequestFromSameOrigin(request)) {
     return createSecureJsonResponse({ success: false, error: 'Forbidden request origin', items: [] }, { status: 403 });
@@ -77,6 +83,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     const query = parseQuery(payload?.query);
     const perPage = Math.min(Math.max(Number(payload?.perPage) || 30, 1), 200);
 
+    const mode = categoryModeForType(category);
     const db = getDb();
     const offset = (page - 1) * perPage;
 
@@ -89,6 +96,9 @@ export const POST = withApiObservability(async (request: NextRequest) => {
 
     conditions.push('type = ?');
     params.push(category);
+
+    conditions.push('is_scam = ?');
+    params.push(mode === 'scam' ? 1 : 0);
 
     if (query) {
       conditions.push('(value LIKE ? OR description LIKE ?)');
@@ -205,9 +215,17 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       type: row.type,
       description: row.description || '',
       count_report: String(row.count_report || 0),
-      status: row.status === 'high' ? 'scam' : 
-              row.status === 'medium' ? 'suspected' : 
-              row.is_scam === false ? 'trusted' : 'safe',
+      status: row.is_scam === false
+        ? 'trusted'
+        : row.source_status === 'blocked'
+          ? 'scam'
+          : row.source_status === 'investigating'
+            ? 'suspected'
+            : row.status === 'high'
+              ? 'scam'
+              : row.status === 'medium'
+                ? 'suspected'
+                : 'safe',
       created_at: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
       source: row.source || 'database',
       icon: row.icon,
@@ -221,7 +239,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       success: true,
       source: 'database',
       category,
-      mode: 'scam',
+      mode,
       page,
       maxPage: maxPage || 1,
       total,

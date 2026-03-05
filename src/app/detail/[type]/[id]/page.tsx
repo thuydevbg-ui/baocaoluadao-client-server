@@ -737,23 +737,12 @@ export default function DetailPage() {
   useEffect(() => {
     let cancelled = false;
     const runAiScan = async () => {
-      // Skip AI scan for trusted/verified entities from source metadata to avoid false alarm
-      const statusParam = searchParams.get('status') ?? undefined;
-      const sourceModeParam = searchParams.get('sourceMode') ?? undefined;
-      const trustedFlag = normalizeSourceStatus(statusParam || sourceModeParam) === 'trusted';
-      if (trustedFlag) {
-        setAiScan({
-          loading: false,
-          verdict: 'safe',
-          risk: 0,
-          trust: 97,
-          description: 'Đã xác minh uy tín bởi nguồn gốc, bỏ qua quét AI.',
-        });
-        return;
-      }
-
       if (normalizedType !== 'website' || !decodedValue) return;
       setAiScan({ loading: true });
+      const statusParam = searchParams.get('status') ?? undefined;
+      const sourceModeParam = searchParams.get('sourceMode') ?? undefined;
+      const sourceStatus = normalizeSourceStatus(statusParam || sourceModeParam);
+
       let cleanUrl = decodedValue.trim();
       if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl)) {
         cleanUrl = `https://${cleanUrl}`;
@@ -762,7 +751,7 @@ export default function DetailPage() {
         const response = await fetch('/api/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: cleanUrl }),
+          body: JSON.stringify({ url: cleanUrl, sourceStatus }),
         });
         if (!response.ok) throw new Error('AI scan failed');
         const data = await response.json();
@@ -780,7 +769,30 @@ export default function DetailPage() {
           });
         }
       } catch (err: any) {
-        if (!cancelled) setAiScan({ loading: false, error: err?.message || 'AI scan failed' });
+        if (!cancelled) {
+          // Fallback verdict from source status when AI service is unavailable.
+          if (sourceStatus === 'trusted') {
+            setAiScan({
+              loading: false,
+              verdict: 'safe',
+              risk: 12,
+              trust: 92,
+              description: 'Nguồn dữ liệu xác thực uy tín. AI tạm thời không phản hồi nên dùng hồ sơ nguồn để suy luận.',
+            });
+            return;
+          }
+          if (sourceStatus === 'suspected' || sourceStatus === 'confirmed') {
+            setAiScan({
+              loading: false,
+              verdict: 'scam',
+              risk: sourceStatus === 'confirmed' ? 88 : 64,
+              trust: sourceStatus === 'confirmed' ? 12 : 36,
+              description: 'Nguồn dữ liệu đã gắn cờ rủi ro. AI tạm thời không phản hồi nên dùng hồ sơ nguồn để suy luận.',
+            });
+            return;
+          }
+          setAiScan({ loading: false, error: err?.message || 'AI scan failed' });
+        }
       }
     };
 
@@ -788,7 +800,7 @@ export default function DetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [normalizedType, decodedValue]);
+  }, [normalizedType, decodedValue, searchParamsKey]);
 
   const applyFeedbackPayload = (payload: DetailFeedbackResponse) => {
     setComments((payload.comments || []).map(toCommentView));
@@ -1155,8 +1167,8 @@ export default function DetailPage() {
                   </div>
                 </div>
 
-                {normalizedType === 'website' && insight?.isTrustedEntity !== true && (
-                  <Card className="mt-4 border border-primary/15 bg-primary/5">
+                {normalizedType === 'website' && (
+                  <Card className="mt-4 border border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-info/5 shadow-sm">
                     <div className="flex items-start gap-3">
                       <div
                         className={cn(
@@ -1267,8 +1279,11 @@ export default function DetailPage() {
               transition={{ delay: 0.05 }}
               className="space-y-6"
             >
-              <Card>
-                <h2 className="text-xl font-bold text-text-main mb-3">{t('detail.description')}</h2>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-bg-cardHover/25">
+                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
+                  <Copy className="w-5 h-5 text-primary" />
+                  {t('detail.description')}
+                </h2>
                 <p className="text-text-secondary leading-relaxed">{data.description}</p>
                 {data.amount && (
                   <div className="mt-4 pt-4 border-t border-bg-border">
@@ -1278,23 +1293,31 @@ export default function DetailPage() {
                 )}
               </Card>
 
-              <Card>
-                <h2 className="text-xl font-bold text-text-main mb-3">Khuyến nghị xử lý ngay</h2>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-success/5">
+                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-success" />
+                  Khuyến nghị xử lý ngay
+                </h2>
                 <div className="space-y-2.5">
-                  {insight.recommendations.map((item) => (
-                    <div key={item} className="flex items-start gap-2 text-sm text-text-secondary">
-                      <ShieldCheck className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                      <span>{item}</span>
+                  {insight.recommendations.map((item, index) => (
+                    <div key={item} className="flex items-start gap-2.5 text-sm text-text-secondary rounded-lg bg-bg-cardHover/60 border border-bg-border/70 px-3 py-2">
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-success/15 text-success text-xs font-bold shrink-0 mt-0.5">
+                        {index + 1}
+                      </span>
+                      <span className="leading-relaxed">{item}</span>
                     </div>
                   ))}
                 </div>
               </Card>
 
-              <Card>
-                <h2 className="text-xl font-bold text-text-main mb-3">{t('detail.timeline')}</h2>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-info/5">
+                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-primary" />
+                  {t('detail.timeline')}
+                </h2>
                 <div className="space-y-3">
                   {insight.timeline.map((step) => (
-                    <div key={step.label} className="flex items-center justify-between rounded-lg border border-bg-border bg-bg-cardHover/70 px-3 py-2.5">
+                    <div key={step.label} className="flex items-center justify-between rounded-lg border border-bg-border bg-bg-cardHover/70 px-3 py-2.5 shadow-sm">
                       <span className="text-sm text-text-secondary">{step.label}</span>
                       <span
                         className={cn(
@@ -1321,8 +1344,13 @@ export default function DetailPage() {
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
-              <Card>
-                <h3 className="text-lg font-bold text-text-main mb-3">
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
+                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
+                  {data.risk === 'safe' ? (
+                    <ShieldCheck className="w-5 h-5 text-success" />
+                  ) : (
+                    <AlertTriangle className={cn('w-5 h-5', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
+                  )}
                   {data.risk === 'safe' ? 'Tín hiệu xác thực' : 'Dấu hiệu rủi ro'}
                 </h3>
                 <div className="space-y-2.5">
@@ -1339,13 +1367,16 @@ export default function DetailPage() {
                 </div>
               </Card>
 
-              <Card>
-                <h3 className="text-lg font-bold text-text-main mb-3">Kênh bị nhắm tới</h3>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-warning/5">
+                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
+                  <Flag className="w-5 h-5 text-warning" />
+                  Kênh bị nhắm tới
+                </h3>
                 <div className="flex flex-wrap gap-2">
                   {insight.channels.map((channel) => (
                     <span
                       key={channel}
-                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary"
+                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary shadow-sm"
                     >
                       {channel}
                     </span>
@@ -1353,8 +1384,11 @@ export default function DetailPage() {
                 </div>
               </Card>
 
-              <Card>
-                <h3 className="text-lg font-bold text-text-main mb-3">{t('detail.related')}</h3>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-bg-cardHover/30">
+                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
+                  <Share2 className="w-5 h-5 text-primary" />
+                  {t('detail.related')}
+                </h3>
                 <div className="space-y-2">
                   {insight.related.map((item) => (
                     <button
@@ -1369,8 +1403,11 @@ export default function DetailPage() {
                 </div>
               </Card>
 
-              <Card>
-                <h3 className="text-lg font-bold text-text-main mb-2">Nguồn dữ liệu</h3>
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
+                <h3 className="text-lg font-bold text-text-main mb-2 flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-primary" />
+                  Nguồn dữ liệu
+                </h3>
                 <p className="text-sm text-text-secondary">{insight.source}</p>
                 {insight.sourceLink && (
                   <a
