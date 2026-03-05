@@ -216,7 +216,8 @@ function parsePositiveInt(value: string | number | null | undefined): number | u
 function normalizeSourceStatus(statusRaw?: string): SourceStatus {
   const status = (statusRaw || '').trim().toLowerCase();
   if (!status) return 'unknown';
-  if (status === 'trusted' || status === 'safe' || status === 'verified') return 'trusted';
+  // "safe" is a scan verdict, not an authoritative source status.
+  if (status === 'trusted' || status === 'verified') return 'trusted';
   if (status === 'confirmed' || status === 'scam') return 'confirmed';
   if (status === 'suspected' || status === 'warning' || status === 'processing') return 'suspected';
   return 'unknown';
@@ -356,8 +357,11 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   const hasSourceStatus = normalizedStatus !== 'unknown';
   const explicitUnknownStatus = (sourceMeta.status || '').trim().toLowerCase() === 'unknown';
   const sourceNameNormalized = (sourceMeta.source || '').trim().toLowerCase();
-  const fromScanSource = sourceNameNormalized.startsWith('scan');
-  const reports = parsePositiveInt(sourceMeta.reports) ?? 35 + (idHash % 240);
+  const fromScanSource =
+    sourceNameNormalized.startsWith('scan') ||
+    sourceNameNormalized.includes('web_risk') ||
+    sourceNameNormalized.includes('local_db');
+  const reports = parsePositiveInt(sourceMeta.reports) ?? (fromScanSource ? 0 : 35 + (idHash % 240));
   const baseScoreMap: Record<ScamKind, number> = {
     phone: 86,
     bank: 90,
@@ -369,6 +373,15 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   let riskScore = Math.min(98, baseScoreMap[kind] + keywordBoost + (idHash % 5));
   let risk: RiskLevel = riskScore >= 80 ? 'scam' : riskScore >= 55 ? 'suspicious' : 'safe';
   let confidence = Math.max(5, 100 - riskScore);
+
+  // For scan-driven links (source=google_web_risk/local_db/scan_unavailable), respect the explicit scan score
+  // but do NOT treat it as "trusted/verified".
+  const scanRiskScore = typeof sourceMeta.riskScore === 'number' ? Math.max(0, Math.min(100, Math.floor(sourceMeta.riskScore))) : undefined;
+  if (normalizedStatus === 'unknown' && fromScanSource && scanRiskScore !== undefined) {
+    riskScore = scanRiskScore;
+    risk = riskScore >= 80 ? 'scam' : riskScore >= 55 ? 'suspicious' : 'safe';
+    confidence = risk === 'safe' ? 75 : risk === 'suspicious' ? 45 : 25;
+  }
 
   // If scan could not determine a verdict, do not auto-escalate to "scam" from heuristics.
   if (normalizedStatus === 'unknown' && explicitUnknownStatus && fromScanSource) {
