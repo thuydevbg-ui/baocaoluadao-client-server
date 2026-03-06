@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import {
   Search,
   Shield,
@@ -11,11 +11,8 @@ import {
   Phone,
   Building2,
   Globe,
-  Wallet,
   ArrowRight,
   Clock,
-  MessageCircle,
-  Eye,
   Sparkles,
   Mail,
   Zap,
@@ -26,7 +23,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Button, Card, Tooltip } from '@/components/ui';
+import { Button, Tooltip } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn, getRiskGradient, type RiskLevel } from '@/lib/utils';
@@ -76,23 +73,16 @@ interface StatsResponse {
   source?: string;
 }
 
-function SectionHeader({
-  label,
-  title,
-  subtitle,
-}: {
-  label?: string;
+type HeroSearchType = 'phone' | 'bank' | 'website' | 'email';
+
+type SearchInsight = {
   title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="section-header">
-      {label && <span className="section-label">{label}</span>}
-      <h2 className="section-title">{title}</h2>
-      {subtitle && <p className="section-subtitle max-w-3xl">{subtitle}</p>}
-    </div>
-  );
-}
+  subtitle: string;
+  hint: string;
+  value: string;
+  risk: RiskLevel;
+  Icon: React.ComponentType<{ className?: string }>;
+};
 
 const categoryVisual: Record<string, { icon: string; color: string }> = {
   website: { icon: '🌐', color: 'from-blue-500 to-blue-600' },
@@ -100,7 +90,6 @@ const categoryVisual: Record<string, { icon: string; color: string }> = {
   devices: { icon: '📱', color: 'from-green-500 to-green-600' },
   systems: { icon: '🔒', color: 'from-red-500 to-red-600' },
   apps: { icon: '📲', color: 'from-orange-500 to-orange-600' },
-  // New categories from tinnhiemmang.vn
   organization: { icon: '🏢', color: 'from-purple-500 to-purple-600' },
   device: { icon: '📱', color: 'from-green-500 to-green-600' },
   system: { icon: '🔒', color: 'from-red-500 to-red-600' },
@@ -112,14 +101,44 @@ const categoryVisual: Record<string, { icon: string; color: string }> = {
   sms: { icon: '💌', color: 'from-amber-500 to-amber-600' },
 };
 
-type SearchInsight = {
-  title: string;
-  subtitle: string;
-  hint: string;
-  value: string;
-  risk: RiskLevel;
-  Icon: React.ComponentType<{ className?: string }>;
+const heroSearchTypes: Array<{ key: HeroSearchType; label: string; Icon: React.ComponentType<{ className?: string }> }> = [
+  { key: 'phone', label: 'Số điện thoại', Icon: Phone },
+  { key: 'bank', label: 'Ngân hàng', Icon: Building2 },
+  { key: 'website', label: 'Domain', Icon: Globe },
+  { key: 'email', label: 'Email', Icon: Mail },
+];
+
+const heroSearchPlaceholders: Record<HeroSearchType, string> = {
+  phone: 'Nhập số điện thoại cần kiểm tra',
+  bank: 'Nhập số tài khoản hoặc tên ngân hàng',
+  website: 'Nhập domain hoặc URL website',
+  email: 'Nhập địa chỉ email nghi ngờ',
 };
+
+const heroSearchCategoryMap: Record<HeroSearchType, string> = {
+  phone: 'phone',
+  bank: 'bank',
+  website: 'website',
+  email: 'email',
+};
+
+const primaryCategorySlugs = new Set([
+  'website',
+  'organization',
+  'device',
+  'system',
+  'application',
+  'websites',
+  'organizations',
+  'devices',
+  'systems',
+  'apps',
+  'phone',
+  'bank',
+  'email',
+  'social',
+  'sms',
+]);
 
 const fallbackSearchInsights: SearchInsight[] = [
   {
@@ -166,13 +185,103 @@ const communityTips = [
   },
 ];
 
+const featureCards = [
+  {
+    title: 'Tra cứu tức thì',
+    description: 'Kiểm tra số điện thoại, website, tài khoản ngân hàng chỉ trong vài giây.',
+    href: '/search',
+    icon: Search,
+    color: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
+  },
+  {
+    title: 'Báo cáo cộng đồng',
+    description: 'Gửi báo cáo kèm bằng chứng để cảnh báo sớm cho cộng đồng.',
+    href: '/report',
+    icon: FileText,
+    color: 'linear-gradient(135deg, #f43f5e 0%, #ef4444 100%)',
+  },
+  {
+    title: 'AI Scanner',
+    description: 'Phân tích tin nhắn, website nghi ngờ bằng mô hình AI hỗ trợ.',
+    href: '/ai',
+    icon: Zap,
+    color: 'linear-gradient(135deg, #10b981 0%, #22c55e 100%)',
+  },
+  {
+    title: 'Hướng dẫn an toàn',
+    description: 'Quy trình xử lý khi gặp lừa đảo và cách bảo vệ tài khoản.',
+    href: '/report-guide',
+    icon: BarChart3,
+    color: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+  },
+];
+
+const heroHighlights = [
+  {
+    title: 'Kiểm chứng cộng đồng',
+    description: 'Nguồn dữ liệu cộng đồng được đối soát liên tục.',
+    icon: Shield,
+  },
+  {
+    title: 'Theo dõi thời gian thực',
+    description: 'Cảnh báo được cập nhật nhanh theo xu hướng mới.',
+    icon: Clock,
+  },
+  {
+    title: 'Mức tin cậy rõ ràng',
+    description: 'Phân loại rủi ro theo từng thực thể cụ thể.',
+    icon: CheckCircle,
+  },
+];
+
+function renderRiskBadge(status?: string) {
+  const normalized = (status || '').toLowerCase();
+
+  if (normalized === 'confirmed' || normalized === 'blocked' || normalized === 'scam' || normalized === 'high') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-danger/30 bg-danger/10 px-2 py-0.5 text-[11px] font-semibold text-danger">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Nguy cơ cao
+      </span>
+    );
+  }
+
+  if (normalized === 'suspected' || normalized === 'warning' || normalized === 'investigating' || normalized === 'processing' || normalized === 'medium') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">
+        <Clock className="h-3.5 w-3.5" />
+        Cảnh giác
+      </span>
+    );
+  }
+
+  if (normalized === 'trusted' || normalized === 'safe' || normalized === 'low') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
+        <CheckCircle className="h-3.5 w-3.5" />
+        An toàn
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-bg-border bg-bg-cardHover px-2 py-0.5 text-[11px] font-semibold text-text-secondary">
+      <Info className="h-3.5 w-3.5" />
+      Đang theo dõi
+    </span>
+  );
+}
+
 export default function HomeClient({ trustedSection }: HomeClientProps) {
   const { t } = useI18n();
   const { showToast } = useToast();
+  const router = useRouter();
 
   const [activeFilter, setActiveFilter] = useState('all');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [heroSearchType, setHeroSearchType] = useState<HeroSearchType>('phone');
+  const [heroSearchValue, setHeroSearchValue] = useState('');
 
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [dataSource, setDataSource] = useState<string>('fallback');
@@ -190,29 +299,15 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     return Array.from(seen.values());
   }, [categories]);
 
-  const primaryCategorySlugs = new Set([
-    'website',
-    'organization',
-    'device',
-    'system',
-    'application',
-    'websites',
-    'organizations',
-    'devices',
-    'systems',
-    'apps',
-    // New categories from tinnhiemmang.vn
-    'phone',
-    'bank',
-    'email',
-    'social',
-    'sms',
-  ]);
-
   const primaryCategories = useMemo(
     () => uniqueCategories.filter((category) => primaryCategorySlugs.has(category.slug)),
     [uniqueCategories]
   );
+
+  const statsCategories = useMemo(() => {
+    const source = primaryCategories.length > 0 ? primaryCategories : uniqueCategories;
+    return source.slice(0, 10);
+  }, [primaryCategories, uniqueCategories]);
 
   const searchInsights = useMemo<SearchInsight[]>(() => {
     if (mockPopularSearches.length) {
@@ -231,18 +326,17 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Try to fetch from /api/scams?stats=true first (real data from tinnhiemmang.vn)
         const statsResponse = await fetch('/api/scams?stats=true');
         const statsData = await statsResponse.json();
-        
+
         if (statsData.success && statsData.data && statsData.data.length > 0) {
-          // Map the scam stats data to category format
           const scamCategories = statsData.data.map((cat: any) => ({
             name: cat.name,
             slug: cat.slug,
             count: cat.count || 0,
             icon: cat.icon || '🛡️',
           }));
+
           const bySlug = new Map<string, number>(
             statsData.data.map((cat: any) => [String(cat.slug || '').toLowerCase(), Number(cat.count || 0)])
           );
@@ -259,8 +353,7 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
           setStatsLoading(false);
           return;
         }
-        
-        // Fallback to /api/stats
+
         const response = await fetch('/api/stats');
         const data: StatsResponse = await response.json();
 
@@ -269,6 +362,7 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
           : Array.isArray(data?.categories)
             ? data.categories
             : [];
+
         const resolvedSource =
           typeof data?.data?.source === 'string'
             ? data.data.source
@@ -286,16 +380,16 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
         setStatsLoading(false);
       }
     }
+
     fetchData();
   }, []);
 
-  // Fetch scam data from /api/scams
   useEffect(() => {
     async function fetchScamData() {
       try {
         const response = await fetch('/api/scams?page=1&limit=100');
         const data = await response.json();
-        
+
         if (data.success && data.data) {
           setScamData(data.data);
         }
@@ -303,6 +397,7 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
         console.error('Failed to fetch scam data:', error);
       }
     }
+
     fetchScamData();
   }, []);
 
@@ -310,8 +405,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     activeFilter === 'all'
       ? (scamData.length > 0 ? scamData : mockRecentAlerts)
       : (scamData.length > 0 ? scamData : mockRecentAlerts).filter((alert: any) => {
-          // Handle both mock data (type=website/web/phone/bank) and real API data (type=web)
-          // Map 'web' to 'website' for consistency
           const alertType = alert.type === 'web' ? 'website' : alert.type;
           return alertType === activeFilter;
         });
@@ -319,7 +412,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
   const dedupedAlerts = useMemo(() => {
     const seen = new Set<string>();
     return filteredAlerts.filter((alert: any) => {
-      // Use domain for scamData from API, value for mock data
       const key = alert.domain || alert.value;
       if (seen.has(key)) {
         return false;
@@ -329,26 +421,44 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     });
   }, [filteredAlerts]);
 
-  const displayedAlerts = dedupedAlerts.slice(0, 4);
-  const fallbackAlerts = mockRecentAlerts.slice(0, 4);
+  const displayedAlerts = dedupedAlerts.slice(0, 6);
+  const fallbackAlerts = mockRecentAlerts.slice(0, 6);
   const alertsToShow = displayedAlerts.length ? displayedAlerts : fallbackAlerts;
   const showEmptyAlerts = alertsToShow.length === 0;
+
   const alertStats = useMemo(() => {
-    // Use real data from /api/scams if available, otherwise use mock
     const data = scamData.length > 0 ? scamData : mockRecentAlerts;
     const total = scamStats.total > 0 ? scamStats.total : data.length;
-    const websites = scamStats.websites > 0 ? scamStats.websites : data.filter((alert) => alert.type === 'web' || alert.type === 'website').length;
+    const websites =
+      scamStats.websites > 0
+        ? scamStats.websites
+        : data.filter((alert) => alert.type === 'web' || alert.type === 'website').length;
     const phones = scamStats.phones > 0 ? scamStats.phones : data.filter((alert) => alert.type === 'phone').length;
     const banks = scamStats.banks > 0 ? scamStats.banks : data.filter((alert) => alert.type === 'bank').length;
+
     return [
-      { label: 'Tổng báo cáo', value: total, icon: AlertTriangle },
-      { label: 'Website', value: websites, icon: Globe },
-      { label: 'Điện thoại', value: phones, icon: Phone },
-      { label: 'Ngân hàng', value: banks, icon: Building2 },
+      { label: 'Tổng báo cáo', value: total, icon: AlertTriangle, description: 'Các cảnh báo đã tổng hợp' },
+      { label: 'Website', value: websites, icon: Globe, description: 'Nguồn phát tán phổ biến' },
+      { label: 'Điện thoại', value: phones, icon: Phone, description: 'Số bị phản ánh bởi cộng đồng' },
+      { label: 'Ngân hàng', value: banks, icon: Building2, description: 'Tài khoản/đơn vị có dấu hiệu' },
     ];
   }, [scamData, scamStats]);
 
   const shouldShowCategoryCount = !statsLoading && uniqueCategories.length > 0;
+
+  const handleHeroSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const params = new URLSearchParams();
+    params.set('category', heroSearchCategoryMap[heroSearchType]);
+
+    const value = heroSearchValue.trim();
+    if (value) {
+      params.set('q', value);
+    }
+
+    router.push(`/search?${params.toString()}`);
+  };
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -361,51 +471,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     setNewsletterEmail('');
   };
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'phone':
-        return Phone;
-      case 'bank':
-        return Building2;
-      case 'website':
-      case 'web': // legacy mapping
-        return Globe;
-      case 'crypto':
-        return Wallet;
-      default:
-        return AlertTriangle;
-    }
-  };
-
-  const renderStatusBadge = (status?: string) => {
-    const normalized = (status || '').toLowerCase();
-    if (normalized === 'trusted' || normalized === 'safe') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success/10 text-success border border-success/30">
-          <CheckCircle className="w-3.5 h-3.5" />
-          Đã xác minh
-        </span>
-      );
-    }
-    if (normalized === 'confirmed' || normalized === 'blocked' || normalized === 'scam' || normalized === 'high') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-danger/10 text-danger border border-danger/30">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          Đã xác nhận
-        </span>
-      );
-    }
-    if (normalized === 'suspected' || normalized === 'warning' || normalized === 'investigating' || normalized === 'processing' || normalized === 'medium') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-warning/10 text-warning border border-warning/30">
-          <Clock className="w-3.5 h-3.5" />
-          Đang xử lý
-        </span>
-      );
-    }
-    return null;
-  };
-
   const getIconUrl = (alert: any) => {
     if (alert.sourceIcon || alert.icon) return alert.sourceIcon || alert.icon;
     const domain = alert.domain || alert.value || alert.name || '';
@@ -415,470 +480,395 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     return 'https://tinnhiemmang.vn/img/icon_web2.png';
   };
 
-  const featureCards = [
-    {
-      title: 'Tra cứu tức thì',
-      description: 'Kiểm tra số điện thoại, website, tài khoản ngân hàng chỉ trong vài giây.',
-      href: '/search',
-      icon: Search,
-      color: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
-    },
-    {
-      title: 'Báo cáo cộng đồng',
-      description: 'Gửi báo cáo kèm bằng chứng để cảnh báo sớm cho cộng đồng.',
-      href: '/report',
-      icon: FileText,
-      color: 'linear-gradient(135deg, #f43f5e 0%, #ef4444 100%)',
-    },
-    {
-      title: 'AI Scanner',
-      description: 'Phân tích tin nhắn, website nghi ngờ bằng mô hình AI hỗ trợ.',
-      href: '/ai',
-      icon: Zap,
-      color: 'linear-gradient(135deg, #10b981 0%, #22c55e 100%)',
-    },
-    {
-      title: 'Hướng dẫn an toàn',
-      description: 'Quy trình xử lý khi gặp lừa đảo và cách bảo vệ tài khoản.',
-      href: '/report-guide',
-      icon: BarChart3,
-      color: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-    },
-  ];
-
-  const heroHighlights = [
-    {
-      title: 'Kiểm chứng cộng đồng',
-      description: 'Nguồn dữ liệu cộng đồng được đối soát liên tục.',
-      icon: Shield,
-    },
-    {
-      title: 'Theo dõi thời gian thực',
-      description: 'Cảnh báo được cập nhật nhanh theo xu hướng mới.',
-      icon: Clock,
-    },
-    {
-      title: 'Mức tin cậy rõ ràng',
-      description: 'Phân loại rủi ro theo từng thực thể cụ thể.',
-      icon: CheckCircle,
-    },
-  ];
-
   return (
     <div className="min-h-screen flex flex-col bg-bg-main">
       <Navbar />
 
-      <main className="flex-1 pt-16 md:pt-20 pb-20 md:pb-0">
-        <section className="mobile-section border-b border-bg-border bg-gradient-to-b from-primary/5 via-bg-main to-bg-main py-6 md:py-14">
-          <div className="mobile-container mx-auto max-w-[420px] px-4 md:max-w-7xl md:px-8">
-            <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4 md:gap-8 items-stretch">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
-                className="space-y-4 md:space-y-7"
-              >
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
-                  <Sparkles className="w-4 h-4" />
+      <main className="flex-1 pt-20 pb-24 md:pb-8">
+        <div className="app-shell app-stack">
+          <section className="app-card app-card-hero">
+            <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-stretch">
+              <div className="space-y-5">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                  <Sparkles className="h-4 w-4" />
                   {t('home.ai_powered')}
                 </div>
 
-                <h1 className="text-xl md:text-5xl font-bold text-text-main leading-snug md:leading-tight">
-                  {t('home.title')}
-                </h1>
+                <h1 className="text-3xl font-bold leading-tight text-text-main md:text-5xl">{t('home.title')}</h1>
+                <p className="max-w-2xl text-sm leading-relaxed text-text-secondary md:text-lg">{t('home.subtitle')}</p>
 
-                <p className="text-xs md:text-lg text-text-secondary max-w-2xl leading-relaxed">
-                  {t('home.subtitle')}
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 md:gap-3 max-w-3xl">
+                <div className="grid gap-3 sm:grid-cols-3">
                   {heroHighlights.map((item) => (
-                    <div
-                      key={item.title}
-                      className="rounded-xl border border-bg-border/70 bg-bg-card/75 px-3 py-3 md:px-4 md:py-4"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
-                        <item.icon className="w-4 h-4" />
+                    <div key={item.title} className="rounded-2xl border border-bg-border/70 bg-white/70 p-4 dark:bg-slate-900/40">
+                      <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <item.icon className="h-4 w-4" />
                       </div>
                       <p className="text-sm font-semibold text-text-main">{item.title}</p>
-                      <p className="text-xs text-text-muted mt-1 leading-relaxed">{item.description}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.description}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5 md:gap-3">
+                <div className="flex flex-wrap gap-3">
                   <Link
                     href="/report"
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/20 hover:bg-primary-hover transition-colors"
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-colors hover:bg-primary-hover"
                   >
                     Báo cáo ngay
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/search"
-                    className="inline-flex items-center gap-2 rounded-xl border border-bg-border px-4 py-2.5 text-sm font-semibold text-text-main hover:bg-bg-cardHover transition-colors"
+                    className="inline-flex items-center gap-2 rounded-xl border border-bg-border bg-white px-4 py-2.5 text-sm font-semibold text-text-main transition-colors hover:bg-bg-cardHover dark:bg-bg-card"
                   >
                     Tra cứu dữ liệu
-                    <Search className="w-4 h-4 text-text-muted" />
+                    <Search className="h-4 w-4 text-text-muted" />
                   </Link>
                 </div>
-              </motion.div>
+              </div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, delay: 0.05 }}
-                className="grid grid-cols-2 gap-3 md:gap-4"
-              >
-                {featureCards.map((feature) => (
-                  <Link key={feature.title} href={feature.href}>
-                    <Card
-                      hover
-                      className="h-full shadow-none bg-bg-card/75 border border-bg-border/60 p-3 md:p-5 rounded-xl flex flex-col items-start text-left"
+              <div className="rounded-2xl border border-bg-border/70 bg-white p-5 shadow-sm dark:bg-[#0f172a]/80">
+                <h2 className="text-lg font-semibold text-text-main md:text-xl">Tra cứu tập trung</h2>
+                <p className="mt-1 text-sm text-text-secondary">Tìm nhanh theo loại thực thể để kiểm tra rủi ro chính xác hơn.</p>
+
+                <form onSubmit={handleHeroSearchSubmit} className="mt-5 space-y-4">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="text"
+                      value={heroSearchValue}
+                      onChange={(e) => setHeroSearchValue(e.target.value)}
+                      placeholder={heroSearchPlaceholders[heroSearchType]}
+                      className="h-14 w-full rounded-2xl border border-bg-border bg-bg-main pl-12 pr-4 text-sm text-text-main outline-none transition focus:border-primary"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {heroSearchTypes.map((type) => (
+                      <button
+                        key={type.key}
+                        type="button"
+                        onClick={() => setHeroSearchType(type.key)}
+                        className={cn(
+                          'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors',
+                          heroSearchType === type.key
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-bg-border bg-bg-main text-text-secondary hover:bg-bg-cardHover'
+                        )}
+                      >
+                        <type.Icon className="h-4 w-4" />
+                        {type.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-colors hover:bg-primary-hover"
+                  >
+                    {t('home.search_button')}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </form>
+              </div>
+            </div>
+          </section>
+
+          <section className="app-card app-stack">
+            <div>
+              <h2 className="text-2xl font-semibold text-text-main">Quick actions</h2>
+              <p className="mt-1 text-sm text-text-secondary">Truy cập nhanh các tính năng chính để hành động ngay khi phát hiện dấu hiệu lừa đảo.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {featureCards.map((feature) => (
+                <Link key={feature.title} href={feature.href} className="group">
+                  <article className="rounded-2xl border border-bg-border/70 bg-bg-main p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm">
+                    <div
+                      style={{ background: feature.color }}
+                      className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
                     >
-                      <div
-                        style={{ background: feature.color }}
-                        className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center text-white shadow-sm"
-                      >
-                        <feature.icon className="w-5 h-5" />
+                      <feature.icon className="h-5 w-5" />
+                    </div>
+                    <p className="text-base font-semibold text-text-main">{feature.title}</p>
+                    <p className="mt-1 line-clamp-2 text-sm text-text-muted">{feature.description}</p>
+                    <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+                      Mở
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </article>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="app-card app-stack">
+            <div>
+              <h2 className="text-2xl font-semibold text-text-main">Statistics</h2>
+              <p className="mt-1 text-sm text-text-secondary">Dữ liệu tổng quan từ nguồn {dataSource} được làm mới theo chu kỳ ngắn.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {alertStats.map((stat) => (
+                <div key={stat.label} className="rounded-2xl border border-bg-border/70 bg-bg-main p-4">
+                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <stat.icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-semibold text-text-main">{stat.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-text-main">{Number(stat.value || 0).toLocaleString('vi-VN')}</p>
+                  <p className="mt-1 text-xs text-text-muted">{stat.description}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {statsCategories.map((category) => {
+                const visual = categoryVisual[category.slug] || { icon: '🛡️', color: 'from-slate-500 to-slate-600' };
+                return (
+                  <Link key={category.slug} href={`/search?category=${category.slug}`}>
+                    <div className="rounded-2xl border border-bg-border/70 bg-bg-main p-3 transition-colors hover:bg-bg-cardHover">
+                      <div className={cn('mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br text-lg text-white', visual.color)}>
+                        {visual.icon}
                       </div>
-                      <p className="font-semibold text-text-main text-sm md:text-base leading-tight">{feature.title}</p>
-                      <p className="text-[11px] md:text-sm text-text-muted mt-1 line-clamp-2">{feature.description}</p>
-                    </Card>
+                      <p className="line-clamp-1 text-sm font-semibold text-text-main">{category.name}</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary">
+                        {shouldShowCategoryCount ? category.count.toLocaleString('vi-VN') : '--'}
+                      </p>
+                      <p className="line-clamp-2 text-[11px] text-text-muted">{category.description || 'Dữ liệu được cập nhật thường xuyên'}</p>
+                    </div>
                   </Link>
-                ))}
-              </motion.div>
+                );
+              })}
             </div>
-          </div>
-        </section>
+          </section>
 
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.35 }}
-          className="mobile-section py-6 md:py-12"
-        >
-          <div className="mobile-container mx-auto max-w-[420px] px-4 md:max-w-7xl md:px-8">
-            <div className="section-stack">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-                {uniqueCategories.map((category) => {
-                  const visual = categoryVisual[category.slug] || { icon: '🛡️', color: 'from-slate-500 to-slate-600' };
-                  return (
-                    <Link key={category.slug} href={`/search?category=${category.slug}`}>
-                      <Card hover className="h-full text-center p-3 md:p-5 rounded-xl border border-bg-border/50 bg-bg-card/70">
-                        <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br mx-auto mb-3 flex items-center justify-center text-xl shadow-sm', visual.color)}>
-                          {visual.icon}
-                        </div>
-                        <p className="font-semibold text-text-main text-sm">{category.name}</p>
-                        <p className="text-lg font-mono font-bold text-primary mt-1">
-                          {shouldShowCategoryCount ? category.count.toLocaleString('vi-VN') : '--'}
-                        </p>
-                        <p className="text-[0.7rem] text-text-muted mt-1 line-clamp-2">
-                          {category.description || 'Dữ liệu được cập nhật thường xuyên'}
-                        </p>
-                      </Card>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.35 }}
-          className="mobile-section bg-bg-card/45 border-y border-bg-border py-6 md:py-12"
-        >
-          <div className="mobile-container mx-auto max-w-[420px] px-4 md:max-w-7xl md:px-8 md:py-12">
-            <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4 md:gap-6 lg:gap-10">
-              <div className="section-stack">
-                <Card className="p-4 md:p-7 space-y-3 md:space-y-4 bg-white/80 dark:bg-[#0c1221]/70">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-                    {alertStats.map((stat) => (
-                      <div
-                        key={stat.label}
-                        className="rounded-xl border border-bg-border/60 bg-bg-card/70 p-3 flex items-center gap-3"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                          <stat.icon className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-text-muted">{stat.label}</p>
-                          <p className="text-base font-semibold text-text-main">{stat.value}</p>
-                        </div>
-                      </div>
-                    ))}
+          <section className="home-main-grid">
+            <div className="app-stack">
+              <div className="app-card app-stack">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-text-main">Recent scam reports</h2>
+                    <p className="mt-1 text-sm text-text-secondary">Danh sách báo cáo gần nhất theo mô hình table/card để theo dõi nhanh mức rủi ro.</p>
                   </div>
+                  <Link
+                    href="/report-lua-dao"
+                    className="inline-flex items-center gap-1 rounded-xl border border-bg-border bg-bg-main px-3 py-2 text-sm font-semibold text-text-main transition-colors hover:bg-bg-cardHover"
+                  >
+                    Xem tất cả
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
 
-                  <div className="flex flex-wrap gap-2 md:gap-3 md:flex-nowrap md:overflow-x-auto md:pb-1 md:scrollbar-hide">
-                    {['all', 'phone', 'website', 'bank'].map((filter) => (
-                      <Tooltip
-                        key={filter}
-                        label={`Lọc ${t(`home.filter.${filter}`)} báo cáo`}
-                        position="bottom"
+                <div className="flex flex-wrap gap-2">
+                  {['all', 'phone', 'website', 'bank'].map((filter) => (
+                    <Tooltip key={filter} label={`Lọc ${t(`home.filter.${filter}`)} báo cáo`} position="bottom">
+                      <button
+                        onClick={() => setActiveFilter(filter)}
+                        className={cn(
+                          'rounded-full border px-4 py-2 text-xs font-semibold transition-colors md:text-sm',
+                          activeFilter === filter
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-bg-border bg-bg-main text-text-secondary hover:bg-bg-cardHover'
+                        )}
                       >
-                        <button
-                          onClick={() => setActiveFilter(filter)}
-                          className={cn(
-                            'px-4 py-2 rounded-full text-xs md:text-sm font-medium whitespace-nowrap border transition-colors duration-200',
-                            activeFilter === filter
-                              ? 'bg-primary/15 text-primary border-primary/30'
-                              : 'bg-bg-card/70 text-text-secondary border-subtle hover:bg-bg-cardHover'
-                          )}
-                        >
-                          {t(`home.filter.${filter}`)}
-                        </button>
-                      </Tooltip>
-                    ))}
-                  </div>
-
-                  {showEmptyAlerts ? (
-                    <div className="rounded-xl border border-dashed border-bg-border/80 bg-bg-card/60 p-6 text-center space-y-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
-                        <AlertTriangle className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-text-main">Chưa có cảnh báo mới</p>
-                        <p className="text-xs text-text-muted mt-1">
-                          Hãy gửi báo cáo hoặc tra cứu để góp phần bảo vệ cộng đồng.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        <Link
-                          href="/report"
-                          className="px-4 py-2 rounded-full bg-primary text-white text-xs font-semibold shadow-sm"
-                        >
-                          Tạo báo cáo
-                        </Link>
-                        <Link
-                          href="/search"
-                          className="px-4 py-2 rounded-full border border-bg-border text-xs font-semibold text-text-main hover:bg-bg-cardHover"
-                        >
-                          Tra cứu ngay
-                        </Link>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {alertsToShow.map((alert: any) => {
-                        const TypeIcon = getTypeIcon(alert.type);
-                        const alertValue = alert.domain || alert.value;
-                        const alertIcon = getIconUrl(alert);
-                        return (
-                          <Link key={alert.id} href={`/detail/${alert.type}/${encodeURIComponent(alertValue)}`}>
-                            <Card hover className="p-3 md:p-4 bg-bg-card/70 rounded-xl">
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 overflow-hidden">
-                                    <img
-                                      src={alertIcon}
-                                      alt={alertValue}
-                                      className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        const target = e.currentTarget;
-                                        if (target.dataset.fallback) {
-                                          target.style.display = 'none';
-                                          return;
-                                        }
-                                        target.dataset.fallback = '1';
-                                        target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-mono font-semibold text-text-main truncate">{alertValue}</p>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      {renderStatusBadge(alert.status)}
-                                      <p className="text-sm text-text-secondary line-clamp-1">{alert.description}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-4 text-[0.7rem] md:text-xs text-text-muted shrink-0">
-                                  <Tooltip label="Số lượt xem" position="top">
-                                    <span className="flex items-center gap-1">
-                                      <Eye className="w-3.5 h-3.5" />
-                                      {(alert.views ?? 0).toLocaleString('vi-VN')}
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip label="Bình luận cộng đồng" position="top">
-                                    <span className="flex items-center gap-1">
-                                      <MessageCircle className="w-3.5 h-3.5" />
-                                      {alert.comments ?? (alert.reports != null ? Math.floor(alert.reports / 10) : 0)}
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip label="Thời gian cập nhật" position="top">
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-3.5 h-3.5" />
-                                      {alert.date ?? '—'}
-                                    </span>
-                                  </Tooltip>
-                                </div>
-                              </div>
-                            </Card>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              <div className="space-y-4">
-                {trustedSection}
-
-                <Card className="space-y-4 p-4 md:p-5 rounded-xl border border-bg-border/60 bg-bg-card/70 shadow-none md:shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base md:text-lg font-semibold text-text-main">{t('home.trending_scams')}</h3>
-                    <Tooltip label="Bảng xếp hạng các scam nóng" position="bottom">
-                      <Info className="w-4 h-4 text-text-muted" />
+                        {t(`home.filter.${filter}`)}
+                      </button>
                     </Tooltip>
+                  ))}
+                </div>
+
+                {showEmptyAlerts ? (
+                  <div className="rounded-2xl border border-dashed border-bg-border bg-bg-main p-6 text-center">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm font-semibold text-text-main">Chưa có cảnh báo mới</p>
+                    <p className="mt-1 text-xs text-text-muted">Hãy gửi báo cáo hoặc tra cứu để góp phần bảo vệ cộng đồng.</p>
                   </div>
+                ) : (
                   <div className="space-y-3">
-                    {mockTrendingScams.slice(0, 5).map((scam) => (
-                      <Tooltip
-                        key={scam.id}
-                        label={`${scam.reports.toLocaleString('vi-VN')} báo cáo`}
-                        position="top"
-                      >
-                        <Link
-                          href={`/search?q=${encodeURIComponent(scam.name ?? scam.value)}`}
-                          className="card-feed flex items-center gap-3 rounded-xl border border-bg-border/60 bg-bg-card/60 p-3 transition-colors hover:bg-bg-cardHover group"
-                        >
-                          <div className="w-9 h-9 rounded-xl bg-bg-cardHover flex items-center justify-center text-lg shrink-0">
-                            {scam.image}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm text-text-main font-medium line-clamp-1 group-hover:text-primary transition-colors">
-                              {scam.name}
-                            </p>
-                            <p className="text-[0.7rem] md:text-xs text-text-muted mt-1">
-                              {scam.reports.toLocaleString('vi-VN')} báo cáo
-                            </p>
-                          </div>
-                          <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-primary shrink-0" />
-                        </Link>
-                      </Tooltip>
-                    ))}
-                  </div>
-                </Card>
+                    {alertsToShow.map((alert: any) => {
+                      const alertValue = alert.domain || alert.value;
+                      const alertIcon = getIconUrl(alert);
 
-                <Card className="space-y-4 p-4 md:p-5 rounded-xl border border-bg-border/60 bg-bg-card/70 shadow-none md:shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base md:text-lg font-semibold text-text-main">Dữ liệu tìm kiếm</h3>
-                    <Tooltip label="Thống kê từ khóa, nguồn tìm kiếm" position="bottom">
-                      <Info className="w-5 h-5 text-text-muted" />
-                    </Tooltip>
-                  </div>
-                  <div className="grid gap-3">
-                    {searchInsights.map((insight) => {
-                      const InsightIcon = insight.Icon;
                       return (
-                        <Tooltip key={insight.title} label={insight.hint} position="top">
-                          <div className="card-feed flex items-center justify-between gap-3 rounded-xl border border-bg-border/60 bg-bg-card/60 p-3">
-                            <div className="flex items-center gap-4">
-                              <div
-                                className={cn(
-                                  'w-9 h-9 rounded-xl text-white flex items-center justify-center shadow-inner',
-                                  `bg-gradient-to-br ${getRiskGradient(insight.risk)}`
-                                )}
-                              >
-                                <InsightIcon className="w-5 h-5" />
+                        <Link key={alert.id} href={`/detail/${alert.type}/${encodeURIComponent(alertValue)}`}>
+                          <article className="rounded-2xl border border-bg-border/70 bg-bg-main p-4 transition-colors hover:bg-bg-cardHover">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-bg-border/70 bg-white">
+                                  <img
+                                    src={alertIcon}
+                                    alt={alertValue}
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      const target = e.currentTarget;
+                                      if (target.dataset.fallback) {
+                                        target.style.display = 'none';
+                                        return;
+                                      }
+                                      target.dataset.fallback = '1';
+                                      target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
+                                    }}
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate font-mono text-sm font-semibold text-text-main md:text-base">{alertValue}</p>
+                                  <p className="mt-1 line-clamp-1 text-xs text-text-secondary">{alert.description || 'Báo cáo cộng đồng mới'}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-sm font-semibold text-text-main">{insight.title}</p>
-                                <p className="text-[0.7rem] md:text-xs text-text-muted mt-1">{insight.subtitle}</p>
+
+                              <div className="grid grid-cols-2 gap-3 text-xs text-text-muted sm:flex sm:items-center sm:gap-4">
+                                <div className="rounded-xl bg-bg-card px-3 py-2 sm:bg-transparent sm:p-0">
+                                  <p className="text-[11px] uppercase tracking-wide">Báo cáo</p>
+                                  <p className="mt-0.5 text-sm font-semibold text-text-main">{Number(alert.reports || 0).toLocaleString('vi-VN')}</p>
+                                </div>
+                                <div className="rounded-xl bg-bg-card px-3 py-2 sm:bg-transparent sm:p-0">
+                                  <p className="text-[11px] uppercase tracking-wide">Ngày</p>
+                                  <p className="mt-0.5 text-sm font-semibold text-text-main">{alert.date || '—'}</p>
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">{renderRiskBadge(alert.status)}</div>
                               </div>
                             </div>
-                            <span className="text-sm font-bold text-text-main">{insight.value}</span>
-                          </div>
-                        </Tooltip>
+                          </article>
+                        </Link>
                       );
                     })}
                   </div>
-                </Card>
-
-                <Card className="space-y-4 p-4 md:p-5 rounded-xl border border-bg-border/60 bg-bg-card/70 shadow-none md:shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base md:text-lg font-semibold text-text-main">Góc cộng đồng</h3>
-                    <span className="text-[0.65rem] md:text-xs uppercase tracking-wider text-text-muted">Tips tiện ích</span>
-                  </div>
-                  <div className="space-y-3">
-                    {communityTips.map((tip) => (
-                      <div key={tip.title} className="card-feed flex gap-3 rounded-xl border border-bg-border/60 bg-bg-card/60 p-3 text-sm text-text-main">
-                        <tip.icon className="w-4 h-4 text-primary mt-0.5" />
-                        <div>
-                          <p className="text-sm font-semibold">{tip.title}</p>
-                          <p className="text-[0.7rem] md:text-xs text-text-secondary mt-1">{tip.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
+                )}
               </div>
             </div>
-          </div>
-        </motion.section>
 
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.35 }}
-          className="mobile-section"
-        >
-          <div className="mobile-container max-w-7xl mx-auto md:px-8 md:py-12">
-            <Card className="p-6 md:p-8 bg-gradient-to-br from-primary/10 via-bg-card/90 to-blue-500/10 border border-subtle">
-              <div className="grid md:grid-cols-[1fr_auto] gap-6 items-center">
-                <div className="space-y-3">
-                  <span className="section-label">Nhận cảnh báo</span>
-                  <h3 className="text-xl md:text-2xl font-bold text-text-main">{t('home.newsletter')}</h3>
-                  <p className="text-text-secondary">{t('home.newsletter_desc')}</p>
+            <aside className="app-stack">
+              {trustedSection}
+
+              <div className="app-card app-stack">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-text-main">{t('home.trending_scams')}</h3>
+                  <Tooltip label="Bảng xếp hạng các scam nóng" position="bottom">
+                    <Info className="h-4 w-4 text-text-muted" />
+                  </Tooltip>
                 </div>
 
-                <AnimatePresence mode="wait">
-                  {isSubscribed ? (
-                    <motion.div
-                      key="subscribed"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="inline-flex items-center gap-2 text-success font-medium"
-                    >
-                      <CheckCircle className="w-5 h-5" />
-                      {t('home.newsletter_success')}
-                    </motion.div>
-                  ) : (
-                    <motion.form
-                      key="form"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      onSubmit={handleNewsletterSubmit}
-                      className="flex flex-col gap-3 w-full md:w-auto"
-                    >
-                      <div className="relative w-full sm:w-[320px]">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                        <input
-                          type="email"
-                          value={newsletterEmail}
-                          onChange={(e) => setNewsletterEmail(e.target.value)}
-                          placeholder={t('home.newsletter_placeholder')}
-                          className="w-full h-12 pl-10 pr-3 rounded-button border border-subtle bg-bg-card text-text-main placeholder:text-text-muted focus:outline-none focus:border-primary"
-                          required
-                        />
-                      </div>
-                      <Button type="submit" variant="primary" size="md" className="w-full sm:w-auto">
-                        {t('home.newsletter_button')}
-                      </Button>
-                    </motion.form>
-                  )}
-                </AnimatePresence>
+                {mockTrendingScams.length > 0 ? (
+                  <div className="space-y-2">
+                    {mockTrendingScams.slice(0, 5).map((scam) => (
+                      <Link
+                        key={scam.id}
+                        href={`/search?q=${encodeURIComponent(scam.name ?? scam.value)}`}
+                        className="group flex items-center gap-3 rounded-xl border border-bg-border/70 bg-bg-main p-3 transition-colors hover:bg-bg-cardHover"
+                      >
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-bg-cardHover text-base">
+                          {scam.image}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-sm font-semibold text-text-main group-hover:text-primary">{scam.name}</p>
+                          <p className="text-xs text-text-muted">{scam.reports.toLocaleString('vi-VN')} báo cáo</p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 shrink-0 text-text-muted group-hover:text-primary" />
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-dashed border-bg-border bg-bg-main p-4 text-sm text-text-muted">
+                    Chưa có dữ liệu thịnh hành.
+                  </p>
+                )}
               </div>
-            </Card>
-          </div>
-        </motion.section>
+
+              <div className="app-card app-stack">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-text-main">Search trends</h3>
+                  <Tooltip label="Thống kê từ khóa, nguồn tìm kiếm" position="bottom">
+                    <Info className="h-4 w-4 text-text-muted" />
+                  </Tooltip>
+                </div>
+
+                <div className="space-y-2">
+                  {searchInsights.map((insight) => {
+                    const InsightIcon = insight.Icon;
+                    return (
+                      <Tooltip key={insight.title} label={insight.hint} position="top">
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-bg-border/70 bg-bg-main p-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                'flex h-9 w-9 items-center justify-center rounded-xl text-white',
+                                `bg-gradient-to-br ${getRiskGradient(insight.risk)}`
+                              )}
+                            >
+                              <InsightIcon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-text-main">{insight.title}</p>
+                              <p className="text-xs text-text-muted">{insight.subtitle}</p>
+                            </div>
+                          </div>
+                          <span className="text-sm font-bold text-text-main">{insight.value}</span>
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="app-card app-stack">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-text-main">Community tips</h3>
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Tips</span>
+                </div>
+
+                <div className="space-y-2">
+                  {communityTips.map((tip) => (
+                    <article key={tip.title} className="flex gap-3 rounded-xl border border-bg-border/70 bg-bg-main p-3">
+                      <tip.icon className="mt-0.5 h-4 w-4 text-primary" />
+                      <div>
+                        <p className="text-sm font-semibold text-text-main">{tip.title}</p>
+                        <p className="mt-1 text-xs text-text-secondary">{tip.description}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          </section>
+
+          <section className="app-card app-card-gradient">
+            <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="space-y-2">
+                <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                  Nhận cảnh báo
+                </span>
+                <h3 className="text-2xl font-bold text-text-main">{t('home.newsletter')}</h3>
+                <p className="text-sm text-text-secondary md:text-base">{t('home.newsletter_desc')}</p>
+              </div>
+
+              {isSubscribed ? (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold text-success">
+                  <CheckCircle className="h-5 w-5" />
+                  {t('home.newsletter_success')}
+                </div>
+              ) : (
+                <form onSubmit={handleNewsletterSubmit} className="flex w-full flex-col gap-3 sm:w-[340px]">
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="email"
+                      value={newsletterEmail}
+                      onChange={(e) => setNewsletterEmail(e.target.value)}
+                      placeholder={t('home.newsletter_placeholder')}
+                      className="h-12 w-full rounded-xl border border-bg-border bg-white pl-10 pr-3 text-sm text-text-main outline-none transition focus:border-primary dark:bg-bg-main"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" variant="primary" size="md" className="w-full">
+                    {t('home.newsletter_button')}
+                  </Button>
+                </form>
+              )}
+            </div>
+          </section>
+        </div>
       </main>
 
       <Footer />

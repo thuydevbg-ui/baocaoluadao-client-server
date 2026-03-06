@@ -130,11 +130,11 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
   const hasItems = items.length > 0;
 
   return (
-    <section className="rounded-2xl border border-bg-border bg-white/70 dark:bg-[#0c1221]/80 shadow-sm backdrop-blur">
-      <div className="p-4 md:p-5 space-y-3 md:space-y-4">
+    <section className="app-card app-stack">
+      <div className="space-y-3 md:space-y-4">
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Trang & Tổ chức uy tín</p>
-          <h3 className="text-lg font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h3>
+          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Verified organizations</p>
+          <h3 className="text-xl font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h3>
         </div>
 
         <div className="grid gap-3 md:flex md:flex-col md:gap-4">
@@ -143,7 +143,7 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
             return (
               <div
                 key={item.id}
-                className="w-full rounded-xl border border-bg-border/60 bg-white/80 dark:bg-[#101827]/80 p-3 md:p-4 shadow-sm transition-all duration-200 hover:translate-y-1 hover:border-primary/40"
+                className="w-full rounded-2xl border border-bg-border/70 bg-bg-main p-3 md:p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 overflow-hidden">
@@ -161,7 +161,7 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold text-text-main truncate">{item.name}</p>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[0.65rem] font-semibold dark:bg-green-500/20 dark:text-green-200">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 text-success px-2 py-0.5 text-[0.65rem] font-semibold">
                         <CheckCircle2 className="w-3 h-3" />
                         Đã xác minh
                       </span>
@@ -176,7 +176,7 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
                         <Clock className="w-3.5 h-3.5" />
                         {formatDate(item.firstSeen)}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[0.65rem] font-semibold dark:bg-green-500/20 dark:text-green-200">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 text-success px-2 py-0.5 text-[0.65rem] font-semibold">
                         An toàn
                       </span>
                     </div>
@@ -186,7 +186,7 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
             );
           })}
           {!hasItems && (
-            <div className="rounded-2xl border border-dashed border-bg-border/70 bg-bg-card/60 p-6 text-sm text-text-muted">
+            <div className="rounded-2xl border border-dashed border-bg-border/70 bg-bg-main p-6 text-sm text-text-muted">
               Chưa có dữ liệu uy tín để hiển thị.
             </div>
           )}
