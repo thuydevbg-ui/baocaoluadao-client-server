@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { normalizeDomainInput } from '@/lib/dataSources/tinnhiemmang';
 import { ensureTinnhiemScamsSynced, findWebsiteScamInLocalDb } from '@/lib/services/tinnhiemSync.service';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
+import { findPolicyViolationInLocalDb } from '@/lib/services/policyViolation.service';
 
 const WEB_RISK_URI_SEARCH_ENDPOINT = 'https://webrisk.googleapis.com/v1/uris:search';
 const WEB_RISK_THREAT_TYPES = ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'] as const;
@@ -171,6 +172,44 @@ function toWebRiskThreatResponse(domain: string, threatTypes: WebRiskThreatType[
   };
 }
 
+function toPolicyViolationResponse(domain: string, item: {
+  violationSummary: string | null;
+  sourceName: string;
+  sourceUrl: string;
+  sourceTitle: string | null;
+  updatedAt: string;
+}) {
+  return {
+    domain,
+    found: true,
+    risk_score: 45,
+    trust_score: 55,
+    verdict: 'policy',
+    status: 'policy',
+    name: domain,
+    icon: 'https://tinnhiemmang.vn/img/icon_web2.png',
+    organization_icon: '',
+    organization: '',
+    policy_violation: true,
+    policy_source_url: item.sourceUrl,
+    policy_source_name: item.sourceName,
+    policy_source_title: item.sourceTitle,
+    policy_updated_at: item.updatedAt,
+    description: item.violationSummary
+      ? `Cảnh báo pháp lý: ${item.violationSummary}`
+      : 'Cảnh báo pháp lý: Website có dấu hiệu vi phạm pháp luật theo nguồn công bố chính thức.',
+    reports: 0,
+    date: item.updatedAt || new Date().toISOString(),
+    source: `policy_violation_list:${item.sourceName}`,
+    ssl_valid: null,
+    securityChecks: [
+      { name: 'Cảnh báo pháp lý', status: 'warning', details: item.violationSummary || 'Có trong danh sách công bố' },
+      { name: 'Nguồn', status: 'pass', details: item.sourceUrl },
+      { name: 'Lưu ý', status: 'pass', details: 'Đây không phải kết luận lừa đảo; chỉ là cảnh báo pháp lý/tuân thủ.' },
+    ],
+  };
+}
+
 function toCrossCheckedSafeResponse(domain: string) {
   return {
     ...toSafeResponse(domain),
@@ -284,9 +323,15 @@ export const POST = withApiObservability(async (request: NextRequest) => {
 
       // Cost-saving ordering:
       // 1) Check local DB first (already synced from tinnhiemmang.vn).
-      // 2) Only call Google Web Risk if not found in local DB.
+      // 2) Check policy violation list (legal warning).
+      // 3) Only call Google Web Risk if not found in local DB.
       if (matched) {
         return createSecureJsonResponse(toScamResponse(domain, matched), { status: 200 }, rateLimit);
+      }
+
+      const policyHit = await findPolicyViolationInLocalDb(domain).catch(() => null);
+      if (policyHit) {
+        return createSecureJsonResponse(toPolicyViolationResponse(domain, policyHit), { status: 200 }, rateLimit);
       }
 
       const webRisk = await queryWebRisk(domain);

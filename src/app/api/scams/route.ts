@@ -57,6 +57,11 @@ interface DbFeedbackCount extends RowDataPacket {
   comments?: number;
 }
 
+interface DbViewCount extends RowDataPacket {
+  detail_key: string;
+  views?: number;
+}
+
 const DEFAULT_LIMIT = 6;
 const MAX_LIMIT = 100;
 const SOURCE_NAME = 'tinnhiemmang.vn';
@@ -131,6 +136,34 @@ async function fetchFeedbackCounts(detailKeys: string[]): Promise<Record<string,
     return result;
   } catch (error) {
     console.error('[api/scams] Failed to load feedback counters:', error);
+    return {};
+  }
+}
+
+async function fetchViewCounts(detailKeys: string[]): Promise<Record<string, number>> {
+  if (detailKeys.length === 0) return {};
+
+  try {
+    const db = getDb();
+    const placeholders = detailKeys.map(() => '?').join(', ');
+    const [rows] = await db.query<DbViewCount[]>(
+      `
+        SELECT detail_key, views
+        FROM detail_view_counts
+        WHERE detail_key IN (${placeholders})
+      `,
+      detailKeys
+    );
+
+    const result: Record<string, number> = {};
+    for (const row of rows || []) {
+      const views = typeof row.views === 'number' ? row.views : Number.parseInt(String(row.views ?? 0), 10);
+      result[row.detail_key] = Number.isFinite(views) ? Math.max(0, Math.floor(views)) : 0;
+    }
+    return result;
+  } catch (error) {
+    // Table may not exist yet (migration not applied) or DB may be unavailable.
+    console.error('[api/scams] Failed to load view counters:', error);
     return {};
   }
 }
@@ -268,10 +301,12 @@ export async function GET(request: Request) {
       new Set(rows.map((row) => buildDetailKeyFromScam(row.type, row.value)).filter(Boolean))
     );
     const feedbackMap = await fetchFeedbackCounts(detailKeys);
+    const viewMap = await fetchViewCounts(detailKeys);
 
     const data = rows.map((row, index) => {
       const detailKey = buildDetailKeyFromScam(row.type, row.value);
       const feedback = feedbackMap[detailKey] || { ratings: 0, comments: 0 };
+      const views = viewMap[detailKey] ?? 0;
 
       return {
         id: offset + index + 1,
@@ -282,7 +317,7 @@ export async function GET(request: Request) {
         reports: Number(row.reportCount || 0),
         ratings: feedback.ratings,
         comments: feedback.comments,
-        views: feedback.ratings + feedback.comments,
+        views,
         status: mapScamStatus(row.externalStatus, row.status),
         date: formatDate(row.externalCreatedAt || row.createdAt),
         description: row.description || '',

@@ -3,7 +3,7 @@ import { twMerge } from 'tailwind-merge';
 
 // Type definitions for the ScamGuard application
 
-export type RiskLevel = 'safe' | 'suspicious' | 'scam' | 'unknown';
+export type RiskLevel = 'safe' | 'suspicious' | 'scam' | 'policy' | 'unknown';
 export type ScamType = 'phone' | 'bank' | 'website' | 'crypto';
 
 export interface SearchResult {
@@ -86,6 +86,8 @@ export function getRiskColor(risk: RiskLevel): string {
       return 'text-warning bg-warning/10 border-warning/30';
     case 'scam':
       return 'text-danger bg-danger/10 border-danger/30';
+    case 'policy':
+      return 'text-warning bg-warning/10 border-warning/30';
     case 'unknown':
       return 'text-text-secondary bg-bg-cardHover border-bg-border';
     default:
@@ -101,6 +103,8 @@ export function getRiskGradient(risk: RiskLevel): string {
       return 'from-warning to-amber-400';
     case 'scam':
       return 'from-danger to-red-400';
+    case 'policy':
+      return 'from-orange-600 to-orange-300';
     case 'unknown':
       return 'from-gray-500 to-gray-400';
     default:

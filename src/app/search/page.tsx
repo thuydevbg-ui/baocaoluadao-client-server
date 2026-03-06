@@ -4,12 +4,26 @@ import React, { Suspense, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Search, Phone, Building2, Globe, Wallet, AlertTriangle, Clock } from 'lucide-react';
+import {
+  Search,
+  Phone,
+  Building2,
+  Globe,
+  Wallet,
+  AlertTriangle,
+  Clock,
+  CheckCircle,
+  XCircle,
+  ShieldCheck,
+  AlertOctagon,
+  ExternalLink,
+  Copy,
+  FileWarning,
+} from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
 import { Card, SearchResultSkeleton, RiskBadge, MobileSearchResult } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type SearchResult } from '@/lib/utils';
-import { CheckCircle, XCircle, ShieldCheck, AlertOctagon, ExternalLink, Copy } from 'lucide-react';
 
 interface CategoryApiItem {
   id: string;
@@ -324,7 +338,7 @@ function SearchPageContent() {
         const data = await response.json();
         const riskScore = data.risk_score || data.riskScore || data.score || 0;
         const verdictRaw = typeof data.verdict === 'string' ? data.verdict.trim().toLowerCase() : '';
-        const verdict: 'scam' | 'safe' | 'unknown' = verdictRaw === 'scam' || verdictRaw === 'safe' || verdictRaw === 'unknown'
+        const verdict: 'scam' | 'safe' | 'unknown' | 'policy' = verdictRaw === 'scam' || verdictRaw === 'safe' || verdictRaw === 'unknown' || verdictRaw === 'policy'
           ? verdictRaw
           : (riskScore > 50 ? 'scam' : 'safe');
         const trustScoreRaw = typeof data.trust_score === 'number' ? data.trust_score : (data.trustScore || null);
@@ -343,6 +357,9 @@ function SearchPageContent() {
           organization: data.organization || '',
           description: data.description || '',
           source: data.source || 'scan',
+          policyViolation: Boolean(data.policy_violation),
+          policySourceUrl: typeof data.policy_source_url === 'string' ? data.policy_source_url : '',
+          policySourceTitle: typeof data.policy_source_title === 'string' ? data.policy_source_title : '',
         });
       } catch (e: any) {
         setScanError(e?.message || 'Scan failed');
@@ -505,6 +522,8 @@ function SearchPageContent() {
             'relative p-4 border-2 overflow-hidden',
             scanResult.verdict === 'scam'
               ? 'border-danger/50 bg-danger/5'
+              : scanResult.verdict === 'policy'
+                ? 'border-warning/40 bg-warning/5'
               : scanResult.verdict === 'unknown'
                 ? 'border-warning/40 bg-warning/5'
                 : 'border-success/40 bg-success/5'
@@ -516,6 +535,8 @@ function SearchPageContent() {
                     'w-10 h-10 rounded-lg flex items-center justify-center',
                     scanResult.verdict === 'scam'
                       ? 'bg-danger/15 text-danger'
+                      : scanResult.verdict === 'policy'
+                        ? 'bg-warning/15 text-warning'
                       : scanResult.verdict === 'unknown'
                         ? 'bg-warning/15 text-warning'
                         : 'bg-success/15 text-success'
@@ -523,6 +544,8 @@ function SearchPageContent() {
                 >
                   {scanResult.verdict === 'scam'
                     ? <AlertOctagon className="w-5 h-5" />
+                    : scanResult.verdict === 'policy'
+                      ? <FileWarning className="w-5 h-5" />
                     : scanResult.verdict === 'unknown'
                       ? <AlertTriangle className="w-5 h-5" />
                       : <ShieldCheck className="w-5 h-5" />}
@@ -533,6 +556,11 @@ function SearchPageContent() {
                       {scanResult.verdict === 'scam' && (
                         <span className="inline-flex items-center gap-1 border-[1.5px] border-danger/85 text-danger/90 font-bold uppercase tracking-[0.1em] text-[11px] px-2.5 py-0.5 rounded-md bg-white/90 shadow-[0_2px_6px_rgba(229,57,53,0.18)]">
                           <XCircle className="w-3.5 h-3.5" /> Nguy hiểm
+                        </span>
+                      )}
+                      {scanResult.verdict === 'policy' && (
+                        <span className="inline-flex items-center gap-1 border-[1.5px] border-warning/85 text-warning/95 font-bold uppercase tracking-[0.1em] text-[11px] px-2.5 py-0.5 rounded-md bg-white/90 shadow-[0_2px_6px_rgba(245,158,11,0.18)]">
+                          <FileWarning className="w-3.5 h-3.5" /> Cảnh báo pháp lý
                         </span>
                       )}
                       {scanResult.verdict === 'safe' && (
@@ -550,6 +578,8 @@ function SearchPageContent() {
                     {scanResult.description ||
                       (scanResult.verdict === 'scam'
                         ? 'Hệ thống AI phát hiện rủi ro cao, cần thận trọng.'
+                        : scanResult.verdict === 'policy'
+                          ? 'Website có cảnh báo pháp lý từ nguồn công bố chính thức.'
                         : scanResult.verdict === 'unknown'
                           ? 'Không đủ dữ liệu từ các nguồn kiểm tra để kết luận.'
                           : 'Không phát hiện rủi ro rõ ràng.')}
@@ -558,7 +588,11 @@ function SearchPageContent() {
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
                       <AlertOctagon className="w-4 h-4 text-danger" /> Điểm rủi ro: <strong className="text-danger">{scanResult.riskScore}%</strong>
                     </span>
-                    {scanResult.verdict === 'unknown' ? (
+                    {scanResult.verdict === 'policy' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
+                        <FileWarning className="w-4 h-4 text-warning" /> Nhãn: <strong className="text-warning">Cảnh báo pháp lý</strong>
+                      </span>
+                    ) : scanResult.verdict === 'unknown' ? (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-bg-cardHover border border-bg-border">
                         <AlertTriangle className="w-4 h-4 text-warning" /> Trạng thái: <strong className="text-warning">Chưa đủ dữ liệu</strong>
                       </span>
@@ -587,7 +621,7 @@ function SearchPageContent() {
                   </div>
                   <div className="mt-3">
                     <a
-                      href={`/detail/website/${encodeURIComponent(scanResult.domain)}?status=${scanResult.status || scanResult.verdict}&reports=${scanResult.reports || 0}&sourceCategory=websites&source=${scanResult.source || 'scan'}&description=${encodeURIComponent(scanResult.description || '')}&risk=${scanResult.riskScore}`}
+                      href={`/detail/website/${encodeURIComponent(scanResult.domain)}?status=${scanResult.status || scanResult.verdict}&reports=${scanResult.reports || 0}&sourceCategory=websites&source=${encodeURIComponent(scanResult.source || 'scan')}&description=${encodeURIComponent(scanResult.description || '')}&risk=${encodeURIComponent(String(scanResult.riskScore ?? ''))}${scanResult.policyViolation ? `&policy=1&policySourceUrl=${encodeURIComponent(scanResult.policySourceUrl || '')}&policySourceTitle=${encodeURIComponent(scanResult.policySourceTitle || '')}` : ''}`}
                       className="inline-flex items-center gap-1 rounded-full bg-primary text-white px-3 py-1 text-xs font-semibold hover:bg-primary/90 transition-colors"
                     >
                       Xem chi tiết <ExternalLink className="w-3.5 h-3.5" />

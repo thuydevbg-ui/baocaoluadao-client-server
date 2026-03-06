@@ -59,7 +59,7 @@ interface DbRating extends RowDataPacket {
   identity_key: string;
   score: number;
   identity_type: 'user' | 'ip' | 'visitor';
-  created_at: Date;
+  created_at: number;
 }
 
 interface DbComment extends RowDataPacket {
@@ -71,7 +71,7 @@ interface DbComment extends RowDataPacket {
   author_identity_key: string;
   helpful: number;
   verified: boolean;
-  created_at: Date;
+  created_at: number;
 }
 
 declare global {
@@ -124,7 +124,7 @@ async function getRatingsFromDb(detailKey: string): Promise<Map<string, { score:
     for (const row of rows) {
       ratings.set(row.identity_key, {
         score: row.score,
-        createdAt: typeof row.created_at === 'number' ? row.created_at : row.created_at.getTime(),
+        createdAt: normalizeEpochMs(row.created_at),
         identityType: row.identity_type,
       });
     }
@@ -150,12 +150,7 @@ async function getCommentsFromDb(detailKey: string): Promise<StoredComment[]> {
       [detailKey]
     );
     
-    for (const row of rows) {
-      let helpfulByIdentity: string[] = [];
-      try {
-        helpfulByIdentity = JSON.parse(row.helpful_by_identity || '[]');
-      } catch {}
-      
+    for (const row of rows as any[]) {
       comments.push({
         id: row.id,
         user: row.user,
@@ -163,9 +158,9 @@ async function getCommentsFromDb(detailKey: string): Promise<StoredComment[]> {
         text: row.text,
         authorIdentityKey: row.author_identity_key,
         helpful: row.helpful,
-        createdAt: typeof row.created_at === 'number' ? row.created_at : row.created_at.getTime(),
+        createdAt: normalizeEpochMs(row.created_at),
         verified: Boolean(row.verified),
-        helpfulByIdentity,
+        helpfulByIdentity: [],
       });
     }
   } catch (error) {
@@ -189,7 +184,7 @@ async function addRatingToDb(
   try {
     const db = getDb();
     await db.execute(
-      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type, created_at) VALUES (?, ?, ?, ?, NOW())',
+      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type) VALUES (?, ?, ?, ?)',
       [detailKey, identityKey, score, identityType]
     );
     return true;
@@ -208,7 +203,7 @@ async function addCommentToDb(comment: StoredComment, detailKey: string): Promis
   try {
     const db = getDb();
     await db.execute(
-      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, created_at, verified, helpful_by_identity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         comment.id,
         detailKey,
@@ -217,9 +212,8 @@ async function addCommentToDb(comment: StoredComment, detailKey: string): Promis
         comment.text,
         comment.authorIdentityKey,
         comment.helpful,
-        comment.createdAt,
         comment.verified ? 1 : 0,
-        JSON.stringify(comment.helpfulByIdentity),
+        normalizeEpochMs(comment.createdAt),
       ]
     );
     return true;
@@ -234,17 +228,15 @@ async function addCommentToDb(comment: StoredComment, detailKey: string): Promis
  */
 async function updateCommentHelpfulInDb(
   commentId: string,
-  identityKey: string,
-  newHelpfulCount: number,
-  helpfulByIdentity: string[]
+  newHelpfulCount: number
 ): Promise<boolean> {
   if (!isDbAvailable()) return false;
   
   try {
     const db = getDb();
     await db.execute(
-      'UPDATE detail_feedback SET helpful = ?, helpful_by_identity = ? WHERE id = ?',
-      [newHelpfulCount, JSON.stringify(helpfulByIdentity), commentId]
+      'UPDATE detail_feedback SET helpful = ? WHERE id = ?',
+      [newHelpfulCount, commentId]
     );
     return true;
   } catch (error) {
@@ -265,6 +257,40 @@ function countSentences(input: string): number {
   if (!normalized) return 0;
   const parts = normalized.split(/[.!?â€¦]+/).map((part) => part.trim()).filter(Boolean);
   return parts.length > 0 ? parts.length : 1;
+}
+
+function normalizeEpochMs(raw: unknown): number {
+  if (raw instanceof Date) {
+    const time = raw.getTime();
+    return Number.isFinite(time) ? time : Date.now();
+  }
+
+  const asNumber = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isFinite(asNumber) || asNumber <= 0) return Date.now();
+
+  // MySQL BIGINT column accidentally written with NOW() can become yyyymmddhhmmss (e.g. 20260306123456).
+  if (asNumber >= 20000101000000 && asNumber <= 20991231235959) {
+    const year = Math.floor(asNumber / 10000000000);
+    const month = Math.floor(asNumber / 100000000) % 100;
+    const day = Math.floor(asNumber / 1000000) % 100;
+    const hour = Math.floor(asNumber / 10000) % 100;
+    const minute = Math.floor(asNumber / 100) % 100;
+    const second = asNumber % 100;
+    const utc = Date.UTC(year, Math.max(0, month - 1), day, hour, minute, second);
+    return Number.isFinite(utc) ? utc : Date.now();
+  }
+
+  // Seconds → milliseconds (e.g. 1700000000).
+  if (asNumber < 100_000_000_000) {
+    return asNumber * 1000;
+  }
+
+  const now = Date.now();
+  if (asNumber > now + 1000 * 60 * 60 * 24 * 365 * 5) {
+    return now;
+  }
+
+  return asNumber;
 }
 
 function normalizeDetailKey(raw: unknown): string {
@@ -495,7 +521,7 @@ async function addRating(detailKey: string, identityKey: string, score: number, 
   try {
     const db = getDb();
     await db.execute(
-      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type, created_at) VALUES (?, ?, ?, ?, NOW())',
+      'INSERT INTO detail_ratings (detail_key, identity_key, score, identity_type) VALUES (?, ?, ?, ?)',
       [detailKey, identityKey, score, identityType]
     );
     return true;
@@ -523,7 +549,7 @@ async function addComment(
     const db = getDb();
     const id = crypto.randomUUID();
     await db.execute(
-      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, NOW())',
+      'INSERT INTO detail_feedback (id, detail_key, user, avatar, text, author_identity_key, helpful, verified) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
       [id, detailKey, user, avatar, text, authorIdentityKey, verified]
     );
     return id;
@@ -616,7 +642,7 @@ function buildResponsePayloadFromDb(
         verified: Boolean(item.verified),
         helpfulMarked: false, // Will be tracked in memory for DB mode
         canMarkHelpful: true,
-        createdAt: new Date(item.created_at).toISOString(),
+        createdAt: new Date(normalizeEpochMs(item.created_at)).toISOString(),
       };
     }),
   };
@@ -908,7 +934,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
               text: targetComment.text,
               authorIdentityKey: targetComment.author_identity_key,
               helpful: targetComment.helpful,
-              createdAt: targetComment.created_at.getTime(),
+              createdAt: normalizeEpochMs(targetComment.created_at),
               verified: Boolean(targetComment.verified),
               helpfulByIdentity: [identity.key],
             });
@@ -1129,7 +1155,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     entry.lastActive = Date.now();
 
     // Sync to database (fire and forget)
-    updateCommentHelpfulInDb(commentId, identity.key, targetComment.helpful, targetComment.helpfulByIdentity).catch(console.error);
+    updateCommentHelpfulInDb(commentId, targetComment.helpful).catch(console.error);
 
     const payload = buildResponsePayload(entry, identity);
     const response = createSecureJsonResponse({
@@ -1213,4 +1239,3 @@ export const POST = withApiObservability(async (request: NextRequest) => {
   }, { status: 200 }, rateLimit);
   return withVisitorCookie(response, identity);
 });
-

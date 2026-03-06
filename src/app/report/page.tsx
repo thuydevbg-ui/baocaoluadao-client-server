@@ -2,12 +2,27 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useMemo, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, Building2, Globe, Wallet, Facebook, TrendingUp, Briefcase, ArrowLeft, ArrowRight, Upload, X, Check, Sparkles, LucideIcon } from 'lucide-react';
+import {
+  Phone,
+  Building2,
+  Globe,
+  Wallet,
+  Facebook,
+  TrendingUp,
+  Briefcase,
+  ArrowLeft,
+  ArrowRight,
+  Upload,
+  X,
+  Check,
+  Sparkles,
+  LucideIcon,
+} from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Button, Card, Input, Modal } from '@/components/ui';
+import { Button, Chip, Input, Modal } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
@@ -26,15 +41,65 @@ interface ReportData {
   images: string[];
 }
 
-const scamTypes: { key: ScamType; icon: LucideIcon; label: string; color: string }[] = [
-  { key: 'phone', icon: Phone, label: 'report.scam_types.phone', color: 'from-blue-500 to-cyan-400' },
-  { key: 'bank', icon: Building2, label: 'report.scam_types.bank', color: 'from-purple-500 to-pink-400' },
-  { key: 'website', icon: Globe, label: 'report.scam_types.website', color: 'from-green-500 to-emerald-400' },
-  { key: 'crypto', icon: Wallet, label: 'report.scam_types.crypto', color: 'from-orange-500 to-amber-400' },
-  { key: 'social', icon: Facebook, label: 'report.scam_types.social', color: 'from-blue-400 to-indigo-400' },
-  { key: 'investment', icon: TrendingUp, label: 'report.scam_types.investment', color: 'from-yellow-500 to-orange-400' },
-  { key: 'job', icon: Briefcase, label: 'report.scam_types.job', color: 'from-teal-500 to-cyan-400' },
+const scamTypes: { key: ScamType; icon: LucideIcon; label: string }[] = [
+  { key: 'phone', icon: Phone, label: 'report.scam_types.phone' },
+  { key: 'bank', icon: Building2, label: 'report.scam_types.bank' },
+  { key: 'website', icon: Globe, label: 'report.scam_types.website' },
+  { key: 'crypto', icon: Wallet, label: 'report.scam_types.crypto' },
+  { key: 'social', icon: Facebook, label: 'report.scam_types.social' },
+  { key: 'investment', icon: TrendingUp, label: 'report.scam_types.investment' },
+  { key: 'job', icon: Briefcase, label: 'report.scam_types.job' },
 ];
+
+function ReportStepper({ step, labels }: { step: number; labels: string[] }) {
+  const progressPercent = useMemo(() => {
+    const clamped = Math.min(4, Math.max(1, step));
+    return ((clamped - 1) / 3) * 100;
+  }, [step]);
+
+  return (
+    <div className="mb-10">
+      <div className="relative mx-auto max-w-4xl">
+        <div className="absolute left-5 right-5 top-5 h-[3px] rounded-full bg-bg-border" />
+        <div
+          className="absolute left-5 top-5 h-[3px] rounded-full bg-primary transition-[width] duration-500 ease-out"
+          style={{ width: `${progressPercent}%` }}
+        />
+
+        <div className="relative grid grid-cols-4">
+          {[1, 2, 3, 4].map((s, idx) => {
+            const isDone = s < step;
+            const isCurrent = s === step;
+            return (
+              <div key={s} className="flex flex-col items-center gap-2">
+                <div
+                  className={cn(
+                    'w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm',
+                    'transition-colors duration-200',
+                    isDone || isCurrent
+                      ? 'bg-primary text-white'
+                      : 'bg-bg-card text-text-muted border border-bg-border',
+                    isCurrent && 'ring-4 ring-primary/25 shadow-sm'
+                  )}
+                >
+                  {isDone ? <Check className="w-5 h-5" /> : s}
+                </div>
+                <div
+                  className={cn(
+                    'text-[11px] md:text-xs text-center leading-tight',
+                    isCurrent ? 'text-text-main font-semibold' : isDone ? 'text-text-secondary' : 'text-text-muted'
+                  )}
+                >
+                  {labels[idx] || ''}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReportPageContent() {
   const { t } = useI18n();
@@ -94,9 +159,19 @@ function ReportPageContent() {
         return;
       }
       // Validate URL if provided
-      if (reportData.website && !/^https?:\/\/.+/.test(reportData.website)) {
-        showToast('warning', 'Invalid website URL');
-        return;
+      if (reportData.website) {
+        const raw = reportData.website.trim();
+        if (raw) {
+          const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw) ? raw : `https://${raw}`;
+          try {
+            // eslint-disable-next-line no-new
+            new URL(normalized);
+            updateData('website', normalized);
+          } catch {
+            showToast('warning', 'Invalid website URL');
+            return;
+          }
+        }
       }
     }
     setStep(step + 1);
@@ -235,192 +310,268 @@ function ReportPageContent() {
       <Navbar />
       
       <main className="flex-1 pt-20 pb-20 md:pb-8">
-        <div className="max-w-3xl mx-auto px-4 md:px-8 py-8">
-          {/* Progress Steps */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              {[1, 2, 3, 4].map((s) => (
-                <React.Fragment key={s}>
-                  <div className={cn(
-                    'w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm',
-                    s < step ? 'bg-primary text-white' :
-                    s === step ? 'bg-primary text-white ring-4 ring-primary/30' :
-                    'bg-bg-card text-text-muted border border-bg-border'
-                  )}>
-                    {s < step ? <Check className="w-5 h-5" /> : s}
-                  </div>
-                  {s < 4 && (
-                    <div className={cn(
-                      'flex-1 h-1 mx-2 rounded',
-                      s < step ? 'bg-primary' : 'bg-bg-border'
-                    )} />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-            <div className="flex justify-between text-xs text-text-muted">
-              <span>{t('report.step1_title')}</span>
-              <span>{t('report.step2_title')}</span>
-              <span>{t('report.step3_title')}</span>
-              <span>{t('report.step4_title')}</span>
-            </div>
-          </div>
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-10">
+          <div className="max-w-3xl mx-auto">
+            <ReportStepper
+              step={step}
+              labels={[t('report.step1_title'), t('report.step2_title'), t('report.step3_title'), t('report.step4_title')]}
+            />
 
-          <AnimatePresence mode="wait">
-            {/* Step 1: Select Type */}
-            {step === 1 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-              >
-                <h1 className="text-2xl font-bold text-text-main mb-6">{t('report.step1_title')}</h1>
-                
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {scamTypes.map((type) => (
-                    <motion.button
-                      key={type.key}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => updateData('type', type.key)}
-                      className={cn(
-                        'p-6 rounded-card border-2 text-left transition-all',
-                        reportData.type === type.key 
-                          ? 'border-primary bg-primary/10 shadow-glow' 
-                          : 'border-bg-border bg-bg-card hover:border-primary/50'
-                      )}
-                    >
-                      <div className={cn(
-                        'w-12 h-12 rounded-xl bg-gradient-to-br mb-3 flex items-center justify-center',
-                        type.color
-                      )}>
-                        <type.icon className="w-6 h-6 text-white" />
+            <AnimatePresence mode="wait">
+              {/* Step 1: Select Type */}
+              {step === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -18 }}
+                >
+                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-text-main mb-6">
+                    {t('report.step1_title')}
+                  </h1>
+
+                  <div className="rounded-2xl border border-bg-border bg-bg-card shadow-none ring-0 overflow-hidden">
+                    <div className="divide-y divide-bg-border">
+                      {scamTypes.map((type) => {
+                        const selected = reportData.type === type.key;
+                        const Icon = type.icon;
+                        return (
+                          <button
+                            key={type.key}
+                            onClick={() => updateData('type', type.key)}
+                            className={cn(
+                              'w-full px-5 md:px-6 py-4 text-left transition-colors',
+                              'flex items-center gap-4',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-inset',
+                              selected ? 'bg-primary/5' : 'bg-transparent hover:bg-bg-cardHover/35'
+                            )}
+                            type="button"
+                            aria-pressed={selected}
+                          >
+                            <div
+                              className={cn(
+                                'h-10 w-10 rounded-full flex items-center justify-center shrink-0 border',
+                                selected
+                                  ? 'bg-primary/10 border-primary/20 text-primary'
+                                  : 'bg-bg-cardHover border-bg-border text-text-secondary'
+                              )}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[15px] font-medium text-text-main truncate">{t(type.label)}</p>
+                              {selected ? (
+                                <div className="mt-1.5">
+                                  <Chip variant="primary" size="sm" leftIcon={<Check className="h-3.5 w-3.5" />}>
+                                    {t('report.selected')}
+                                  </Chip>
+                                </div>
+                              ) : (
+                                <p className="mt-0.5 text-sm text-text-muted line-clamp-1">
+                                  {t(`report.scam_type_hints.${type.key}`)}
+                                </p>
+                              )}
+                            </div>
+
+                            {selected && (
+                              <div className="shrink-0 text-primary" aria-hidden>
+                                <Check className="h-5 w-5" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Step 2: Input Data */}
+              {step === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -18 }}
+                >
+                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-text-main mb-6">
+                    {t('report.step2_title')}
+                  </h1>
+
+                  <div className="rounded-2xl border border-bg-border bg-bg-card shadow-none ring-0 overflow-hidden">
+                    <div className="flex items-start gap-4 px-5 md:px-6 py-4">
+                      <div className="h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 border bg-primary/10 border-primary/20 text-primary">
+                        <Building2 className="h-5 w-5" />
                       </div>
-                      <p className="font-medium text-text-main">{t(type.label)}</p>
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-text-main">{t('report.step2_title')}</p>
+                          {reportData.type && (
+                            <Chip variant="primary" size="sm">
+                              {t(`report.scam_types.${reportData.type}`)}
+                            </Chip>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-sm text-text-muted">{t('report.step2_hint')}</p>
+                      </div>
+                    </div>
 
-            {/* Step 2: Input Data */}
-            {step === 2 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-              >
-                <h1 className="text-2xl font-bold text-text-main mb-6">{t('report.step2_title')}</h1>
-                
-                <Card className="space-y-4">
-                  {reportData.type === 'phone' && (
-                    <Input
-                      label={t('report.phone')}
-                      value={reportData.phone}
-                      onChange={(e) => updateData('phone', e.target.value)}
-                      placeholder="0123456789"
-                    />
-                  )}
-                  
-                  {reportData.type === 'bank' && (
-                    <Input
-                      label={t('report.bank_account')}
-                      value={reportData.bankAccount}
-                      onChange={(e) => updateData('bankAccount', e.target.value)}
-                      placeholder="VCB 123456789"
-                    />
-                  )}
-                  
-                  {reportData.type === 'website' && (
-                    <Input
-                      label={t('report.website')}
-                      value={reportData.website}
-                      onChange={(e) => updateData('website', e.target.value)}
-                      placeholder="https://example.com"
-                    />
-                  )}
-                  
-                  {(reportData.type === 'social' || reportData.type === 'investment' || reportData.type === 'job') && (
-                    <>
+                    <div className="px-5 md:px-6 py-6 border-t border-bg-border space-y-5">
+                      {reportData.type === 'phone' && (
+                        <Input
+                          label={t('report.phone')}
+                          value={reportData.phone}
+                          onChange={(e) => updateData('phone', e.target.value)}
+                          placeholder="0123456789"
+                          inputMode="tel"
+                          className="rounded-xl h-11 bg-bg-card"
+                        />
+                      )}
+
+                      {reportData.type === 'bank' && (
+                        <Input
+                          label={t('report.bank_account')}
+                          value={reportData.bankAccount}
+                          onChange={(e) => updateData('bankAccount', e.target.value)}
+                          placeholder="VCB 123456789"
+                          className="rounded-xl h-11 bg-bg-card"
+                        />
+                      )}
+
+                      {(reportData.type === 'website' ||
+                        reportData.type === 'crypto' ||
+                        reportData.type === 'investment' ||
+                        reportData.type === 'job') && (
+                        <Input
+                          label={t('report.website')}
+                          value={reportData.website}
+                          onChange={(e) => updateData('website', e.target.value)}
+                          placeholder="example.com"
+                          inputMode="url"
+                          className="rounded-xl h-11 bg-bg-card"
+                        />
+                      )}
+
+                      {(reportData.type === 'social' || reportData.type === 'investment' || reportData.type === 'job') && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <Input
+                            label={t('report.telegram')}
+                            value={reportData.telegram}
+                            onChange={(e) => updateData('telegram', e.target.value)}
+                            placeholder="@username"
+                            className="rounded-xl h-11 bg-bg-card"
+                          />
+                          <Input
+                            label={t('report.facebook')}
+                            value={reportData.facebook}
+                            onChange={(e) => updateData('facebook', e.target.value)}
+                            placeholder="facebook.com/username"
+                            className="rounded-xl h-11 bg-bg-card"
+                          />
+                        </div>
+                      )}
+
                       <Input
-                        label={t('report.telegram')}
-                        value={reportData.telegram}
-                        onChange={(e) => updateData('telegram', e.target.value)}
-                        placeholder="@username"
+                        label={t('report.amount')}
+                        value={reportData.amount}
+                        onChange={(e) => updateData('amount', e.target.value)}
+                        placeholder="10,000,000 VND"
+                        inputMode="decimal"
+                        className="rounded-xl h-11 bg-bg-card"
                       />
-                      <Input
-                        label={t('report.facebook')}
-                        value={reportData.facebook}
-                        onChange={(e) => updateData('facebook', e.target.value)}
-                        placeholder="facebook.com/username"
-                      />
-                    </>
-                  )}
 
-                  <Input
-                    label={t('report.amount')}
-                    value={reportData.amount}
-                    onChange={(e) => updateData('amount', e.target.value)}
-                    placeholder="10,000,000 VND"
-                  />
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-2">
-                      {t('report.description')}
-                    </label>
-                    <textarea
-                      value={reportData.description}
-                      onChange={(e) => updateData('description', e.target.value)}
-                      placeholder={t('report.description_placeholder')}
-                      rows={4}
-                      className="w-full px-4 py-3 bg-bg-card border border-bg-border rounded-button text-text-main placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
-                    />
+                      <div>
+                        <label className="block text-sm font-medium text-text-secondary mb-2">
+                          {t('report.description')}
+                        </label>
+                        <textarea
+                          value={reportData.description}
+                          onChange={(e) => updateData('description', e.target.value)}
+                          placeholder={t('report.description_placeholder')}
+                          rows={4}
+                          className="w-full px-4 py-3 bg-bg-card border border-bg-border rounded-xl text-text-main placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </Card>
-              </motion.div>
-            )}
+                </motion.div>
+              )}
 
             {/* Step 3: Upload Proof */}
             {step === 3 && (
               <motion.div
                 key="step3"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -18 }}
               >
-                <h1 className="text-2xl font-bold text-text-main mb-6">{t('report.step3_title')}</h1>
+                <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-text-main mb-6">
+                  {t('report.step3_title')}
+                </h1>
                 
-                {/* Upload Zone */}
-                <div className="border-2 border-dashed border-bg-border rounded-card p-8 text-center hover:border-primary/50 transition-colors cursor-pointer relative">
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  <Upload className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                  <p className="text-text-secondary">{t('report.drag_drop')}</p>
-                </div>
-
-                {/* Image Preview */}
-                {reportData.images.length > 0 && (
-                  <div className="grid grid-cols-3 md:grid-cols-4 gap-4 mt-6">
-                    {reportData.images.map((img, i) => (
-                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-bg-card">
-                        <img src={img} alt={`Proof image ${i + 1}`} className="w-full h-full object-cover" />
-                        <button
-                          onClick={() => removeImage(i)}
-                          className="absolute top-2 right-2 p-1 bg-danger rounded-full text-white"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                <div className="rounded-2xl border border-bg-border bg-bg-card shadow-none ring-0 overflow-hidden">
+                  <div className="divide-y divide-bg-border">
+                    <div className="flex items-start gap-4 px-5 md:px-6 py-4">
+                      <div className="h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 border bg-primary/10 border-primary/20 text-primary">
+                        <Upload className="h-5 w-5" />
                       </div>
-                    ))}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-text-main">{t('report.upload_proof')}</p>
+                          <Chip variant={reportData.images.length > 0 ? 'success' : 'default'} size="sm">
+                            {reportData.images.length > 0
+                              ? t('report.proof_added').replace('{count}', String(reportData.images.length))
+                              : t('report.proof_none')}
+                          </Chip>
+                        </div>
+                        <p className="mt-0.5 text-sm text-text-muted">{t('report.proof_hint')}</p>
+                      </div>
+
+                      <label className="shrink-0">
+                        <span className="inline-flex items-center justify-center h-10 px-4 rounded-xl border border-primary/25 bg-primary/10 text-primary font-semibold text-sm hover:bg-primary/15 transition-colors cursor-pointer">
+                          {t('report.choose_images')}
+                        </span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {reportData.images.length > 0 && (
+                      <div className="divide-y divide-bg-border">
+                        {reportData.images.map((img, i) => (
+                          <div
+                            key={img}
+                            className="flex items-center gap-3 px-5 md:px-6 py-3 bg-bg-card hover:bg-bg-cardHover/35 transition-colors"
+                          >
+                            <div className="h-11 w-11 rounded-xl overflow-hidden border border-bg-border bg-bg-card shrink-0">
+                              <img src={img} alt={`Proof image ${i + 1}`} className="w-full h-full object-cover" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-text-main truncate">
+                                {t('report.proof_image')} {i + 1}
+                              </p>
+                              <p className="text-xs text-text-muted truncate">{t('report.proof_caption')}</p>
+                            </div>
+                            <button
+                              onClick={() => removeImage(i)}
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-bg-border bg-bg-card text-text-muted hover:text-danger hover:border-danger/30 hover:bg-danger/5 transition-colors"
+                              aria-label="Remove image"
+                              type="button"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </motion.div>
             )}
 
@@ -428,95 +579,128 @@ function ReportPageContent() {
             {step === 4 && (
               <motion.div
                 key="step4"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -18 }}
               >
-                <h1 className="text-2xl font-bold text-text-main mb-6">{t('report.step4_title')}</h1>
+                <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-text-main mb-6">
+                  {t('report.step4_title')}
+                </h1>
                 
-                <Card className="space-y-4">
-                  <div className="flex justify-between py-2 border-b border-bg-border">
-                    <span className="text-text-muted">Type</span>
-                    <span className="text-text-main font-medium">
-                      {reportData.type && t(`report.scam_types.${reportData.type}`)}
-                    </span>
-                  </div>
-                  {reportData.phone && (
-                    <div className="flex justify-between py-2 border-b border-bg-border">
-                      <span className="text-text-muted">{t('report.phone')}</span>
-                      <span className="text-text-main font-mono">{reportData.phone}</span>
-                    </div>
-                  )}
-                  {reportData.bankAccount && (
-                    <div className="flex justify-between py-2 border-b border-bg-border">
-                      <span className="text-text-muted">{t('report.bank_account')}</span>
-                      <span className="text-text-main font-mono">{reportData.bankAccount}</span>
-                    </div>
-                  )}
-                  {reportData.website && (
-                    <div className="flex justify-between py-2 border-b border-bg-border">
-                      <span className="text-text-muted">{t('report.website')}</span>
-                      <span className="text-text-main font-mono">{reportData.website}</span>
-                    </div>
-                  )}
-                  {reportData.amount && (
-                    <div className="flex justify-between py-2 border-b border-bg-border">
-                      <span className="text-text-muted">{t('report.amount')}</span>
-                      <span className="text-danger font-mono font-semibold">{reportData.amount}</span>
-                    </div>
-                  )}
-                  {reportData.description && (
-                    <div className="py-2">
-                      <span className="text-text-muted block mb-2">{t('report.description')}</span>
-                      <p className="text-text-main">{reportData.description}</p>
-                    </div>
-                  )}
-                  {reportData.images.length > 0 && (
-                    <div className="py-2">
-                      <span className="text-text-muted block mb-2">{t('report.upload_proof')}</span>
-                      <div className="flex gap-2">
-                        {reportData.images.map((img, i) => (
-                          <div key={i} className="w-16 h-16 rounded-lg overflow-hidden">
-                            <img src={img} alt={`Proof image ${i + 1}`} className="w-full h-full object-cover" />
-                          </div>
-                        ))}
+                <div className="rounded-2xl border border-bg-border bg-bg-card shadow-none ring-0 overflow-hidden">
+                  <div className="divide-y divide-bg-border">
+                    <div className="flex items-start gap-4 px-5 md:px-6 py-4">
+                      <div className="h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 border bg-primary/10 border-primary/20 text-primary">
+                        <Check className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-text-main">{t('report.summary_title')}</p>
+                        <p className="mt-0.5 text-sm text-text-muted">{t('report.summary_hint')}</p>
                       </div>
                     </div>
-                  )}
-                </Card>
+
+                    <div className="px-5 md:px-6 py-2">
+                      <div className="flex items-center justify-between py-3">
+                        <span className="text-sm text-text-muted">{t('report.summary_type')}</span>
+                        <Chip variant="primary" size="sm">
+                          {reportData.type ? t(`report.scam_types.${reportData.type}`) : '—'}
+                        </Chip>
+                      </div>
+
+                      {reportData.phone && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.phone')}</span>
+                          <span className="text-sm font-mono text-text-main">{reportData.phone}</span>
+                        </div>
+                      )}
+                      {reportData.bankAccount && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.bank_account')}</span>
+                          <span className="text-sm font-mono text-text-main">{reportData.bankAccount}</span>
+                        </div>
+                      )}
+                      {reportData.website && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.website')}</span>
+                          <span className="text-sm font-mono text-text-main truncate max-w-[60%]">{reportData.website}</span>
+                        </div>
+                      )}
+                      {reportData.telegram && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.telegram')}</span>
+                          <span className="text-sm font-mono text-text-main">{reportData.telegram}</span>
+                        </div>
+                      )}
+                      {reportData.facebook && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.facebook')}</span>
+                          <span className="text-sm font-mono text-text-main truncate max-w-[60%]">{reportData.facebook}</span>
+                        </div>
+                      )}
+                      {reportData.amount && (
+                        <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                          <span className="text-sm text-text-muted">{t('report.amount')}</span>
+                          <Chip variant="danger" size="sm">
+                            {reportData.amount}
+                          </Chip>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between py-3 border-t border-bg-border">
+                        <span className="text-sm text-text-muted">{t('report.upload_proof')}</span>
+                        <Chip variant={reportData.images.length > 0 ? 'success' : 'default'} size="sm">
+                          {reportData.images.length > 0
+                            ? t('report.proof_added').replace('{count}', String(reportData.images.length))
+                            : t('report.proof_none')}
+                        </Chip>
+                      </div>
+                    </div>
+
+                    {reportData.description && (
+                      <div className="px-5 md:px-6 py-4">
+                        <span className="text-sm text-text-muted block mb-2">{t('report.description')}</span>
+                        <p className="text-sm text-text-main whitespace-pre-wrap leading-relaxed">{reportData.description}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </motion.div>
             )}
-          </AnimatePresence>
+            </AnimatePresence>
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8">
-            <Button
-              variant="secondary"
-              onClick={handleBack}
-              disabled={step === 1}
-              leftIcon={<ArrowLeft className="w-4 h-4" />}
-            >
-              Back
-            </Button>
-            
-            {step < 4 ? (
+            {/* Navigation Buttons */}
+            <div className="flex items-center justify-between mt-10">
               <Button
-                variant="primary"
-                onClick={handleNext}
-                rightIcon={<ArrowRight className="w-4 h-4" />}
+                variant="secondary"
+                onClick={handleBack}
+                disabled={step === 1}
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+                className="min-w-[120px] rounded-xl shadow-none"
               >
-                Next
+                {t('report.back')}
               </Button>
-            ) : (
-              <Button
-                variant="danger"
-                onClick={handleSubmit}
-                isLoading={isSubmitting}
-                leftIcon={<Sparkles className="w-4 h-4" />}
-              >
-                {t('common.submit')}
-              </Button>
-            )}
+
+              {step < 4 ? (
+                <Button
+                  variant="primary"
+                  onClick={handleNext}
+                  rightIcon={<ArrowRight className="w-4 h-4" />}
+                  className="min-w-[140px] rounded-xl shadow-sm shadow-primary/15 hover:shadow-md hover:shadow-primary/20"
+                >
+                  {t('report.next')}
+                </Button>
+              ) : (
+                <Button
+                  variant="danger"
+                  onClick={handleSubmit}
+                  isLoading={isSubmitting}
+                  leftIcon={<Sparkles className="w-4 h-4" />}
+                  className="min-w-[160px] rounded-xl shadow-sm shadow-danger/15 hover:shadow-md hover:shadow-danger/20"
+                >
+                  {t('common.submit')}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </main>

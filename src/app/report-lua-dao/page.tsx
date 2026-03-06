@@ -200,8 +200,8 @@ export default function ScamListPage() {
               <p className="text-sm text-text-muted">Website lừa đảo</p>
             </Card>
             <Card className="p-4 text-center bg-primary/5 border-primary/20">
-              <p className="text-3xl font-bold text-primary">{scams.reduce((a, s) => a + (s.views ?? s.reports ?? 0), 0)}</p>
-              <p className="text-sm text-text-muted">Lượt báo cáo</p>
+              <p className="text-3xl font-bold text-primary">{scams.reduce((a, s) => a + (s.views ?? 0), 0)}</p>
+              <p className="text-sm text-text-muted">Lượt xem</p>
             </Card>
             <Card className="p-4 text-center bg-success/5 border-success/20">
               <p className="text-3xl font-bold text-success">{scams.filter(s => s.status === 'confirmed').length}</p>
@@ -309,8 +309,8 @@ export default function ScamListPage() {
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
                       <div className="flex items-center gap-4 text-sm text-text-muted">
                         <span className="flex items-center gap-1">
-                          <AlertTriangle className="w-4 h-4 text-danger" />
-                          {scam.views ?? scam.reports ?? 0}
+                          <Eye className="w-4 h-4" />
+                          {scam.views ?? 0}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />

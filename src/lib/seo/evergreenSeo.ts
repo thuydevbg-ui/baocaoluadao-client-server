@@ -273,7 +273,7 @@ export const lifetimeSEOConfig = {
   },
 };
 
-export default {
+const evergreenSeo = {
   generateEvergreenMeta,
   selfHealSEO,
   evergreenKeywords,
@@ -282,3 +282,5 @@ export default {
   lifetimeSchemas,
   lifetimeSEOConfig,
 };
+
+export default evergreenSeo;

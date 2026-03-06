@@ -15,6 +15,7 @@ import {
   ThumbsUp,
   Calendar,
   Share2,
+  Eye,
   Flag,
   Copy,
   CheckCircle,
@@ -25,9 +26,10 @@ import {
   SendHorizonal,
   AlertOctagon,
   Bot,
+  FileWarning,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Card, Button, RiskBadge, DetailSkeleton } from '@/components/ui';
+import { Card, Button, Chip, RiskBadge, DetailSkeleton } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type ScamDetail, type RiskLevel, sanitizeHTML, formatNumber } from '@/lib/utils';
@@ -39,15 +41,22 @@ interface DetailSourceMeta {
   status?: string;
   reports?: number;
   riskScore?: number;
+  policyViolation?: boolean;
+  policySourceUrl?: string;
+  policySourceTitle?: string;
+  policySummary?: string;
   firstSeen?: string;
   lastReported?: string;
   description?: string;
   organization?: string;
+  sourceUrl?: string;
   source?: string;
   sourceLink?: string;
   sourceCategory?: string;
   sourceMode?: string;
   sourceIcon?: string;
+  sourceTitle?: string;
+  sourceName?: string;
 }
 
 interface DetailInsight {
@@ -91,6 +100,20 @@ interface CategoryLookupResponse {
   items?: CategoryLookupItem[];
 }
 
+interface PolicyViolationLookupResponse {
+  success?: boolean;
+  found?: boolean;
+  item?: {
+    domain: string;
+    violationSummary: string | null;
+    sourceName: string;
+    sourceUrl: string;
+    sourceTitle: string | null;
+    updatedAt: string;
+  };
+  error?: string;
+}
+
 interface FeedbackCommentDto {
   id: string;
   user: string;
@@ -109,7 +132,6 @@ interface FeedbackCommentView {
   user: string;
   avatar: string;
   text: string;
-  time: string;
   createdAt: number;
   helpful: number;
   rating: number | null;
@@ -149,6 +171,11 @@ function mergeSourceMeta(base: DetailSourceMeta, override: DetailSourceMeta): De
   return {
     status: keepString(override.status, base.status),
     reports: override.reports ?? base.reports,
+    riskScore: override.riskScore ?? base.riskScore,
+    policyViolation: override.policyViolation ?? base.policyViolation,
+    policySourceUrl: keepString(override.policySourceUrl, base.policySourceUrl),
+    policySourceTitle: keepString(override.policySourceTitle, base.policySourceTitle),
+    policySummary: keepString(override.policySummary, base.policySummary),
     firstSeen: keepString(override.firstSeen, base.firstSeen),
     lastReported: keepString(override.lastReported, base.lastReported),
     description: keepString(override.description, base.description),
@@ -216,8 +243,8 @@ function parsePositiveInt(value: string | number | null | undefined): number | u
 function normalizeSourceStatus(statusRaw?: string): SourceStatus {
   const status = (statusRaw || '').trim().toLowerCase();
   if (!status) return 'unknown';
-  // "safe" is a scan verdict, not an authoritative source status.
-  if (status === 'trusted' || status === 'verified') return 'trusted';
+  // "safe" is a scan verdict - treat as trusted for display consistency
+  if (status === 'trusted' || status === 'verified' || status === 'safe') return 'trusted';
   if (status === 'confirmed' || status === 'scam') return 'confirmed';
   if (status === 'suspected' || status === 'warning' || status === 'processing') return 'suspected';
   return 'unknown';
@@ -302,11 +329,55 @@ function slugifyForMatch(value: string): string {
     .trim();
 }
 
-function formatRelativeTime(input: string): string {
-  const target = new Date(input).getTime();
-  if (!Number.isFinite(target)) return 'Vừa xong';
+function normalizeEpochMs(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const now = Date.now();
 
-  const diffMs = Date.now() - target;
+    // Handle yyyymmddhhmmss written into BIGINT (e.g. 20260306123456)
+    if (raw >= 20000101000000 && raw <= 20991231235959) {
+      const year = Math.floor(raw / 10000000000);
+      const month = Math.floor(raw / 100000000) % 100;
+      const day = Math.floor(raw / 1000000) % 100;
+      const hour = Math.floor(raw / 10000) % 100;
+      const minute = Math.floor(raw / 100) % 100;
+      const second = raw % 100;
+      const utc = Date.UTC(year, Math.max(0, month - 1), day, hour, minute, second);
+      return Number.isFinite(utc) ? utc : null;
+    }
+
+    // seconds → ms
+    if (raw > 0 && raw < 100_000_000_000) return raw * 1000;
+
+    // guard against far-future timestamps
+    if (raw > now + 1000 * 60 * 60 * 24 * 365 * 5) return now;
+    return raw;
+  }
+
+  const text = String(raw).trim();
+  if (!text) return null;
+
+  if (/^\d{10,17}$/.test(text)) {
+    const numeric = Number.parseInt(text, 10);
+    if (!Number.isFinite(numeric)) return null;
+    return normalizeEpochMs(numeric);
+  }
+
+  // Handle "YYYY-MM-DD HH:mm:ss" (Safari-safe by converting to ISO-ish).
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(text)) {
+    const iso = text.replace(' ', 'T');
+    const parsed = Date.parse(iso);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatRelativeTime(input: string | number, nowMs = Date.now()): string {
+  const target = normalizeEpochMs(input) ?? nowMs;
+
+  const diffMs = nowMs - target;
   if (diffMs < 0) return 'Vừa xong';
 
   const minute = 60 * 1000;
@@ -320,7 +391,7 @@ function formatRelativeTime(input: string): string {
 }
 
 function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
-  const createdAt = new Date(item.createdAt).getTime();
+  const createdAt = normalizeEpochMs(item.createdAt) ?? Date.now();
   return {
     id: item.id,
     user: item.user,
@@ -328,7 +399,6 @@ function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
     text: item.text,
     helpful: item.helpful,
     rating: typeof item.rating === 'number' ? item.rating : null,
-    time: formatRelativeTime(item.createdAt),
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     verified: Boolean(item.verified),
     helpfulMarked: Boolean(item.helpfulMarked),
@@ -374,6 +444,8 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   let risk: RiskLevel = riskScore >= 80 ? 'scam' : riskScore >= 55 ? 'suspicious' : 'safe';
   let confidence = Math.max(5, 100 - riskScore);
 
+  const policyViolation = Boolean(sourceMeta.policyViolation);
+
   // For scan-driven links (source=google_web_risk/local_db/scan_unavailable), respect the explicit scan score
   // but do NOT treat it as "trusted/verified".
   const scanRiskScore = typeof sourceMeta.riskScore === 'number' ? Math.max(0, Math.min(100, Math.floor(sourceMeta.riskScore))) : undefined;
@@ -401,12 +473,21 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
           : Math.max(10, 100 - riskScore);
   }
 
-  const isTrustedEntity = normalizedStatus === 'trusted' || isTrustedValue(sourceMeta.sourceMode);
+  // Policy-violation warnings must not be presented as "trusted/verified", even if other sources say "safe".
+  if (policyViolation) {
+    risk = 'policy';
+    riskScore = scanRiskScore !== undefined ? scanRiskScore : 45;
+    confidence = 70;
+  }
+
+  const isTrustedEntity = !policyViolation && (normalizedStatus === 'trusted' || isTrustedValue(sourceMeta.sourceMode));
   const typeLabel = isTrustedEntity
     ? TRUSTED_CATEGORY_LABEL[sourceMeta.sourceCategory || ''] || 'Đối tượng tín nhiệm'
-    : risk === 'unknown'
-      ? (kind === 'website' ? 'Website cần kiểm tra' : 'Đối tượng cần kiểm tra')
-      : TYPE_LABEL[kind];
+    : risk === 'policy'
+      ? 'Cảnh báo pháp lý'
+      : risk === 'unknown'
+        ? (kind === 'website' ? 'Website cần kiểm tra' : 'Đối tượng cần kiểm tra')
+        : TYPE_LABEL[kind];
 
   const detailByType: Record<
     ScamKind,
@@ -501,11 +582,18 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
 
   const profile = detailByType[kind];
   let statusLabel = getStatusLabel(normalizedStatus, risk === 'unknown' ? 'suspicious' : risk);
+  if (risk === 'policy') {
+    statusLabel = 'Cảnh báo pháp lý';
+  }
   if (risk === 'unknown' && explicitUnknownStatus && fromScanSource) {
     statusLabel = 'Chưa đủ dữ liệu';
   }
   const description = sourceMeta.description?.trim()
     ? sourceMeta.description.trim()
+    : risk === 'policy'
+      ? (sourceMeta.policySummary?.trim()
+        ? `Cảnh báo pháp lý: ${sourceMeta.policySummary.trim()}`
+        : 'Cảnh báo pháp lý: Website có dấu hiệu vi phạm pháp luật theo nguồn công bố chính thức.')
     : isTrustedEntity
       ? 'Đối tượng nằm trong danh bạ tín nhiệm và đang ở trạng thái xác thực trên hệ thống nguồn.'
       : profile.description;
@@ -526,8 +614,8 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
   };
 
   const insight: DetailInsight = {
-    riskSignals: (risk === 'safe' || risk === 'unknown') ? profile.safeSignals : profile.riskSignals,
-    recommendations: (risk === 'safe' || risk === 'unknown') ? profile.safeRecommendations : profile.recommendations,
+    riskSignals: (risk === 'safe' || risk === 'unknown' || risk === 'policy') ? profile.safeSignals : profile.riskSignals,
+    recommendations: (risk === 'safe' || risk === 'unknown' || risk === 'policy') ? profile.safeRecommendations : profile.recommendations,
     channels: isTrustedEntity ? ['Thông tin liên hệ', 'Kênh chính thức', 'Xác thực nguồn'] : profile.channels,
     related: [
       sourceMeta.organization || '',
@@ -560,6 +648,8 @@ function parseDetailSourceMeta(params: SearchParamReader): DetailSourceMeta {
   const sourceMode = params.get('sourceMode') || undefined;
   const source = params.get('source') || undefined;
   const riskScore = parsePositiveInt(params.get('risk'));
+  const policyViolationRaw = (params.get('policy') || '').trim().toLowerCase();
+  const policyViolation = policyViolationRaw === '1' || policyViolationRaw === 'true' || (params.get('status') || '').trim().toLowerCase() === 'policy';
   const hasKnownSource = Boolean(status || sourceMode || sourceLink || source);
   const normalizedStatus = normalizeSourceStatus(status || sourceMode);
 
@@ -567,6 +657,10 @@ function parseDetailSourceMeta(params: SearchParamReader): DetailSourceMeta {
     status,
     reports,
     riskScore,
+    policyViolation,
+    policySourceUrl: params.get('policySourceUrl') || undefined,
+    policySourceTitle: params.get('policySourceTitle') || undefined,
+    policySummary: params.get('policySummary') || undefined,
     firstSeen: params.get('firstSeen') || undefined,
     lastReported: params.get('lastReported') || undefined,
     description: params.get('description') || undefined,
@@ -636,6 +730,25 @@ async function lookupSourceMetaByValue(kind: ScamKind, value: string): Promise<D
   };
 }
 
+async function lookupPolicyViolationByValue(value: string): Promise<DetailSourceMeta | null> {
+  const response = await fetch('/api/policy-violations/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: value }),
+  });
+  if (!response.ok) return null;
+  const payload: PolicyViolationLookupResponse = await response.json();
+  if (!payload?.success || !payload.found || !payload.item) return null;
+
+  return {
+    policyViolation: true,
+    policySourceUrl: payload.item.sourceUrl,
+    policySourceTitle: payload.item.sourceTitle || payload.item.sourceName,
+    policySummary: payload.item.violationSummary || undefined,
+    source: `policy_violation_list:${payload.item.sourceName}`,
+  };
+}
+
 export default function DetailPage() {
   const { t } = useI18n();
   const { showToast } = useToast();
@@ -657,9 +770,12 @@ export default function DetailPage() {
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(true);
   const [isRatingSubmitting, setIsRatingSubmitting] = useState(false);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+  const [policyMetaSnapshot, setPolicyMetaSnapshot] = useState<DetailSourceMeta | null>(null);
   const [helpfulSubmittingId, setHelpfulSubmittingId] = useState<string | null>(null);
   const [commentSort, setCommentSort] = useState<'latest' | 'helpful'>('latest');
   const [aiScan, setAiScan] = useState<{ loading: boolean; error?: string | null; verdict?: 'safe' | 'scam' | 'unknown'; risk?: number; trust?: number; description?: string }>({ loading: false });
+  const [viewCount, setViewCount] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const decodedValue = useMemo(() => decodeRouteValue(rawId), [rawId]);
   const normalizedType = useMemo(() => normalizeKind(rawType), [rawType]);
@@ -688,6 +804,11 @@ export default function DetailPage() {
   }, [comments, commentSort]);
 
   useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
@@ -710,9 +831,21 @@ export default function DetailPage() {
           }
         }
 
+        if (decodedValue && normalizedType === 'website' && !sourceMeta.policyViolation) {
+          try {
+            const policyMeta = await lookupPolicyViolationByValue(decodedValue);
+            if (policyMeta) {
+              sourceMeta = mergeSourceMeta(sourceMeta, policyMeta);
+            }
+          } catch (policyError) {
+            console.warn('Lookup policy violation list failed:', policyError);
+          }
+        }
+
         const profile = buildDetailProfile(normalizedType, decodedValue || 'Không xác định', sourceMeta);
         setData(profile.detail);
         setInsight(profile.insight);
+        setPolicyMetaSnapshot(sourceMeta.policyViolation ? sourceMeta : null);
       } catch (err) {
         setError('Không thể tải chi tiết cảnh báo. Vui lòng thử lại.');
       } finally {
@@ -762,6 +895,55 @@ export default function DetailPage() {
 
     loadFeedback();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [detailFeedbackKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!detailFeedbackKey) return () => {};
+
+    const storageKey = `sg_detail_viewed:${detailFeedbackKey}`;
+    const now = Date.now();
+    const ttlMs = 30 * 60 * 1000;
+    let shouldCount = true;
+
+    try {
+      const lastSeen = Number.parseInt(sessionStorage.getItem(storageKey) || '0', 10);
+      if (Number.isFinite(lastSeen) && lastSeen > 0 && now - lastSeen < ttlMs) {
+        shouldCount = false;
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+
+    const run = async () => {
+      try {
+        const response = await fetch(shouldCount ? '/api/detail-views' : `/api/detail-views?detailKey=${encodeURIComponent(detailFeedbackKey)}`, {
+          method: shouldCount ? 'POST' : 'GET',
+          headers: shouldCount ? { 'Content-Type': 'application/json' } : undefined,
+          body: shouldCount ? JSON.stringify({ detailKey: detailFeedbackKey }) : undefined,
+          cache: 'no-store',
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (payload?.success && typeof payload.views === 'number') {
+          setViewCount(Math.max(0, Math.floor(payload.views)));
+        }
+        if (shouldCount) {
+          try {
+            sessionStorage.setItem(storageKey, String(now));
+          } catch {
+            // Ignore storage errors.
+          }
+        }
+      } catch {
+        // Ignore view tracking errors.
+      }
+    };
+
+    run();
     return () => {
       cancelled = true;
     };
@@ -1041,6 +1223,43 @@ export default function DetailPage() {
 
   if (!data || !insight) return null;
 
+  const reportHref = `/report?type=${normalizedType}&target=${encodeURIComponent(data.value)}`;
+  const suggestedSearchQuery = normalizedType === 'website' ? normalizeDomainKey(data.value) || data.value : data.value;
+  const isHighRisk = data.risk === 'scam' || data.risk === 'suspicious' || data.risk === 'policy';
+  const nextSteps = isHighRisk
+    ? [
+        'Dừng tương tác ngay và không cung cấp OTP/mật khẩu.',
+        'Bảo vệ tài khoản: đổi mật khẩu, bật 2FA, khóa thẻ nếu cần.',
+        'Báo cáo và đính kèm bằng chứng để cộng đồng cảnh giác.',
+      ]
+    : data.risk === 'unknown'
+      ? [
+          'Xác minh đường dẫn/tên miền từng ký tự, kiểm tra chứng chỉ bảo mật.',
+          'Tìm báo cáo liên quan và đối chiếu kênh liên hệ chính thức.',
+          'Nếu có dấu hiệu bất thường, hãy báo cáo để hệ thống cập nhật.',
+        ]
+      : [
+          'Ưu tiên giao dịch qua kênh chính thức đã xác thực.',
+          'Lưu thông tin và theo dõi cảnh báo mới để cập nhật rủi ro.',
+          'Chia sẻ trang này để người khác kiểm tra nhanh khi cần.',
+        ];
+  const guidanceTitle = data.risk === 'safe' ? 'Gợi ý sử dụng an toàn' : data.risk === 'unknown' ? 'Cách kiểm tra thêm' : 'Khuyến nghị xử lý ngay';
+  const guidanceIcon =
+    data.risk === 'safe' ? (
+      <ShieldCheck className="w-5 h-5 text-success" />
+    ) : (
+      <AlertTriangle className={cn('w-5 h-5', isHighRisk ? (data.risk === 'scam' ? 'text-danger' : 'text-warning') : 'text-text-secondary')} />
+    );
+  const guidanceNumberTone =
+    data.risk === 'scam'
+      ? 'bg-danger/15 text-danger'
+      : data.risk === 'suspicious' || data.risk === 'policy' || data.risk === 'unknown'
+        ? 'bg-warning/15 text-warning'
+        : 'bg-success/15 text-success';
+  const guidanceCardTone = isHighRisk ? 'to-danger/5' : data.risk === 'unknown' ? 'to-warning/5' : 'to-success/5';
+  const policySourceHref = policyMetaSnapshot?.policySourceUrl?.trim() || undefined;
+  const policySourceTitle = policyMetaSnapshot?.policySourceTitle?.trim() || 'Nguồn công bố chính thức';
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -1052,8 +1271,15 @@ export default function DetailPage() {
               <div className="relative overflow-visible p-5 md:p-6 border-b border-bg-border bg-gradient-to-r from-primary/10 via-bg-card to-bg-card">
                 {insight.status === 'trusted' && (
                   <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
-                    <div className="rotate-[-10deg] border-[3px] border-danger/85 text-danger/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/50 backdrop-blur-[2px] shadow-[0_8px_18px_rgba(229,57,53,0.22)]">
+                    <div className="rotate-[-10deg] border-[3px] border-success/75 text-success/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(16,185,129,0.18)]">
                       ĐÃ XÁC MINH UY TÍN
+                    </div>
+                  </div>
+                )}
+                {data.risk === 'policy' && (
+                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
+                    <div className="rotate-[-10deg] border-[3px] border-warning/85 text-warning/95 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(245,158,11,0.22)]">
+                      CẢNH BÁO PHÁP LÝ
                     </div>
                   </div>
                 )}
@@ -1065,8 +1291,8 @@ export default function DetailPage() {
                   </div>
                 )}
                 <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
                       <div
                         className={cn(
                           'w-14 h-14 rounded-xl flex items-center justify-center shrink-0',
@@ -1074,6 +1300,8 @@ export default function DetailPage() {
                             ? 'bg-danger/10 text-danger'
                             : data.risk === 'suspicious'
                               ? 'bg-warning/10 text-warning'
+                              : data.risk === 'policy'
+                                ? 'bg-warning/10 text-warning'
                               : data.risk === 'unknown'
                                 ? 'bg-bg-cardHover text-text-secondary'
                               : 'bg-success/10 text-success'
@@ -1110,34 +1338,38 @@ export default function DetailPage() {
                         <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-3">
                           {(() => {
-                            const tone =
+                            const variant =
                               data.risk === 'scam'
-                                ? 'text-danger'
-                                : data.risk === 'suspicious'
-                                  ? 'text-warning'
+                                ? 'danger'
+                                : data.risk === 'suspicious' || data.risk === 'policy'
+                                  ? 'warning'
                                   : data.risk === 'unknown'
-                                    ? 'text-text-secondary'
-                                  : 'text-success';
+                                    ? 'default'
+                                    : 'success';
                             return (
-                              <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border bg-bg-cardHover', tone, 'border-bg-border')}>
-                                <ShieldCheck className={cn('w-3.5 h-3.5', tone)} />
+                              <Chip variant={variant} size="md" leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}>
                                 Độ tin cậy nguồn: {insight.confidence}%
-                              </span>
+                              </Chip>
                             );
                           })()}
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary">
-                            <Clock className="w-3.5 h-3.5 text-primary" />
+                          <Chip variant="default" size="md" leftIcon={<Clock className="w-3.5 h-3.5 text-primary" />}>
                             Cập nhật: {insight.updatedAt}
-                          </span>
+                          </Chip>
+                          {viewCount !== null && (
+                            <Chip variant="default" size="md" leftIcon={<Eye className="w-3.5 h-3.5 text-primary" />}>
+                              {formatNumber(viewCount)} lượt xem
+                            </Chip>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {insight.status !== 'trusted' && (
-                      <div className="shrink-0 self-start md:self-auto">
-                        <RiskBadge risk={data.risk} label={insight.statusLabel || t(`risk.${data.risk}`)} />
-                      </div>
-                    )}
+                    <div className="shrink-0 self-start md:self-auto">
+                      <RiskBadge
+                        risk={insight.status === 'trusted' ? 'safe' : data.risk}
+                        label={insight.statusLabel || t(`risk.${data.risk}`)}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -1147,7 +1379,7 @@ export default function DetailPage() {
                       leftIcon={copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       onClick={handleCopy}
                     >
-                      {copied ? 'Đã sao chép' : 'Sao chép tiêu đề'}
+                      {copied ? 'Đã sao chép' : 'Sao chép'}
                     </Button>
                     <Button variant="secondary" size="sm" leftIcon={<Share2 className="w-4 h-4" />} onClick={handleShare}>
                       {t('detail.share')}
@@ -1156,7 +1388,7 @@ export default function DetailPage() {
                       variant="secondary"
                       size="sm"
                       leftIcon={<Flag className="w-4 h-4" />}
-                      onClick={() => router.push(`/report?type=${normalizedType}&target=${encodeURIComponent(data.value)}`)}
+                      onClick={() => router.push(reportHref)}
                     >
                       {t('detail.report')}
                     </Button>
@@ -1173,6 +1405,52 @@ export default function DetailPage() {
                     )}
                   </div>
                 </div>
+                {data.risk === 'policy' && policyMetaSnapshot && (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border border-warning/40 bg-gradient-to-r from-warning/10 via-bg-card to-bg-card px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/15 text-warning border border-warning/30">
+                          <FileWarning className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-bold text-text-main text-sm">Cảnh báo pháp lý</p>
+                          <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                            {policyMetaSnapshot.policySummary ||
+                              'Website nằm trong danh sách cảnh báo chính thức; có dấu hiệu vi phạm quảng cáo/đánh bạc không phép.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {policySourceHref ? (
+                      <a
+                        href={policySourceHref}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium transition hover:shadow-lg"
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                          <Globe className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
+                          <p className="mt-1 text-xs text-text-muted line-clamp-2">{policySourceHref}</p>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-text-muted" />
+                      </a>
+                    ) : (
+                      <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                          <Globe className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
+                          <p className="mt-1 text-xs text-text-muted">Không có đường dẫn nguồn kèm theo.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="p-5 md:p-6">
@@ -1186,6 +1464,8 @@ export default function DetailPage() {
                           ? 'text-danger'
                           : data.risk === 'suspicious'
                             ? 'text-warning'
+                            : data.risk === 'policy'
+                              ? 'text-warning'
                             : data.risk === 'unknown'
                               ? 'text-text-secondary'
                             : 'text-success'
@@ -1205,6 +1485,8 @@ export default function DetailPage() {
                           ? 'risk-scam'
                           : data.risk === 'suspicious'
                             ? 'risk-suspicious'
+                            : data.risk === 'policy'
+                              ? 'risk-policy'
                             : data.risk === 'unknown'
                               ? 'risk-unknown'
                             : 'risk-safe'
@@ -1259,7 +1541,7 @@ export default function DetailPage() {
 
                         {aiScan.loading && (
                           <p className="text-sm text-text-muted flex items-center gap-2 hidden sm:flex">
-                            <Loader2 className="w-4 h-4 animate-spin" /> AI đang phê duyệt liên kết này...
+                            <Loader2 className="w-4 h-4 animate-spin" /> AI đang phân tích liên kết này...
                           </p>
                         )}
 
@@ -1320,7 +1602,7 @@ export default function DetailPage() {
                     )}
                     <p className="text-xl font-bold text-text-main font-mono">{formatNumber(data.reports)}</p>
                     <p className="text-xs text-text-muted">
-                      {data.risk === 'safe' ? 'Báo cáo tiêu cực' : data.risk === 'unknown' ? 'Báo cáo' : t('risk.reports')}
+                      {data.risk === 'safe' ? 'Phản hồi cộng đồng' : data.risk === 'unknown' ? 'Lượt ghi nhận' : t('risk.reports')}
                     </p>
                   </div>
                   <div className="bg-bg-cardHover rounded-xl p-3 text-center">
@@ -1364,15 +1646,15 @@ export default function DetailPage() {
                 )}
               </Card>
 
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-success/5">
+              <Card className={cn('border border-bg-border/80 bg-gradient-to-br from-bg-card', guidanceCardTone)}>
                 <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-success" />
-                  Khuyến nghị xử lý ngay
+                  {guidanceIcon}
+                  {guidanceTitle}
                 </h2>
                 <div className="space-y-2.5">
                   {insight.recommendations.map((item, index) => (
                     <div key={item} className="flex items-start gap-2.5 text-sm text-text-secondary rounded-lg bg-bg-cardHover/60 border border-bg-border/70 px-3 py-2">
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-success/15 text-success text-xs font-bold shrink-0 mt-0.5">
+                      <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold shrink-0 mt-0.5', guidanceNumberTone)}>
                         {index + 1}
                       </span>
                       <span className="leading-relaxed">{item}</span>
@@ -1415,6 +1697,47 @@ export default function DetailPage() {
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
+              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
+                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-primary" />
+                  Bước tiếp theo
+                </h3>
+                <div className="space-y-2.5">
+                  {nextSteps.map((step, index) => (
+                    <div key={step} className="flex items-start gap-2.5 rounded-xl border border-bg-border bg-bg-cardHover/70 px-3 py-2 text-sm text-text-secondary">
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold shrink-0 mt-0.5">
+                        {index + 1}
+                      </span>
+                      <span className="leading-relaxed">{step}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    variant={isHighRisk ? 'danger' : 'primary'}
+                    size="sm"
+                    leftIcon={<Flag className="w-4 h-4" />}
+                    onClick={() => router.push(reportHref)}
+                  >
+                    Báo cáo ngay
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Globe className="w-4 h-4" />}
+                    onClick={() => router.push(`/search?q=${encodeURIComponent(suggestedSearchQuery)}`)}
+                  >
+                    Tra cứu liên quan
+                  </Button>
+                  <Button variant="secondary" size="sm" leftIcon={<Share2 className="w-4 h-4" />} onClick={handleShare}>
+                    Chia sẻ
+                  </Button>
+                </div>
+                <p className="mt-3 text-xs text-text-muted">
+                  Mẹo: chỉ cần gửi link/bằng chứng; hệ thống sẽ tổng hợp và cập nhật mức rủi ro theo thời gian.
+                </p>
+              </Card>
+
               <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
                 <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
                   {data.risk === 'safe' ? (
@@ -1631,7 +1954,7 @@ export default function DetailPage() {
                               </span>
                             );
                           })()}
-                          <span className="text-xs text-text-muted">{c.time}</span>
+                          <span className="text-xs text-text-muted">{formatRelativeTime(c.createdAt, nowTick)}</span>
                         </div>
                         <p className="break-words text-sm text-text-secondary">{sanitizeHTML(c.text)}</p>
                         <div className="mt-2.5 flex flex-wrap items-center gap-2">

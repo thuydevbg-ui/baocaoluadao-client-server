@@ -2,7 +2,7 @@ export { Button } from './Button';
 export { Input } from './Input';
 export { Modal } from './Modal';
 export { Skeleton, CardSkeleton, SearchResultSkeleton, DetailSkeleton } from './Skeleton';
-export { Badge, RiskBadge } from './Badge';
+export { Badge, Chip, RiskBadge } from './Badge';
 export { ToastProvider, useToast } from './Toast';
 export { Card, GlassCard } from './Card';
 export { FiIcon } from './FiIcon';

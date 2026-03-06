@@ -146,6 +146,10 @@ body {
   background: linear-gradient(90deg, #DC2626, #EF4444);
 }
 
+.risk-policy {
+  background: linear-gradient(90deg, #EA580C, #FDBA74);
+}
+
 .risk-unknown {
   background: linear-gradient(90deg, #64748B, #94A3B8);
 }

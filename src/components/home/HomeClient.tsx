@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -35,7 +34,6 @@ import {
   mockPopularSearches,
   mockTrendingScams,
   mockRecentAlerts,
-  mockSearchHistory,
 } from '@/lib/mockData';
 
 interface ScamData {
@@ -170,12 +168,8 @@ const communityTips = [
 
 export default function HomeClient({ trustedSection }: HomeClientProps) {
   const { t } = useI18n();
-  const router = useRouter();
   const { showToast } = useToast();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -233,8 +227,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     }
     return fallbackSearchInsights;
   }, []);
-
-  const searchBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -314,17 +306,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     fetchScamData();
   }, []);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
-        setShowSearchHistory(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const filteredAlerts =
     activeFilter === 'all'
       ? (scamData.length > 0 ? scamData : mockRecentAlerts)
@@ -368,31 +349,6 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
   }, [scamData, scamStats]);
 
   const shouldShowCategoryCount = !statsLoading && uniqueCategories.length > 0;
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      showToast('warning', t('home.search_placeholder'));
-      return;
-    }
-
-    setIsSearching(true);
-    setShowSearchHistory(false);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleHistoryClick = (term: string) => {
-    setSearchQuery(term);
-    router.push(`/search?q=${encodeURIComponent(term)}`);
-  };
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -490,6 +446,24 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
     },
   ];
 
+  const heroHighlights = [
+    {
+      title: 'Kiểm chứng cộng đồng',
+      description: 'Nguồn dữ liệu cộng đồng được đối soát liên tục.',
+      icon: Shield,
+    },
+    {
+      title: 'Theo dõi thời gian thực',
+      description: 'Cảnh báo được cập nhật nhanh theo xu hướng mới.',
+      icon: Clock,
+    },
+    {
+      title: 'Mức tin cậy rõ ràng',
+      description: 'Phân loại rủi ro theo từng thực thể cụ thể.',
+      icon: CheckCircle,
+    },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-bg-main">
       <Navbar />
@@ -497,12 +471,12 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
       <main className="flex-1 pt-16 md:pt-20 pb-20 md:pb-0">
         <section className="mobile-section border-b border-bg-border bg-gradient-to-b from-primary/5 via-bg-main to-bg-main py-6 md:py-14">
           <div className="mobile-container mx-auto max-w-[420px] px-4 md:max-w-7xl md:px-8">
-            <div className="grid lg:grid-cols-[1.25fr_1fr] gap-4 md:gap-8 items-stretch">
+            <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4 md:gap-8 items-stretch">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35 }}
-                className="space-y-3 md:space-y-6"
+                className="space-y-4 md:space-y-7"
               >
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
                   <Sparkles className="w-4 h-4" />
@@ -517,77 +491,36 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
                   {t('home.subtitle')}
                 </p>
 
-                <div ref={searchBoxRef} className="relative">
-                  <form onSubmit={handleSearch} className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setShowSearchHistory(e.target.value.length === 0);
-                      }}
-                      onFocus={() => setShowSearchHistory(searchQuery.length === 0)}
-                      placeholder={t('home.search_placeholder')}
-                      className="w-full h-11 pl-11 pr-24 bg-bg-card border border-bg-border rounded-xl text-text-main placeholder:text-text-muted focus:outline-none focus:border-primary"
-                    />
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="sm"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-4 rounded-xl"
-                      isLoading={isSearching}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 md:gap-3 max-w-3xl">
+                  {heroHighlights.map((item) => (
+                    <div
+                      key={item.title}
+                      className="rounded-xl border border-bg-border/70 bg-bg-card/75 px-3 py-3 md:px-4 md:py-4"
                     >
-                      {t('home.search_button')}
-                    </Button>
-                  </form>
-
-                  <AnimatePresence>
-                    {showSearchHistory && mockSearchHistory.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        className="absolute top-full left-0 right-0 mt-2 bg-bg-card border border-bg-border rounded-card shadow-lg overflow-hidden z-30"
-                      >
-                        <div className="p-3 border-b border-bg-border">
-                          <p className="text-sm text-text-muted">{t('home.recent_searches')}</p>
-                        </div>
-                        {mockSearchHistory.map((term, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleHistoryClick(term)}
-                            className="w-full px-4 py-2 text-left text-text-main hover:bg-bg-cardHover transition-colors flex items-center gap-2"
-                          >
-                            <Clock className="w-4 h-4 text-text-muted" />
-                            {term}
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
+                        <item.icon className="w-4 h-4" />
+                      </div>
+                      <p className="text-sm font-semibold text-text-main">{item.title}</p>
+                      <p className="text-xs text-text-muted mt-1 leading-relaxed">{item.description}</p>
+                    </div>
+                  ))}
                 </div>
 
-                <div>
-                  <p className="text-sm text-text-muted mb-2">{t('home.popular_searches')}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {mockPopularSearches.map((item, i) => (
-                      <Link
-                        key={i}
-                        href={`/search?q=${encodeURIComponent(item.value)}`}
-                        className={cn(
-                          'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
-                          item.risk === 'scam'
-                            ? 'bg-danger/10 text-danger hover:bg-danger/15'
-                            : item.risk === 'suspicious'
-                              ? 'bg-warning/10 text-warning hover:bg-warning/15'
-                              : 'bg-success/10 text-success hover:bg-success/15'
-                        )}
-                      >
-                        {item.value}
-                      </Link>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap items-center gap-2.5 md:gap-3">
+                  <Link
+                    href="/report"
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/20 hover:bg-primary-hover transition-colors"
+                  >
+                    Báo cáo ngay
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <Link
+                    href="/search"
+                    className="inline-flex items-center gap-2 rounded-xl border border-bg-border px-4 py-2.5 text-sm font-semibold text-text-main hover:bg-bg-cardHover transition-colors"
+                  >
+                    Tra cứu dữ liệu
+                    <Search className="w-4 h-4 text-text-muted" />
+                  </Link>
                 </div>
               </motion.div>
 
@@ -595,20 +528,22 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: 0.05 }}
-                className="grid grid-cols-2 gap-4"
+                className="grid grid-cols-2 gap-3 md:gap-4"
               >
                 {featureCards.map((feature) => (
                   <Link key={feature.title} href={feature.href}>
-                    <Card hover className="h-full text-center flex flex-col items-center shadow-none bg-bg-card/70 border border-bg-border/40 p-3 md:p-5 rounded-xl">
-                      <p className="w-full text-center font-semibold text-text-main text-xs md:text-base leading-tight min-h-[2.25rem] flex items-end justify-center">
-                        {feature.title}
-                      </p>
+                    <Card
+                      hover
+                      className="h-full shadow-none bg-bg-card/75 border border-bg-border/60 p-3 md:p-5 rounded-xl flex flex-col items-start text-left"
+                    >
                       <div
                         style={{ background: feature.color }}
-                        className="w-[72%] max-w-[7.25rem] h-10 rounded-xl my-2 mx-auto flex items-center justify-center text-white shadow-sm"
+                        className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center text-white shadow-sm"
                       >
-                        <feature.icon className="w-8 h-8" />
+                        <feature.icon className="w-5 h-5" />
                       </div>
+                      <p className="font-semibold text-text-main text-sm md:text-base leading-tight">{feature.title}</p>
+                      <p className="text-[11px] md:text-sm text-text-muted mt-1 line-clamp-2">{feature.description}</p>
                     </Card>
                   </Link>
                 ))}
@@ -766,7 +701,7 @@ export default function HomeClient({ trustedSection }: HomeClientProps) {
                                   <Tooltip label="Số lượt xem" position="top">
                                     <span className="flex items-center gap-1">
                                       <Eye className="w-3.5 h-3.5" />
-                                      {(alert.views ?? alert.reports ?? 0).toLocaleString('vi-VN')}
+                                      {(alert.views ?? 0).toLocaleString('vi-VN')}
                                     </span>
                                   </Tooltip>
                                   <Tooltip label="Bình luận cộng đồng" position="top">
