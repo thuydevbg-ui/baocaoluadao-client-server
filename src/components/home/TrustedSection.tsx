@@ -20,7 +20,7 @@ interface TrustedAuthorityItem {
 }
 
 const CACHE_TTL_MS = 60_000;
-const DISPLAY_LIMIT = 6;
+const DISPLAY_LIMIT = 4;
 let cachedTrusted: { items: TrustedAuthorityItem[]; fetchedAt: number } | null = null;
 
 function normalizeRowType(value?: string): TrustedAuthorityType {
@@ -130,23 +130,26 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
   const hasItems = items.length > 0;
 
   return (
-    <section className="app-card app-stack">
-      <div className="space-y-3 md:space-y-4">
+    <section className="home-card widget-stack">
+      <div className="card-stack">
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Verified organizations</p>
-          <h3 className="text-xl font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h3>
+          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Verified Organizations</p>
+          <h2 className="text-[20px] font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h2>
+          <p className="text-sm leading-6 text-text-secondary">
+            Danh sách được rút gọn để sidebar nhẹ hơn nhưng vẫn giữ rõ nhãn xác minh và trạng thái an toàn.
+          </p>
         </div>
 
-        <div className="grid gap-3 md:flex md:flex-col md:gap-4">
+        <div className="card-stack">
           {items.map((item) => {
             const Icon = item.type === 'website' ? Globe : Building2;
             return (
               <div
                 key={item.id}
-                className="w-full rounded-2xl border border-bg-border/70 bg-bg-main p-3 md:p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40"
+                className="w-full rounded-2xl border border-bg-border/70 bg-white p-4 transition-colors hover:bg-slate-50 dark:bg-slate-950/40 dark:hover:bg-slate-900"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-primary dark:bg-slate-800">
                     {item.icon ? (
                       <SafeImage
                         src={item.icon}
@@ -155,28 +158,28 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <Icon className="w-5 h-5" />
+                      <Icon className="h-4 w-4" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold text-text-main truncate">{item.name}</p>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 text-success px-2 py-0.5 text-[0.65rem] font-semibold">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
+                        <CheckCircle2 className="h-3 w-3" />
                         Đã xác minh
                       </span>
                     </div>
-                    <p className="text-xs text-text-muted mt-1">{item.organization}</p>
+                    <p className="mt-1 text-xs leading-5 text-text-muted">{item.organization}</p>
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-muted">
                       <span className="inline-flex items-center gap-1">
-                        <FileText className="w-3.5 h-3.5" />
+                        <FileText className="h-3.5 w-3.5" />
                         {item.reports} báo cáo
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
+                        <Clock className="h-3.5 w-3.5" />
                         {formatDate(item.firstSeen)}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 text-success px-2 py-0.5 text-[0.65rem] font-semibold">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
                         An toàn
                       </span>
                     </div>
@@ -186,7 +189,7 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
             );
           })}
           {!hasItems && (
-            <div className="rounded-2xl border border-dashed border-bg-border/70 bg-bg-main p-6 text-sm text-text-muted">
+            <div className="rounded-2xl border border-dashed border-bg-border/70 bg-white p-6 text-sm text-text-muted dark:bg-slate-950/40">
               Chưa có dữ liệu uy tín để hiển thị.
             </div>
           )}

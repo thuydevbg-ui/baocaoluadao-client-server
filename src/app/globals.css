@@ -319,90 +319,155 @@ input:-webkit-autofill:focus {
   color: #f472b6 !important;
 }
 
-/* Home app-style layout */
-.app-shell {
+/* Homepage cleanup layout */
+.home-shell {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }
 
-.app-stack {
+.home-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+.home-card {
+  border: 1px solid rgba(var(--border), 0.78);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 24px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.home-hero {
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 35%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.home-card-accent {
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(255, 255, 255, 0) 55%),
+    #ffffff;
+}
+
+.home-hero-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.home-search-panel {
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(240, 246, 255, 0.95), rgba(255, 255, 255, 0.98));
+  padding: 24px;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
+}
+
+.home-main-grid {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+.home-secondary-grid {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card-stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.widget-stack {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.app-card {
-  background: rgba(var(--bg-card), 0.98);
-  border: 1px solid rgba(var(--border), 0.78);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
-}
-
-.app-card-hero {
-  background:
-    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.12), transparent 52%),
-    radial-gradient(circle at 0% 100%, rgba(59, 130, 246, 0.08), transparent 40%),
-    rgba(var(--bg-card), 0.98);
-}
-
-.app-card-gradient {
-  background:
-    linear-gradient(130deg, rgba(37, 99, 235, 0.1), rgba(255, 255, 255, 0)),
-    rgba(var(--bg-card), 0.98);
-}
-
-.home-main-grid {
+.category-grid {
   display: grid;
-  gap: 20px;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.dark .app-card {
-  background: rgba(var(--bg-card), 0.9);
-  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.34), 0 2px 6px rgba(2, 6, 23, 0.26);
+.dark .home-card {
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.28);
 }
 
-.dark .app-card-hero {
+.dark .home-hero {
   background:
-    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.2), transparent 52%),
-    radial-gradient(circle at 0% 100%, rgba(59, 130, 246, 0.16), transparent 40%),
-    rgba(var(--bg-card), 0.9);
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 38%),
+    rgba(15, 23, 42, 0.82);
 }
 
-.dark .app-card-gradient {
+.dark .home-card-accent {
   background:
-    linear-gradient(130deg, rgba(37, 99, 235, 0.15), rgba(17, 24, 39, 0)),
-    rgba(var(--bg-card), 0.9);
+    linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(15, 23, 42, 0) 55%),
+    rgba(15, 23, 42, 0.82);
+}
+
+.dark .home-search-panel {
+  border-color: rgba(59, 130, 246, 0.18);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.9));
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
 }
 
 @media (min-width: 768px) {
-  .app-stack {
-    gap: 24px;
+  .category-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1024px) {
-  .app-stack {
-    gap: 28px;
+  .home-hero-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+    align-items: stretch;
   }
 
   .home-main-grid {
-    grid-template-columns: 2fr 1fr;
-    gap: 24px;
+    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  }
+
+  .home-secondary-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  }
+
+  .category-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
-  .app-shell {
+  .home-shell {
     padding: 20px;
+  }
+
+  .home-flow {
+    gap: 32px;
   }
 }
 
 @media (max-width: 640px) {
-  .app-shell {
-    padding: 16px 14px 24px;
+  .home-shell {
+    padding: 16px;
+  }
+
+  .home-card,
+  .home-search-panel {
+    padding: 20px;
   }
 }
 
