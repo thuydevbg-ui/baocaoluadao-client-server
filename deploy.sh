@@ -3,6 +3,13 @@ set -euo pipefail
 
 cd /var/www/baocaoluadao.com
 
+# Load production environment variables
+if [[ -f .env.production ]]; then
+  set -a
+  source .env.production
+  set +a
+fi
+
 required_vars=(AUTH_COOKIE_SECRET ADMIN_EMAIL ADMIN_PASSWORD_HASH)
 missing=()
 for var in "${required_vars[@]}"; do
