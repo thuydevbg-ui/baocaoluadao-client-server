@@ -1,7 +1,29 @@
 import pino from 'pino';
+import { createRequire } from 'module';
 
 const isDev = process.env.NODE_ENV !== 'production';
 const logLevel = process.env.LOG_LEVEL || (isDev ? 'debug' : 'info');
+
+// Enable pretty logs in dev only when explicitly requested AND module is available.
+let transport: pino.TransportSingleOptions | undefined;
+if (isDev && process.env.PINO_PRETTY === '1') {
+  try {
+    const require = createRequire(import.meta.url);
+    // require.resolve avoids bundler trying to include missing optional dependency
+    const target = require.resolve('pino-pretty');
+    transport = {
+      target,
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      },
+    };
+  } catch (error) {
+    // Silent fallback to JSON logs when pino-pretty isn't installed
+    transport = undefined;
+  }
+}
 
 const baseLogger = pino({
   level: logLevel,
@@ -9,16 +31,7 @@ const baseLogger = pino({
     service: 'baocaoluadao',
     version: process.env.npm_package_version || 'unknown',
   },
-  transport: isDev
-    ? {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          ignore: 'pid,hostname',
-        },
-      }
-    : undefined,
+  transport,
 });
 
 export type LoggerContext = pino.Bindings & { requestId?: string };

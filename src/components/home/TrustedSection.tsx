@@ -1,5 +1,5 @@
-import { Building2, CheckCircle2, Clock, FileText, Globe } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import Link from 'next/link';
+import { Building2, BadgeCheck, Globe } from 'lucide-react';
 import { fetchCategoryDirectory, type TinnhiemCategory, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
 import SafeImage from '@/components/ui/SafeImage';
 
@@ -12,11 +12,13 @@ interface TrustedAuthorityItem {
   type: TrustedAuthorityType;
   name: string;
   organization: string;
+  description?: string;
   reports: number;
   firstSeen: string;
   status: string;
   riskScore: number;
   icon?: string;
+  link?: string;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -30,7 +32,6 @@ function normalizeRowType(value?: string): TrustedAuthorityType {
 }
 
 const CATEGORY_SOURCE: TinnhiemCategory[] = ['websites', 'organizations', 'apps'];
-const SAFE_STATUS_EXCLUDE = ['confirmed', 'scam', 'suspected', 'warning'];
 
 function mapCategoryRisk(status?: string): 'safe' | 'suspicious' | 'scam' {
   if (!status) return 'safe';
@@ -58,11 +59,29 @@ function parseDateValue(input?: string): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function formatLinkText(link?: string, fallback?: string) {
+  if (!link) return fallback || '';
+  try {
+    const url = new URL(link);
+    const pathname = url.pathname === '/' ? '' : url.pathname;
+    return `${url.hostname}${pathname}`;
+  } catch {
+    return link.replace(/^https?:\/\//, '');
+  }
+}
+
+function maskForCompactDisplay(text: string): string {
+  const clean = text.trim();
+  if (clean.length <= 18) return clean;
+  return `${clean.slice(0, 6)}***${clean.slice(-8)}`;
+}
+
 function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): TrustedAuthorityItem {
   const type = item.type === 'organizations' ? 'organization' : 'website';
   const reports = Number.parseInt(item.count_report || '0', 10) || 0;
   const organization = item.organization || (type === 'organization' ? item.name : 'TinNhiemMang.vn');
   const icon = item.organization_icon || item.icon || '';
+  const description = item.description || '';
   // Use server time if provided, otherwise use item's created_at, never generate new date during render
   const firstSeen = serverTime 
     ? new Date(serverTime).toISOString() 
@@ -72,11 +91,13 @@ function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): Truste
     type: normalizeRowType(type),
     name: item.name,
     organization,
+    description,
     reports,
     firstSeen,
     status: (item.status || '').trim().toLowerCase(),
     riskScore: 0,
     icon,
+    link: item.link,
   };
 }
 
@@ -132,60 +153,76 @@ function renderTrustedSection(items: TrustedAuthorityItem[]) {
   return (
     <section className="home-card widget-stack">
       <div className="card-stack">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Verified Organizations</p>
-          <h2 className="text-[20px] font-semibold text-text-main">Các thực thể được xác minh và đánh giá an toàn</h2>
-          <p className="text-sm leading-6 text-text-secondary">
-            Danh sách được rút gọn để sidebar nhẹ hơn nhưng vẫn giữ rõ nhãn xác minh và trạng thái an toàn.
-          </p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-success/10 text-success">
+              <BadgeCheck className="h-5 w-5" aria-hidden />
+            </span>
+            <h2 className="text-[16px] font-semibold text-text-main">Danh sách uy tín</h2>
+          </div>
         </div>
 
-        <div className="card-stack">
+        <div className="space-y-2">
           {items.map((item) => {
             const Icon = item.type === 'website' ? Globe : Building2;
-            return (
-              <div
-                key={item.id}
-                className="w-full rounded-2xl border border-bg-border/70 bg-white p-4 transition-colors hover:bg-slate-50 dark:bg-slate-950/40 dark:hover:bg-slate-900"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-primary dark:bg-slate-800">
+            const fullLabel = item.name || formatLinkText(item.link, item.name);
+            const maskedText = maskForCompactDisplay(fullLabel);
+            const detailParams = new URLSearchParams({
+              status: 'trusted',
+              sourceMode: 'trusted',
+              source: 'tinnhiemmang.vn',
+            });
+            if (item.organization) detailParams.set('organization', item.organization);
+            if (item.icon) detailParams.set('sourceIcon', item.icon);
+
+            const detailHref = `/detail/${item.type}/${encodeURIComponent(item.name)}?${detailParams.toString()}`;
+
+            const card = (
+              <div className="relative flex flex-col gap-1.5 overflow-hidden rounded-2xl border border-bg-border/70 bg-white p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] dark:bg-slate-950/60">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-primary shadow-sm dark:bg-slate-800">
                     {item.icon ? (
                       <SafeImage
                         src={item.icon}
                         fallbackSrc="https://tinnhiemmang.vn/img/icon_web2.png"
                         alt={item.name}
-                        className="w-full h-full object-cover"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-5 w-5" />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-text-main truncate">{item.name}</p>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Đã xác minh
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-text-muted">{item.organization}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-muted">
-                      <span className="inline-flex items-center gap-1">
-                        <FileText className="h-3.5 w-3.5" />
-                        {item.reports} báo cáo
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {formatDate(item.firstSeen)}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
-                        An toàn
-                      </span>
-                    </div>
+                  <div className="min-w-0 flex-1 flex items-center gap-2">
+                    <p className="truncate text-[15px] font-semibold text-text-main hover:text-primary" title={fullLabel}>
+                      {maskedText}
+                    </p>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                      <BadgeCheck className="h-4 w-4" aria-hidden />
+                    </span>
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between gap-2 pl-[52px]">
+                  <p className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
+                    {item.description || item.organization || 'TinNhiemMang.vn'}
+                  </p>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2.5 py-0.5 text-[11px] font-semibold text-success shrink-0">
+                    <BadgeCheck className="h-3.5 w-3.5" />
+                    Uy tín
+                  </span>
+                </div>
               </div>
+            );
+
+            return (
+              <Link
+                key={item.id}
+                href={detailHref}
+                prefetch={false}
+                className="block"
+              >
+                {card}
+              </Link>
             );
           })}
           {!hasItems && (

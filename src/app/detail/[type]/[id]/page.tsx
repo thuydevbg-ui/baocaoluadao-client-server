@@ -18,7 +18,7 @@ import {
   Eye,
   Flag,
   Copy,
-  CheckCircle,
+  BadgeCheck,
   ExternalLink,
   ShieldCheck,
   Star,
@@ -1329,14 +1329,20 @@ export default function DetailPage() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words">
-                          {data.value}
+                        <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words flex items-center gap-2 flex-wrap">
+                          <span className="break-words">{data.value}</span>
                           {insight.isTrustedEntity && (
-                            <i className="fi fi-ss-badge-check ml-1 align-middle text-primary text-[1em] leading-none" />
+                            <span className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/10 px-2 text-primary border border-primary/20">
+                              <BadgeCheck className="h-4 w-4" />
+                              Đã xác minh
+                            </span>
                           )}
                         </h1>
                         <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-3">
+                          <Chip variant="success" size="md" leftIcon={<BadgeCheck className="w-3.5 h-3.5" />}>
+                            Uy tín
+                          </Chip>
                           {(() => {
                             const variant =
                               data.risk === 'scam'
@@ -1392,17 +1398,6 @@ export default function DetailPage() {
                     >
                       {t('detail.report')}
                     </Button>
-                    {insight.sourceLink && (
-                      <a
-                        href={insight.sourceLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-button border border-bg-border text-text-secondary hover:text-text-main hover:border-primary/40 transition-colors text-sm font-medium"
-                      >
-                        Nguồn gốc
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
                   </div>
                 </div>
                 {data.risk === 'policy' && policyMetaSnapshot && (
@@ -1422,36 +1417,20 @@ export default function DetailPage() {
                       </div>
                     </div>
 
-                    {policySourceHref ? (
-                      <a
-                        href={policySourceHref}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium transition hover:shadow-lg"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                          <Globe className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
-                          <p className="mt-1 text-xs text-text-muted line-clamp-2">{policySourceHref}</p>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-text-muted" />
-                      </a>
-                    ) : (
-                      <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                          <Globe className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
-                          <p className="mt-1 text-xs text-text-muted">Không có đường dẫn nguồn kèm theo.</p>
-                        </div>
-                      </div>
-                    )}
+                  <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                      <Globe className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
+                      <p className="mt-1 text-xs text-text-muted line-clamp-2">
+                        {policySourceHref || 'Không có đường dẫn nguồn kèm theo.'}
+                      </p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
 
               <div className="p-5 md:p-6">
                 <div className="mb-5">
@@ -1807,17 +1786,6 @@ export default function DetailPage() {
                   Nguồn dữ liệu
                 </h3>
                 <p className="text-sm text-text-secondary">{insight.source}</p>
-                {insight.sourceLink && (
-                  <a
-                    href={insight.sourceLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
-                  >
-                    Xem chi tiết trên TinNhiemMang.vn
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
               </Card>
             </motion.aside>
           </div>
