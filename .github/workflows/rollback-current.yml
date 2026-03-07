@@ -1,0 +1,64 @@
+name: Rollback Current (2026-03-07)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rollback-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback on VPS (current)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Validate required GitHub secrets
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          AUTH_COOKIE_SECRET: ${{ secrets.AUTH_COOKIE_SECRET }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+        run: |
+          set -euo pipefail
+          required=(VPS_HOST VPS_USER VPS_SSH_KEY AUTH_COOKIE_SECRET ADMIN_EMAIL ADMIN_PASSWORD_HASH)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required GitHub secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Rollback over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          AUTH_COOKIE_SECRET: ${{ secrets.AUTH_COOKIE_SECRET }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+          ROLLBACK_SOURCE: tag
+          ROLLBACK_REF: rollback-2026-03-07
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT != '' && secrets.VPS_PORT || '22' }}
+          script_stop: true
+          envs: AUTH_COOKIE_SECRET,ADMIN_EMAIL,ADMIN_PASSWORD_HASH,ROLLBACK_SOURCE,ROLLBACK_REF
+          script: |
+            set -euo pipefail
+            cd /var/www/baocaoluadao.com
+            if [[ "$ROLLBACK_SOURCE" == "branch" ]]; then
+              ./deploy.sh --rollback-branch "$ROLLBACK_REF"
+            else
+              ./deploy.sh --rollback "$ROLLBACK_REF"
+            fi
