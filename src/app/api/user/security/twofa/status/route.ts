@@ -28,9 +28,10 @@ export const GET = withApiObservability(async () => {
     data: {
       enabled: Boolean(row.enabled),
       hasPendingSetup,
-      backupCodes: hasPendingSetup ? backupCodes : [],
-      secret: hasPendingSetup ? row.secret : undefined,
-      otpauthUrl: hasPendingSetup && row.secret
+      // Hiển thị QR & backup codes cả khi đang bật để hỗ trợ đổi thiết bị
+      backupCodes: row.secret ? backupCodes : [],
+      secret: row.secret || undefined,
+      otpauthUrl: row.secret
         ? `otpauth://totp/ScamGuard:${session.user.email}?secret=${row.secret}&issuer=ScamGuard`
         : undefined,
     },

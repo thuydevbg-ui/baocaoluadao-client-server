@@ -46,28 +46,28 @@ export function UserOverviewCard({
   ];
 
   return (
-    <Card className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.08),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.08),transparent_35%)]" />
+    <Card className="relative overflow-hidden p-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(59,130,246,0.08),transparent_38%),radial-gradient(circle_at_88%_0%,rgba(16,185,129,0.08),transparent_34%)]" />
       <div className="relative flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 text-primary shadow-inner">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 text-primary shadow-inner">
               {avatar ? (
                 <SafeImage src={avatar} fallbackSrc="/favicon.ico" alt={name} className="h-full w-full object-cover" />
               ) : (
-                <User className="h-6 w-6" />
+                <User className="h-7 w-7" />
               )}
             </div>
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold text-text-main">{name}</h1>
                 <Badge variant={role === 'admin' ? 'warning' : 'success'}>{role === 'admin' ? 'Admin' : 'Thành viên'}</Badge>
+                <Badge variant="primary">{status}</Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
                 <span className="inline-flex items-center gap-1"><Mail className="h-4 w-4" />{email}</span>
                 <Chip variant="primary">ID: {accountId || '—'}</Chip>
                 <Chip variant="default">Tham gia: {joinDate}</Chip>
-                <Chip variant="success">{status}</Chip>
               </div>
             </div>
           </div>
@@ -91,4 +91,3 @@ export function UserOverviewCard({
     </Card>
   );
 }
-

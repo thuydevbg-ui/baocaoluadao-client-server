@@ -644,32 +644,80 @@ export default function ProfilePage() {
           )}
 
           {twofaStep === 'enabled' && (
-            <Card className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-text-main">2FA đang bật</p>
-                  <p className="text-xs text-text-muted">Đăng nhập sẽ yêu cầu mã Authenticator.</p>
+            <div className="space-y-4">
+              <Card className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-text-main">2FA đang bật</p>
+                    <p className="text-xs text-text-muted">Đăng nhập sẽ yêu cầu mã Authenticator.</p>
+                  </div>
+                  <span className="rounded-full bg-success/10 text-success px-3 py-1 text-xs font-semibold">Đang bật</span>
                 </div>
-                <span className="rounded-full bg-success/10 text-success px-3 py-1 text-xs font-semibold">Đang bật</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={loadTwofaStatus}
-                  leftIcon={<Sparkles className="h-4 w-4" />}
-                >
-                  Làm mới
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={handleDisableTwofa}
-                  isLoading={actionLoading === 'twofaDisable'}
-                  disabled={!twofaPassword}
-                >
-                  Tắt 2FA
-                </Button>
-              </div>
-            </Card>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="secondary"
+                    onClick={loadTwofaStatus}
+                    leftIcon={<Sparkles className="h-4 w-4" />}
+                  >
+                    Làm mới
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={handleDisableTwofa}
+                    isLoading={actionLoading === 'twofaDisable'}
+                    disabled={!twofaPassword}
+                  >
+                    Tắt 2FA
+                  </Button>
+                </div>
+              </Card>
+
+              {twofaInfo?.secret && (
+                <Card className="grid gap-4 md:grid-cols-[180px_1fr]">
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
+                    {twofaInfo?.otpauthUrl ? (
+                      <QRCode value={twofaInfo.otpauthUrl} size={150} />
+                    ) : (
+                      <div className="text-sm text-text-secondary">Không có QR</div>
+                    )}
+                    <p className="text-xs text-text-muted text-center">Quét QR để thêm thiết bị mới</p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 p-3 bg-white">
+                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <code className="px-2 py-1 rounded bg-slate-100 text-sm">{twofaInfo.secret}</code>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leftIcon={<Copy className="h-4 w-4" />}
+                          onClick={() => {
+                            navigator.clipboard.writeText(twofaInfo.secret || '');
+                            setCopyMessage('Đã copy');
+                            setTimeout(() => setCopyMessage(''), 2000);
+                          }}
+                        >
+                          Sao chép
+                        </Button>
+                        {copyMessage && <span className="text-xs text-success">{copyMessage}</span>}
+                      </div>
+                    </div>
+
+                    {twofaInfo.backupCodes && twofaInfo.backupCodes.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 p-3 bg-white space-y-2">
+                        <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Mã dự phòng</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {twofaInfo.backupCodes.map((c) => (
+                            <code key={c} className="px-2 py-1 rounded bg-slate-100 text-sm">{c}</code>
+                          ))}
+                        </div>
+                        <p className="text-xs text-warning">Lưu mã dự phòng để khôi phục khi mất thiết bị.</p>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
           )}
 
           <div className="flex justify-end">
