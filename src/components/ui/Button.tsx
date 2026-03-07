@@ -50,7 +50,7 @@ export function Button({
       whileHover={isDisabled ? undefined : { y: -2 }}
       whileTap={isDisabled ? undefined : { scale: 0.96 }}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-button font-medium transition-all duration-normal',
+        'inline-flex items-center justify-center gap-1.5 rounded-button font-medium transition-all duration-normal',
         'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg-dark',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:none disabled:active:scale-100',
         variants[variant],
@@ -66,13 +66,13 @@ export function Button({
       {(isLoading || leftIcon) && (
         <span className="flex h-4 w-4 items-center justify-center">
           {isLoading ? (
-            <FiIcon name="rr-loading" effect="none" className="h-4 w-4 animate-spin" />
+            <FiIcon name="rr-loading" effect="none" className="h-4 w-4 animate-spin align-middle" />
           ) : (
             leftIcon
           )}
         </span>
       )}
-      <span className="leading-[1.1]">{children}</span>
+      <span className="leading-[1.1] whitespace-nowrap">{children}</span>
       {!isLoading && rightIcon && (
         <span className="flex h-4 w-4 items-center justify-center">{rightIcon}</span>
       )}
