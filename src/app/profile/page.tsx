@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useToast } from '@/components/ui/Toast';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Button, Card, Skeleton, Modal, Input } from '@/components/ui';
+import { Button, Card, Skeleton, Modal, Input, Badge } from '@/components/ui';
 import { UserOverviewCard } from '@/components/dashboard/UserOverviewCard';
 import { SecurityStatusCard } from '@/components/dashboard/SecurityStatusCard';
 import { RecentActivity, ActivityItem } from '@/components/dashboard/RecentActivity';
@@ -58,6 +58,7 @@ export default function ProfilePage() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [twofaModalOpen, setTwofaModalOpen] = useState(false);
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<'google' | 'microsoft'>('google');
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [twofaPassword, setTwofaPassword] = useState('');
@@ -255,20 +256,20 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSubmitOAuth = async () => {
+  const handleSubmitOAuth = async (connect: boolean) => {
     try {
-      setActionLoading('oauth');
+      setActionLoading(connect ? 'oauthConnect' : 'oauthDisconnect');
       const res = await fetch('/api/user/security/oauth', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connected: !security?.oauthConnected, password: oauthPassword }),
+        body: JSON.stringify({ connected: connect, password: oauthPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Không cập nhật được OAuth');
-      showToast('success', data.connected ? 'Đã liên kết OAuth' : 'Đã hủy liên kết OAuth');
-      setOauthModalOpen(false);
+      showToast('success', connect ? 'Đã liên kết OAuth' : 'Đã hủy liên kết OAuth');
       setOauthPassword('');
       setReloadKey((k) => k + 1);
+      if (!connect) setOauthModalOpen(false);
     } catch (err: any) {
       showToast('error', err?.message || 'Không thể đổi trạng thái OAuth');
     } finally {
@@ -340,7 +341,7 @@ export default function ProfilePage() {
       key: 'oauth',
       label: 'Liên kết OAuth',
       status: security?.oauthConnected ? 'ok' : 'warn',
-      detail: security?.oauthConnected ? 'Đã liên kết' : 'Chưa liên kết',
+      detail: security?.oauthConnected ? 'Đã liên kết Google' : 'Chưa liên kết',
       actionLabel: security?.oauthConnected ? 'Quản lý' : 'Liên kết',
       onAction: () => setOauthModalOpen(true),
       disabled: actionLoading === 'oauth',
@@ -729,13 +730,46 @@ export default function ProfilePage() {
       <Modal
         isOpen={oauthModalOpen}
         onClose={() => setOauthModalOpen(false)}
-        title={security?.oauthConnected ? 'Hủy liên kết OAuth' : 'Liên kết OAuth'}
-        size="sm"
+        title="Quản lý liên kết OAuth"
+        size="md"
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Nhập mật khẩu để {security?.oauthConnected ? 'hủy liên kết' : 'liên kết'} tài khoản OAuth.
+            Kết nối tài khoản Google để đăng nhập nhanh và bảo vệ tài khoản. Nhập mật khẩu để xác thực trước khi liên kết / hủy liên kết.
           </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Card className={`space-y-2 border ${oauthProvider === 'google' ? 'border-primary' : 'border-bg-border'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-text-main">Google</p>
+                  <p className="text-xs text-text-muted">Đăng nhập bằng Google OAuth</p>
+                </div>
+                <input
+                  type="radio"
+                  name="oauth-provider"
+                  checked={oauthProvider === 'google'}
+                  onChange={() => setOauthProvider('google')}
+                  className="h-4 w-4 accent-primary"
+                />
+              </div>
+              <Badge variant={security?.oauthConnected ? 'success' : 'warning'}>
+                {security?.oauthConnected ? 'Đã liên kết' : 'Chưa liên kết'}
+              </Badge>
+            </Card>
+
+            <Card className="space-y-2 opacity-60">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-text-main">Microsoft (sắp có)</p>
+                  <p className="text-xs text-text-muted">Outlook / Azure AD</p>
+                </div>
+                <input type="radio" disabled className="h-4 w-4" />
+              </div>
+              <Badge variant="warning">Coming soon</Badge>
+            </Card>
+          </div>
+
           <Input
             label="Mật khẩu"
             type="password"
@@ -743,14 +777,27 @@ export default function ProfilePage() {
             onChange={(e) => setOauthPassword(e.target.value)}
             placeholder="••••••••"
           />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setOauthModalOpen(false)}>Hủy</Button>
-            <Button
-              onClick={handleSubmitOAuth}
-              isLoading={actionLoading === 'oauth'}
-            >
-              Xác nhận
-            </Button>
+
+          <div className="flex flex-wrap gap-3 justify-end">
+            <Button variant="ghost" onClick={() => setOauthModalOpen(false)}>Đóng</Button>
+            {security?.oauthConnected ? (
+              <Button
+                variant="ghost"
+                onClick={() => handleSubmitOAuth(false)}
+                isLoading={actionLoading === 'oauthDisconnect'}
+                disabled={!oauthPassword}
+              >
+                Hủy liên kết
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleSubmitOAuth(true)}
+                isLoading={actionLoading === 'oauthConnect'}
+                disabled={!oauthPassword || oauthProvider !== 'google'}
+              >
+                Liên kết Google
+              </Button>
+            )}
           </div>
         </div>
       </Modal>
