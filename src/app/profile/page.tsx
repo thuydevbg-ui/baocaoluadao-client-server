@@ -13,7 +13,8 @@ import { UserReportsTable, UserReportRow } from '@/components/dashboard/UserRepo
 import { WatchlistCard, WatchItem } from '@/components/dashboard/WatchlistCard';
 import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
 import { TrustScoreCard, TrustMetric } from '@/components/dashboard/TrustScoreCard';
-import { FileText, Sparkles } from 'lucide-react';
+import { FileText, Sparkles, Copy } from 'lucide-react';
+import QRCode from 'qrcode.react';
 
 interface ProfileUser {
   id: string;
@@ -44,6 +45,7 @@ interface ApiState {
 }
 
 const defaultPrefs: NotificationPrefs = { emailAlerts: true, pushAlerts: false, weeklySummary: true };
+type TwofaInfo = { enabled: boolean; secret?: string; otpauthUrl?: string; backupCodes?: string[] };
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
@@ -59,6 +61,10 @@ export default function ProfilePage() {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [twofaPassword, setTwofaPassword] = useState('');
+  const [twofaCode, setTwofaCode] = useState('');
+  const [twofaInfo, setTwofaInfo] = useState<TwofaInfo | null>(null);
+  const [twofaStep, setTwofaStep] = useState<'loading' | 'overview' | 'verify' | 'enabled'>('overview');
+  const [copyMessage, setCopyMessage] = useState('');
   const [oauthPassword, setOauthPassword] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [emailDevCode, setEmailDevCode] = useState<string | null>(null);
@@ -154,22 +160,96 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSubmitTwoFA = async () => {
+  const loadTwofaStatus = async () => {
+    if (!twofaModalOpen) return;
     try {
-      setActionLoading('twofa');
-      const res = await fetch('/api/user/security/twofa', {
-        method: 'PATCH',
+      setTwofaStep('loading');
+      const res = await fetch('/api/user/security/twofa/status', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tải được trạng thái 2FA');
+      const info = data.data as TwofaInfo;
+      setTwofaInfo(info || null);
+      if (info?.enabled) setTwofaStep('enabled');
+      else if (info?.secret) setTwofaStep('verify');
+      else setTwofaStep('overview');
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không tải được trạng thái 2FA');
+      setTwofaStep('overview');
+    }
+  };
+
+  useEffect(() => {
+    if (twofaModalOpen) {
+      setTwofaPassword('');
+      setTwofaCode('');
+      setCopyMessage('');
+      loadTwofaStatus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twofaModalOpen]);
+
+  const handleStartTwofaSetup = async () => {
+    try {
+      setActionLoading('twofaSetup');
+      const res = await fetch('/api/user/security/twofa/setup', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !security?.twoFactorEnabled, password: twofaPassword }),
+        body: JSON.stringify({ password: twofaPassword }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không cập nhật được 2FA');
-      showToast('success', data.enabled ? 'Đã bật 2FA' : 'Đã tắt 2FA');
-      setTwofaModalOpen(false);
+      if (!res.ok) throw new Error(data.error || 'Không khởi tạo 2FA');
+      setTwofaInfo({ enabled: false, secret: data.secret, otpauthUrl: data.otpauthUrl, backupCodes: data.backupCodes });
+      setTwofaStep('verify');
+      showToast('success', 'Đã tạo mã 2FA, hãy quét và nhập mã');
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không khởi tạo 2FA');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfirmTwofa = async () => {
+    if (!twofaCode.trim()) {
+      showToast('error', 'Nhập mã 6 số từ ứng dụng Authenticator');
+      return;
+    }
+    try {
+      setActionLoading('twofaConfirm');
+      const res = await fetch('/api/user/security/twofa/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: twofaCode.trim(), password: twofaPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không bật được 2FA');
+      showToast('success', 'Đã bật xác thực 2 lớp');
+      setTwofaStep('enabled');
+      setTwofaInfo((info) => info ? { ...info, enabled: true } : { enabled: true });
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không bật được 2FA');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDisableTwofa = async () => {
+    try {
+      setActionLoading('twofaDisable');
+      const res = await fetch('/api/user/security/twofa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: twofaPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tắt được 2FA');
+      showToast('success', 'Đã tắt 2FA');
+      setTwofaStep('overview');
+      setTwofaInfo({ enabled: false });
       setTwofaPassword('');
       setReloadKey((k) => k + 1);
     } catch (err: any) {
-      showToast('error', err?.message || 'Không thể đổi trạng thái 2FA');
+      showToast('error', err?.message || 'Không tắt được 2FA');
     } finally {
       setActionLoading(null);
     }
@@ -254,7 +334,7 @@ export default function ProfilePage() {
       detail: security?.twoFactorEnabled ? 'Đang bật' : 'Chưa kích hoạt',
       actionLabel: security?.twoFactorEnabled ? 'Quản lý' : 'Bật 2FA',
       onAction: () => setTwofaModalOpen(true),
-      disabled: actionLoading === 'twofa',
+      disabled: actionLoading?.startsWith('twofa') ?? false,
     },
     {
       key: 'oauth',
@@ -465,28 +545,135 @@ export default function ProfilePage() {
       <Modal
         isOpen={twofaModalOpen}
         onClose={() => setTwofaModalOpen(false)}
-        title={security?.twoFactorEnabled ? 'Tắt 2FA' : 'Bật 2FA'}
-        size="sm"
+        title="Quản lý xác thực 2 lớp"
+        size="lg"
       >
-        <div className="space-y-3">
-          <p className="text-sm text-text-secondary">
-            Nhập mật khẩu để {security?.twoFactorEnabled ? 'tắt' : 'bật'} xác thực hai lớp.
-          </p>
+        <div className="space-y-4">
+          {/* Password */}
           <Input
-            label="Mật khẩu"
+            label="Nhập mật khẩu để xác thực phiên"
             type="password"
             value={twofaPassword}
             onChange={(e) => setTwofaPassword(e.target.value)}
             placeholder="••••••••"
           />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setTwofaModalOpen(false)}>Hủy</Button>
-            <Button
-              onClick={handleSubmitTwoFA}
-              isLoading={actionLoading === 'twofa'}
-            >
-              Xác nhận
-            </Button>
+
+          {twofaStep === 'loading' && (
+            <div className="text-sm text-text-secondary">Đang tải trạng thái 2FA...</div>
+          )}
+
+          {twofaStep === 'overview' && (
+            <Card className="space-y-3">
+              <p className="text-sm text-text-secondary">
+                Bật 2FA để bảo vệ tài khoản khỏi truy cập trái phép. Bạn cần cài đặt Google Authenticator/Microsoft Authenticator.
+              </p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm font-semibold text-text-main">Trạng thái</p>
+                  <p className="text-xs text-text-muted">Chưa kích hoạt</p>
+                </div>
+                <Button
+                  onClick={handleStartTwofaSetup}
+                  isLoading={actionLoading === 'twofaSetup'}
+                  disabled={!twofaPassword}
+                >
+                  Bắt đầu kích hoạt
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {twofaStep === 'verify' && (
+            <div className="grid gap-4 md:grid-cols-[180px_1fr]">
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
+                {twofaInfo?.otpauthUrl ? (
+                  <QRCode value={twofaInfo.otpauthUrl} size={150} />
+                ) : (
+                  <div className="text-sm text-text-secondary">Không có QR</div>
+                )}
+                <p className="text-xs text-text-muted text-center">Quét QR trong ứng dụng Authenticator</p>
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 p-3 bg-white">
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
+                  <div className="flex items-center gap-2">
+                    <code className="px-2 py-1 rounded bg-slate-100 text-sm">{twofaInfo?.secret || '—'}</code>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leftIcon={<Copy className="h-4 w-4" />}
+                      onClick={() => {
+                        if (twofaInfo?.secret) navigator.clipboard.writeText(twofaInfo.secret);
+                        setCopyMessage('Đã copy');
+                        setTimeout(() => setCopyMessage(''), 2000);
+                      }}
+                    >
+                      Sao chép
+                    </Button>
+                    {copyMessage && <span className="text-xs text-success">{copyMessage}</span>}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-3 bg-white">
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-2">Mã dự phòng</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {twofaInfo?.backupCodes?.map((c) => (
+                      <code key={c} className="px-2 py-1 rounded bg-slate-100 text-sm">{c}</code>
+                    ))}
+                  </div>
+                  <p className="text-xs text-warning mt-2">Lưu các mã này ở nơi an toàn; dùng khi mất thiết bị.</p>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                  <Input
+                    label="Nhập mã 6 số từ ứng dụng"
+                    value={twofaCode}
+                    onChange={(e) => setTwofaCode(e.target.value)}
+                    placeholder="123456"
+                  />
+                  <Button
+                    onClick={handleConfirmTwofa}
+                    isLoading={actionLoading === 'twofaConfirm'}
+                    disabled={!twofaPassword || !twofaCode}
+                  >
+                    Kích hoạt 2FA
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {twofaStep === 'enabled' && (
+            <Card className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-text-main">2FA đang bật</p>
+                  <p className="text-xs text-text-muted">Đăng nhập sẽ yêu cầu mã Authenticator.</p>
+                </div>
+                <span className="rounded-full bg-success/10 text-success px-3 py-1 text-xs font-semibold">Đang bật</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="secondary"
+                  onClick={loadTwofaStatus}
+                  leftIcon={<Sparkles className="h-4 w-4" />}
+                >
+                  Làm mới
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleDisableTwofa}
+                  isLoading={actionLoading === 'twofaDisable'}
+                  disabled={!twofaPassword}
+                >
+                  Tắt 2FA
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={() => setTwofaModalOpen(false)}>Đóng</Button>
           </div>
         </div>
       </Modal>

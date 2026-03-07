@@ -25,6 +25,8 @@ export async function ensureUserInfra() {
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(500) NULL AFTER image`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS securityScore INT DEFAULT 75 AFTER role`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS twofa_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER securityScore`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS twofa_secret VARCHAR(64) NULL AFTER twofa_enabled`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS twofa_backup_codes TEXT NULL AFTER twofa_secret`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_connected TINYINT(1) NOT NULL DEFAULT 0 AFTER twofa_enabled`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified TINYINT(1) NOT NULL DEFAULT 1 AFTER oauth_connected`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_code VARCHAR(12) NULL AFTER email_verified`);
