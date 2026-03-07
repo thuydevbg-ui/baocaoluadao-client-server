@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FiIcon } from './FiIcon';
 
 interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -66,7 +66,7 @@ export function Button({
       {(isLoading || leftIcon) && (
         <span className="flex h-4 w-4 items-center justify-center">
           {isLoading ? (
-            <FiIcon name="rr-loading" effect="none" className="h-4 w-4 animate-spin align-middle" />
+            <Loader2 className="h-4 w-4 animate-spin text-current" strokeWidth={2.25} />
           ) : (
             leftIcon
           )}
