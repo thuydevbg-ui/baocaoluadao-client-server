@@ -39,6 +39,14 @@ export const PUT = withApiObservability(async (request: NextRequest) => {
       googleAuthEnabled: body.googleAuthEnabled,
       googleClientId: body.googleClientId,
       googleClientSecret: body.googleClientSecret,
+      facebookAuthEnabled: body.facebookAuthEnabled,
+      facebookClientId: body.facebookClientId,
+      facebookClientSecret: body.facebookClientSecret,
+      twitterAuthEnabled: body.twitterAuthEnabled,
+      twitterClientId: body.twitterClientId,
+      twitterClientSecret: body.twitterClientSecret,
+      telegramAuthEnabled: body.telegramAuthEnabled,
+      telegramBotToken: body.telegramBotToken,
       allowedDocsIps: body.allowedDocsIps,
     });
 

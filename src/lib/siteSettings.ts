@@ -15,16 +15,43 @@ export interface SiteSettings {
   googleAuthEnabled: boolean;
   googleClientId: string | null;
   googleClientSecret: string | null;
+  facebookAuthEnabled: boolean;
+  facebookClientId: string | null;
+  facebookClientSecret: string | null;
+  twitterAuthEnabled: boolean;
+  twitterClientId: string | null;
+  twitterClientSecret: string | null;
+  telegramAuthEnabled: boolean;
+  telegramBotToken: string | null;
   allowedDocsIps: string | null; // comma or newline separated
   updatedAt: string;
 }
 
 export interface PublicSiteSettings
-  extends Omit<SiteSettings, 'googleClientId' | 'googleClientSecret'> {
+  extends Omit<
+    SiteSettings,
+    | 'googleClientId'
+    | 'googleClientSecret'
+    | 'facebookClientId'
+    | 'facebookClientSecret'
+    | 'twitterClientId'
+    | 'twitterClientSecret'
+    | 'telegramBotToken'
+  > {
   googleClientIdSet: boolean;
   googleClientSecretSet: boolean;
+  facebookClientIdSet: boolean;
+  facebookClientSecretSet: boolean;
+  twitterClientIdSet: boolean;
+  twitterClientSecretSet: boolean;
+  telegramBotTokenSet: boolean;
   googleClientId?: never;
   googleClientSecret?: never;
+  facebookClientId?: never;
+  facebookClientSecret?: never;
+  twitterClientId?: never;
+  twitterClientSecret?: never;
+  telegramBotToken?: never;
 }
 
 const defaultSettings: SiteSettings = {
@@ -42,6 +69,14 @@ const defaultSettings: SiteSettings = {
   googleAuthEnabled: false,
   googleClientId: null,
   googleClientSecret: null,
+  facebookAuthEnabled: false,
+  facebookClientId: null,
+  facebookClientSecret: null,
+  twitterAuthEnabled: false,
+  twitterClientId: null,
+  twitterClientSecret: null,
+  telegramAuthEnabled: false,
+  telegramBotToken: null,
   allowedDocsIps: null,
   updatedAt: new Date().toISOString(),
 };
@@ -74,6 +109,14 @@ async function ensureTable() {
       googleAuthEnabled TINYINT(1) NOT NULL DEFAULT 0,
       googleClientId VARCHAR(300) NULL,
       googleClientSecret VARCHAR(300) NULL,
+      facebookAuthEnabled TINYINT(1) NOT NULL DEFAULT 0,
+      facebookClientId VARCHAR(300) NULL,
+      facebookClientSecret VARCHAR(300) NULL,
+      twitterAuthEnabled TINYINT(1) NOT NULL DEFAULT 0,
+      twitterClientId VARCHAR(300) NULL,
+      twitterClientSecret VARCHAR(300) NULL,
+      telegramAuthEnabled TINYINT(1) NOT NULL DEFAULT 0,
+      telegramBotToken VARCHAR(300) NULL,
       allowedDocsIps TEXT NULL,
       updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -82,8 +125,32 @@ async function ensureTable() {
     .query('ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS allowedDocsIps TEXT NULL AFTER googleClientSecret')
     .catch(() => {});
   await db.query(
-    `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, allowedDocsIps, updatedAt)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS facebookAuthEnabled TINYINT(1) NOT NULL DEFAULT 0 AFTER googleClientSecret`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS facebookClientId VARCHAR(300) NULL AFTER facebookAuthEnabled`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS facebookClientSecret VARCHAR(300) NULL AFTER facebookClientId`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS twitterAuthEnabled TINYINT(1) NOT NULL DEFAULT 0 AFTER facebookClientSecret`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS twitterClientId VARCHAR(300) NULL AFTER twitterAuthEnabled`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS twitterClientSecret VARCHAR(300) NULL AFTER twitterClientId`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS telegramAuthEnabled TINYINT(1) NOT NULL DEFAULT 0 AFTER twitterClientSecret`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS telegramBotToken VARCHAR(300) NULL AFTER telegramAuthEnabled`
+  ).catch(() => {});
+  await db.query(
+    `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, allowedDocsIps, updatedAt)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       defaultSettings.siteName,
       defaultSettings.siteDescription,
@@ -99,6 +166,14 @@ async function ensureTable() {
       defaultSettings.googleAuthEnabled,
       defaultSettings.googleClientId,
       defaultSettings.googleClientSecret,
+      defaultSettings.facebookAuthEnabled,
+      defaultSettings.facebookClientId,
+      defaultSettings.facebookClientSecret,
+      defaultSettings.twitterAuthEnabled,
+      defaultSettings.twitterClientId,
+      defaultSettings.twitterClientSecret,
+      defaultSettings.telegramAuthEnabled,
+      defaultSettings.telegramBotToken,
       defaultSettings.allowedDocsIps,
     ]
   );
@@ -120,6 +195,14 @@ function mapRowToSettings(row: any): SiteSettings {
     googleAuthEnabled: Boolean(row.googleAuthEnabled),
     googleClientId: row.googleClientId ?? null,
     googleClientSecret: row.googleClientSecret ?? null,
+    facebookAuthEnabled: Boolean(row.facebookAuthEnabled),
+    facebookClientId: row.facebookClientId ?? null,
+    facebookClientSecret: row.facebookClientSecret ?? null,
+    twitterAuthEnabled: Boolean(row.twitterAuthEnabled),
+    twitterClientId: row.twitterClientId ?? null,
+    twitterClientSecret: row.twitterClientSecret ?? null,
+    telegramAuthEnabled: Boolean(row.telegramAuthEnabled),
+    telegramBotToken: row.telegramBotToken ?? null,
     allowedDocsIps: row.allowedDocsIps ?? null,
     updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : defaultSettings.updatedAt,
   };
@@ -150,8 +233,18 @@ export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
     ...settings,
     googleClientIdSet: Boolean(settings.googleClientId),
     googleClientSecretSet: Boolean(settings.googleClientSecret),
+    facebookClientIdSet: Boolean(settings.facebookClientId),
+    facebookClientSecretSet: Boolean(settings.facebookClientSecret),
+    twitterClientIdSet: Boolean(settings.twitterClientId),
+    twitterClientSecretSet: Boolean(settings.twitterClientSecret),
+    telegramBotTokenSet: Boolean(settings.telegramBotToken),
     googleClientId: undefined as never,
     googleClientSecret: undefined as never,
+    facebookClientId: undefined as never,
+    facebookClientSecret: undefined as never,
+    twitterClientId: undefined as never,
+    twitterClientSecret: undefined as never,
+    telegramBotToken: undefined as never,
   };
 }
 
@@ -220,6 +313,38 @@ export async function updateSiteSettings(
       typeof partial.googleClientSecret === 'string'
         ? sanitizeString(partial.googleClientSecret, 300) || null
         : current.googleClientSecret,
+    facebookAuthEnabled:
+      typeof partial.facebookAuthEnabled === 'boolean'
+        ? partial.facebookAuthEnabled
+        : current.facebookAuthEnabled,
+    facebookClientId:
+      typeof partial.facebookClientId === 'string'
+        ? sanitizeString(partial.facebookClientId, 300) || null
+        : current.facebookClientId,
+    facebookClientSecret:
+      typeof partial.facebookClientSecret === 'string'
+        ? sanitizeString(partial.facebookClientSecret, 300) || null
+        : current.facebookClientSecret,
+    twitterAuthEnabled:
+      typeof partial.twitterAuthEnabled === 'boolean'
+        ? partial.twitterAuthEnabled
+        : current.twitterAuthEnabled,
+    twitterClientId:
+      typeof partial.twitterClientId === 'string'
+        ? sanitizeString(partial.twitterClientId, 300) || null
+        : current.twitterClientId,
+    twitterClientSecret:
+      typeof partial.twitterClientSecret === 'string'
+        ? sanitizeString(partial.twitterClientSecret, 300) || null
+        : current.twitterClientSecret,
+    telegramAuthEnabled:
+      typeof partial.telegramAuthEnabled === 'boolean'
+        ? partial.telegramAuthEnabled
+        : current.telegramAuthEnabled,
+    telegramBotToken:
+      typeof partial.telegramBotToken === 'string'
+        ? sanitizeString(partial.telegramBotToken, 300) || null
+        : current.telegramBotToken,
     updatedAt: new Date().toISOString(),
   };
 
@@ -232,7 +357,11 @@ export async function updateSiteSettings(
         maintenanceMode=?, registrationEnabled=?, loginEnabled=?,
         emailNotifications=?, analyticsEnabled=?, rateLimitEnabled=?,
         maxReportsPerDay=?, autoModeration=?, googleAuthEnabled=?,
-        googleClientId=?, googleClientSecret=?, allowedDocsIps=?, updatedAt=NOW()
+        googleClientId=?, googleClientSecret=?,
+        facebookAuthEnabled=?, facebookClientId=?, facebookClientSecret=?,
+        twitterAuthEnabled=?, twitterClientId=?, twitterClientSecret=?,
+        telegramAuthEnabled=?, telegramBotToken=?,
+        allowedDocsIps=?, updatedAt=NOW()
        WHERE id=1`,
       [
         next.siteName,
@@ -249,6 +378,14 @@ export async function updateSiteSettings(
         next.googleAuthEnabled,
         next.googleClientId,
         next.googleClientSecret,
+        next.facebookAuthEnabled,
+        next.facebookClientId,
+        next.facebookClientSecret,
+        next.twitterAuthEnabled,
+        next.twitterClientId,
+        next.twitterClientSecret,
+        next.telegramAuthEnabled,
+        next.telegramBotToken,
         next.allowedDocsIps,
       ]
     );

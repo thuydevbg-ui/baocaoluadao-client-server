@@ -93,6 +93,16 @@ export const authOptions: NextAuthOptions = {
           return false;
         }
       }
+      if (account?.provider === 'facebook') {
+        if (!settings.facebookAuthEnabled || !settings.facebookClientId || !settings.facebookClientSecret) {
+          return false;
+        }
+      }
+      if (account?.provider === 'twitter') {
+        if (!settings.twitterAuthEnabled || !settings.twitterClientId || !settings.twitterClientSecret) {
+          return false;
+        }
+      }
 
       if (account?.provider && user.email) {
         const provider = account.provider as 'google' | 'facebook' | 'twitter';
