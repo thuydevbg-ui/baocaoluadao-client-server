@@ -1,714 +1,243 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { signOut, useSession } from 'next-auth/react';
-import {
-  Bell,
-  Calendar,
-  CheckCircle2,
-  ChevronRight,
-  FileText,
-  KeyRound,
-  Mail,
-  MessageSquareText,
-  ShieldCheck,
-  ShieldOff,
-  Sparkles,
-  User,
-  Users,
-} from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
+import { toast } from '@/components/ui/Toast';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Badge, Button, Card, Skeleton } from '@/components/ui';
-import SafeImage from '@/components/ui/SafeImage';
-import { cn } from '@/lib/utils';
-
-type ReportStatus = 'pending' | 'processing' | 'completed' | string;
-
-type ReportType = 'website' | 'phone' | 'email' | 'social' | 'sms' | string;
+import { Button, Card, Skeleton } from '@/components/ui';
+import { UserOverviewCard } from '@/components/dashboard/UserOverviewCard';
+import { SecurityStatusCard } from '@/components/dashboard/SecurityStatusCard';
+import { RecentActivity, ActivityItem } from '@/components/dashboard/RecentActivity';
+import { UserReportsTable, UserReportRow } from '@/components/dashboard/UserReportsTable';
+import { WatchlistCard, WatchItem } from '@/components/dashboard/WatchlistCard';
+import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
+import { TrustScoreCard, TrustMetric } from '@/components/dashboard/TrustScoreCard';
+import { FileText, Sparkles } from 'lucide-react';
 
 interface ProfileUser {
   id: string;
-  name: string;
   email: string;
-  image: string | null;
+  name: string;
   role: string;
-  provider: string;
   createdAt: string;
-  lastLoginAt: string | null;
-  hasPassword: boolean;
-  linkedAccounts: number;
+  avatar?: string | null;
+  securityScore?: number;
 }
 
-interface ProfileReports {
-  total: number;
-  pending: number;
-  processing: number;
-  completed: number;
-  thisWeek: number;
-  lastReportAt: string | null;
+interface SecurityStatus {
+  passwordSet: boolean;
+  emailVerified: boolean;
+  twoFactorEnabled: boolean;
+  oauthConnected: boolean;
+  recentLogin: string | null;
+  securityScore?: number;
 }
 
-interface RecentReport {
-  id: string;
-  type: ReportType;
-  target: string;
-  status: ReportStatus;
-  createdAt: string | null;
-}
-
-interface ProfileSettings {
-  emailNotifications: boolean;
-  analyticsEnabled: boolean;
-  maintenanceMode: boolean;
-}
-
-interface ProfileResponse {
-  success: boolean;
+interface ApiState {
   user?: ProfileUser;
-  reports?: ProfileReports;
-  recentReports?: RecentReport[];
-  settings?: ProfileSettings;
-  error?: string;
+  security?: SecurityStatus;
+  activity: ActivityItem[];
+  reports: UserReportRow[];
+  watchlist: WatchItem[];
+  notifications: NotificationPrefs;
 }
 
-const statusLabelMap: Record<string, string> = {
-  pending: 'Chờ xử lý',
-  processing: 'Đang xử lý',
-  completed: 'Hoàn tất',
-};
-
-const statusVariantMap: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'primary'> = {
-  pending: 'warning',
-  processing: 'primary',
-  completed: 'success',
-};
-
-const typeLabelMap: Record<string, string> = {
-  website: 'Website',
-  phone: 'Điện thoại',
-  email: 'Email',
-  social: 'Mạng xã hội',
-  sms: 'SMS',
-};
-
-function formatDate(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatRelativeTime(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.round(diffMs / 60000);
-  if (diffMinutes < 1) return 'Vừa xong';
-  if (diffMinutes < 60) return `${diffMinutes} phút trước`;
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} giờ trước`;
-  const diffDays = Math.round(diffHours / 24);
-  if (diffDays < 30) return `${diffDays} ngày trước`;
-  const diffMonths = Math.round(diffDays / 30);
-  if (diffMonths < 12) return `${diffMonths} tháng trước`;
-  const diffYears = Math.round(diffMonths / 12);
-  return `${diffYears} năm trước`;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+const defaultPrefs: NotificationPrefs = { emailAlerts: true, pushAlerts: false, weeklySummary: true };
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
-  const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [state, setState] = useState<ApiState>({ activity: [], reports: [], watchlist: [], notifications: defaultPrefs });
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
+  const loadAll = async () => {
     if (status !== 'authenticated') return;
-
-    const controller = new AbortController();
-    let active = true;
-
     setLoading(true);
     setError('');
+    try {
+      const [profileRes, securityRes, activityRes, reportsRes, watchlistRes, notifRes] = await Promise.all([
+        fetch('/api/user/profile', { cache: 'no-store' }),
+        fetch('/api/user/security-status', { cache: 'no-store' }),
+        fetch('/api/user/activity', { cache: 'no-store' }),
+        fetch('/api/user/reports', { cache: 'no-store' }),
+        fetch('/api/user/watchlist', { cache: 'no-store' }),
+        fetch('/api/user/notifications', { cache: 'no-store' }),
+      ]);
 
-    fetch('/api/users/me', { signal: controller.signal, cache: 'no-store' })
-      .then(async (res) => {
-        const data = (await res.json()) as ProfileResponse;
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Không thể tải hồ sơ người dùng.');
-        }
-        return data;
-      })
-      .then((data) => {
-        if (!active) return;
-        setProfileData(data);
-      })
-      .catch((err) => {
-        if (!active || err?.name === 'AbortError') return;
-        setError(err?.message || 'Không thể tải hồ sơ người dùng.');
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
+      const [profile, security, activity, reports, watchlist, notifications] = await Promise.all([
+        profileRes.json(),
+        securityRes.json(),
+        activityRes.json(),
+        reportsRes.json(),
+        watchlistRes.json(),
+        notifRes.json(),
+      ]);
+
+      if (!profileRes.ok) throw new Error(profile.error || 'Tải hồ sơ thất bại');
+      if (!securityRes.ok) throw new Error(security.error || 'Tải bảo mật thất bại');
+      if (!activityRes.ok) throw new Error(activity.error || 'Tải hoạt động thất bại');
+      if (!reportsRes.ok) throw new Error(reports.error || 'Tải báo cáo thất bại');
+      if (!watchlistRes.ok) throw new Error(watchlist.error || 'Tải watchlist thất bại');
+      if (!notifRes.ok) throw new Error(notifications.error || 'Tải thông báo thất bại');
+
+      setState({
+        user: profile.user,
+        security: security.security,
+        activity: activity.items || [],
+        reports: reports.items || [],
+        watchlist: watchlist.items || [],
+        notifications: notifications.settings || defaultPrefs,
       });
+    } catch (err: any) {
+      setError(err?.message || 'Không thể tải dữ liệu');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      active = false;
-      controller.abort();
-    };
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reloadKey]);
 
-  const user = profileData?.user;
-  const reports = profileData?.reports;
-  const recentReports = profileData?.recentReports || [];
-  const settings = profileData?.settings;
+  const user = state.user;
+  const security = state.security;
 
-  const displayName = user?.name || session?.user?.name || 'Người dùng ScamGuard';
-  const displayEmail = user?.email || session?.user?.email || '—';
-  const displayImage = user?.image || session?.user?.image || null;
-  const roleLabel = user?.role === 'admin' ? 'Quản trị viên' : 'Thành viên';
-  const providerLabel = user?.provider === 'google' ? 'Google' : 'Email & mật khẩu';
+  const stats = useMemo(() => ({
+    reportsSubmitted: state.reports.length,
+    reportsResolved: state.reports.filter((r) => r.status === 'completed').length,
+    activeAlerts: state.watchlist.length,
+    trustScore: security?.securityScore ?? user?.securityScore ?? 72,
+  }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
 
-  const totalReports = reports?.total || 0;
-  const pendingReports = (reports?.pending || 0) + (reports?.processing || 0);
-  const completedReports = reports?.completed || 0;
-  const thisWeekReports = reports?.thisWeek || 0;
-  const loginChannels = (user?.linkedAccounts || 0) + (user?.hasPassword ? 1 : 0);
+  const checks = useMemo(() => ([
+    { key: 'password', label: 'Mật khẩu', status: security?.passwordSet ? 'ok' : 'todo', detail: security?.passwordSet ? 'Đã thiết lập' : 'Chưa đặt mật khẩu' },
+    { key: 'twofa', label: 'Xác thực 2 lớp', status: security?.twoFactorEnabled ? 'ok' : 'warn', detail: security?.twoFactorEnabled ? 'Đang bật' : 'Chưa kích hoạt' },
+    { key: 'oauth', label: 'Liên kết OAuth', status: security?.oauthConnected ? 'ok' : 'warn', detail: security?.oauthConnected ? 'Đã liên kết' : 'Chưa liên kết' },
+    { key: 'login', label: 'Lần đăng nhập gần nhất', status: security?.recentLogin ? 'ok' : 'todo', detail: security?.recentLogin || 'Chưa ghi nhận' },
+    { key: 'email', label: 'Email xác minh', status: security?.emailVerified ? 'ok' : 'warn', detail: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh' },
+  ]), [security]);
 
-  const stats = useMemo(
-    () => [
-      {
-        label: 'Báo cáo đã gửi',
-        value: totalReports,
-        helper: `+${thisWeekReports} trong 7 ngày`,
-        icon: FileText,
-        accent: 'text-primary',
-      },
-      {
-        label: 'Đang xử lý',
-        value: pendingReports,
-        helper: pendingReports > 0 ? 'Cần theo dõi' : 'Không có',
-        icon: ShieldOff,
-        accent: 'text-warning',
-      },
-      {
-        label: 'Hoàn tất',
-        value: completedReports,
-        helper: completedReports > 0 ? 'Đã phản hồi' : 'Chưa có',
-        icon: CheckCircle2,
-        accent: 'text-success',
-      },
-      {
-        label: 'Kênh đăng nhập',
-        value: loginChannels,
-        helper: user ? 'Đã liên kết' : 'Chưa xác định',
-        icon: ShieldCheck,
-        accent: 'text-text-main',
-      },
-    ],
-    [completedReports, loginChannels, pendingReports, thisWeekReports, totalReports, user]
-  );
+  const trustMetrics: TrustMetric[] = [
+    { label: 'Mật khẩu', value: security?.passwordSet ? 'Đã thiết lập' : 'Chưa đặt', status: security?.passwordSet ? 'ok' : 'todo' },
+    { label: '2FA', value: security?.twoFactorEnabled ? 'Đang bật' : 'Chưa bật', status: security?.twoFactorEnabled ? 'ok' : 'warn' },
+    { label: 'Email', value: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh', status: security?.emailVerified ? 'ok' : 'warn' },
+    { label: 'Báo cáo', value: `${state.reports.length} báo cáo`, status: state.reports.length > 0 ? 'ok' : 'todo' },
+  ];
 
-  const profileInfo = useMemo(
-    () => [
-      { label: 'Email', value: displayEmail, icon: Mail },
-      { label: 'Vai trò', value: roleLabel, icon: Users },
-      { label: 'Đăng nhập', value: providerLabel, icon: Sparkles },
-      { label: 'Tham gia', value: formatDate(user?.createdAt), icon: Calendar },
-    ],
-    [displayEmail, providerLabel, roleLabel, user?.createdAt]
-  );
+  const handleDeleteReport = async (id: string) => {
+    await fetch(`/api/user/reports/${id}`, { method: 'DELETE' });
+    toast({ title: 'Đã xóa báo cáo' });
+    setReloadKey((k) => k + 1);
+  };
 
-  const securityItems = useMemo(
-    () => [
-      {
-        label: 'Mật khẩu',
-        detail: user?.hasPassword ? 'Đã thiết lập' : 'Chưa đặt mật khẩu',
-        status: user?.hasPassword ? 'Ổn định' : 'Cần cập nhật',
-        icon: KeyRound,
-        variant: user?.hasPassword ? 'success' : 'warning',
-      },
-      {
-        label: 'Liên kết OAuth',
-        detail: user?.linkedAccounts ? `${user.linkedAccounts} tài khoản liên kết` : 'Chưa liên kết',
-        status: user?.linkedAccounts ? 'Đang bật' : 'Chưa bật',
-        icon: ShieldCheck,
-        variant: user?.linkedAccounts ? 'success' : 'warning',
-      },
-      {
-        label: 'Lần đăng nhập',
-        detail: user?.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Chưa ghi nhận',
-        status: user?.lastLoginAt ? 'Gần đây' : 'Chưa có',
-        icon: Calendar,
-        variant: user?.lastLoginAt ? 'success' : 'default',
-      },
-    ],
-    [user?.hasPassword, user?.lastLoginAt, user?.linkedAccounts]
-  );
+  const handleAddWatch = async (target: string, type: string) => {
+    await fetch('/api/user/watchlist', { method: 'POST', body: JSON.stringify({ target, type }) });
+    toast({ title: 'Đã thêm vào watchlist' });
+    setReloadKey((k) => k + 1);
+  };
 
-  const recentActivities = useMemo(() => {
-    const items: {
-      label: string;
-      detail: string;
-      time: string;
-      icon: typeof FileText;
-      tone: string;
-    }[] = [];
+  const handleRemoveWatch = async (id: string) => {
+    await fetch(`/api/user/watchlist/${id}`, { method: 'DELETE' });
+    toast({ title: 'Đã gỡ watchlist' });
+    setReloadKey((k) => k + 1);
+  };
 
-    if (recentReports[0]) {
-      items.push({
-        label: 'Gửi báo cáo mới',
-        detail: recentReports[0].target,
-        time: formatRelativeTime(recentReports[0].createdAt),
-        icon: FileText,
-        tone: 'text-danger',
-      });
-    }
+  const handleNotifications = async (prefs: NotificationPrefs) => {
+    setState((s) => ({ ...s, notifications: prefs }));
+    await fetch('/api/user/notifications', { method: 'PATCH', body: JSON.stringify(prefs) });
+    toast({ title: 'Đã lưu cài đặt thông báo' });
+  };
 
-    if (pendingReports > 0) {
-      items.push({
-        label: 'Báo cáo đang xử lý',
-        detail: `${pendingReports} mục cần theo dõi`,
-        time: reports?.lastReportAt ? formatRelativeTime(reports.lastReportAt) : 'Hôm nay',
-        icon: Bell,
-        tone: 'text-warning',
-      });
-    }
+  const handleCreateReport = () => {
+    window.location.href = '/report';
+  };
 
-    if (user?.lastLoginAt) {
-      items.push({
-        label: 'Đăng nhập gần đây',
-        detail: 'Phiên đăng nhập mới nhất',
-        time: formatRelativeTime(user.lastLoginAt),
-        icon: ShieldCheck,
-        tone: 'text-success',
-      });
-    }
-
-    if (user?.createdAt) {
-      items.push({
-        label: 'Tạo tài khoản',
-        detail: `Gia nhập ${formatDate(user.createdAt)}`,
-        time: formatRelativeTime(user.createdAt),
-        icon: Sparkles,
-        tone: 'text-primary',
-      });
-    }
-
-    if (!items.length) {
-      items.push({
-        label: 'Chưa có hoạt động',
-        detail: 'Hãy gửi báo cáo đầu tiên để bắt đầu hành trình bảo vệ.',
-        time: '—',
-        icon: MessageSquareText,
-        tone: 'text-text-muted',
-      });
-    }
-
-    return items.slice(0, 4);
-  }, [pendingReports, recentReports, reports?.lastReportAt, user?.createdAt, user?.lastLoginAt]);
-
-  const watchlist = useMemo(() => {
-    if (!recentReports.length) return [];
-    return recentReports.map((report) => ({
-      name: report.target,
-      status: statusLabelMap[report.status] || 'Đang theo dõi',
-      updated: formatRelativeTime(report.createdAt),
-      variant: statusVariantMap[report.status] || 'default',
-      type: typeLabelMap[report.type] || report.type,
-    }));
-  }, [recentReports]);
-
-  const notificationPrefs = useMemo(() => {
-    const emailEnabled = settings?.emailNotifications ?? true;
-    const analyticsEnabled = settings?.analyticsEnabled ?? true;
-    const maintenanceMode = settings?.maintenanceMode ?? false;
-
-    return [
-      {
-        label: 'Email cảnh báo',
-        detail: emailEnabled ? 'Bật theo hệ thống' : 'Đang tắt',
-        status: emailEnabled ? 'Bật' : 'Tắt',
-        icon: Mail,
-        variant: emailEnabled ? 'success' : 'default',
-      },
-      {
-        label: 'Phân tích & gợi ý',
-        detail: analyticsEnabled ? 'Đang bật' : 'Đang tắt',
-        status: analyticsEnabled ? 'Bật' : 'Tắt',
-        icon: Sparkles,
-        variant: analyticsEnabled ? 'primary' : 'default',
-      },
-      {
-        label: 'Trạng thái hệ thống',
-        detail: maintenanceMode ? 'Đang bảo trì' : 'Ổn định',
-        status: maintenanceMode ? 'Bảo trì' : 'Ổn định',
-        icon: ShieldCheck,
-        variant: maintenanceMode ? 'warning' : 'success',
-      },
-    ];
-  }, [settings?.analyticsEnabled, settings?.emailNotifications, settings?.maintenanceMode]);
-
-  const protectionSignals = useMemo(() => {
-    const signals = [
-      { label: 'Email liên kết', ok: Boolean(displayEmail && displayEmail !== '—') },
-      { label: 'Đăng nhập gần đây', ok: Boolean(user?.lastLoginAt) },
-      { label: 'Đã gửi báo cáo', ok: totalReports > 0 },
-      { label: 'Liên kết OAuth', ok: (user?.linkedAccounts || 0) > 0 },
-      { label: 'Mật khẩu thiết lập', ok: Boolean(user?.hasPassword) },
-    ];
-
-    const okCount = signals.filter((signal) => signal.ok).length;
-    const score = clamp(58 + okCount * 8, 40, 100);
-
-    return { signals, score };
-  }, [displayEmail, totalReports, user?.hasPassword, user?.lastLoginAt, user?.linkedAccounts]);
-
-  const isLoading = loading || (status === 'authenticated' && !profileData && !error);
+  const isLoading = loading || status === 'loading';
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg-main">
+    <div className="min-h-screen flex flex-col bg-[#f6f8fb]">
       <Navbar />
 
-      <main className="flex-1 pt-20 pb-20 md:pb-8">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 py-10 space-y-8">
+      <main className="flex-1 pt-20 pb-16">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-6">
           {status === 'unauthenticated' && (
-            <Card className="max-w-2xl mx-auto">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <User className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h1 className="text-xl font-semibold text-text-main">Bạn chưa đăng nhập</h1>
-                    <p className="text-sm text-text-secondary">
-                      Đăng nhập để xem lịch sử báo cáo, theo dõi cảnh báo và quản lý thông tin tài khoản.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Link href="/login" className="inline-flex">
-                    <Button size="sm">Đăng nhập</Button>
-                  </Link>
-                  <Link href="/register" className="inline-flex">
-                    <Button size="sm" variant="secondary">Tạo tài khoản</Button>
-                  </Link>
-                  <Link href="/" className="inline-flex">
-                    <Button size="sm" variant="ghost">Về trang chủ</Button>
-                  </Link>
-                </div>
+            <Card className="max-w-2xl mx-auto text-center space-y-4">
+              <h2 className="text-xl font-semibold text-text-main">Bạn chưa đăng nhập</h2>
+              <p className="text-sm text-text-secondary">Đăng nhập để xem dashboard và quản lý cảnh báo.</p>
+              <div className="flex justify-center gap-3">
+                <Link href="/login"><Button>Đăng nhập</Button></Link>
+                <Link href="/register"><Button variant="secondary">Đăng ký</Button></Link>
               </div>
             </Card>
           )}
 
-          {status === 'authenticated' && error && (
-            <Card className="max-w-3xl mx-auto">
-              <div className="flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-text-main">Không thể tải hồ sơ</h2>
-                <p className="text-sm text-text-secondary">{error}</p>
-                <div className="flex flex-wrap gap-3">
-                  <Button size="sm" onClick={() => setReloadKey((prev) => prev + 1)}>
-                    Thử lại
-                  </Button>
-                  <Link href="/" className="inline-flex">
-                    <Button size="sm" variant="secondary">Về trang chủ</Button>
-                  </Link>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {status === 'authenticated' && !error && (
+          {status === 'authenticated' && (
             <>
-              <section className="grid gap-6 lg:grid-cols-[2.1fr_1fr]">
-                <Card className="relative overflow-hidden">
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_45%)]" />
-                  <div className="relative flex flex-col gap-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner overflow-hidden">
-                          {displayImage ? (
-                            <SafeImage
-                              src={displayImage}
-                              fallbackSrc="/favicon.ico"
-                              alt={displayName}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <User className="h-6 w-6" />
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          {isLoading ? (
-                            <Skeleton variant="text" width={180} />
-                          ) : (
-                            <h1 className="text-2xl font-bold text-text-main">Hệ thống người dùng</h1>
-                          )}
-                          <p className="text-sm text-text-secondary">
-                            Tài khoản: <span className="font-semibold text-text-main">{displayName}</span>
-                          </p>
-                          <p className="text-xs text-text-muted">ID: {user?.id || '—'} • Tham gia từ {formatDate(user?.createdAt)}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={user?.role === 'admin' ? 'warning' : 'success'}>{roleLabel}</Badge>
-                        <Badge variant="primary">{providerLabel}</Badge>
-                        <Badge variant="default">Tình trạng: {user?.lastLoginAt ? 'Hoạt động' : 'Mới'}</Badge>
-                        <Button size="sm" variant="ghost" onClick={() => signOut({ callbackUrl: '/' })}>
-                          Đăng xuất
-                        </Button>
-                      </div>
-                    </div>
+              <section className="grid gap-4 lg:grid-cols-[2fr_1.1fr]">
+                {isLoading || !user ? (
+                  <Skeleton variant="rectangular" height={180} />
+                ) : (
+                  <UserOverviewCard
+                    name={user.name}
+                    email={user.email}
+                    role={user.role}
+                    accountId={user.id}
+                    joinDate={new Date(user.createdAt).toLocaleDateString('vi-VN')}
+                    status={security?.recentLogin ? 'Hoạt động' : 'Mới'}
+                    avatar={user.avatar}
+                    onEdit={() => toast({ title: 'Chỉnh sửa hồ sơ đang được xây dựng' })}
+                    onLogout={() => signOut({ callbackUrl: '/' })}
+                    onSecurity={() => toast({ title: 'Đi tới bảo mật', description: 'Tính năng đang hoàn thiện' })}
+                    stats={stats}
+                  />
+                )}
 
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {profileInfo.map((info) => (
-                        <div key={info.label} className="flex items-center gap-3 rounded-2xl border border-bg-border bg-bg-cardHover/60 px-3 py-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-primary shadow-sm">
-                            <info.icon className="h-4 w-4" />
-                          </span>
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted">{info.label}</p>
-                            <p className="text-sm font-semibold text-text-main">
-                              {isLoading ? <Skeleton variant="text" width={120} /> : info.value}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {stats.map((item) => (
-                        <div
-                          key={item.label}
-                          className="rounded-2xl border border-bg-border bg-white/90 px-4 py-3 shadow-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10', item.accent)}>
-                              <item.icon className="h-4 w-4" />
-                            </span>
-                            <div>
-                              <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted">{item.label}</p>
-                              <p className={cn('text-lg font-bold', item.accent)}>
-                                {isLoading ? '—' : item.value}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="mt-2 text-xs text-text-muted">{isLoading ? 'Đang tải...' : item.helper}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                      <Link href="/report" className="inline-flex">
-                        <Button size="sm" leftIcon={<FileText className="h-4 w-4" />}>Báo cáo mới</Button>
-                      </Link>
-                      <Link href="/report-lua-dao" className="inline-flex">
-                        <Button size="sm" variant="secondary" leftIcon={<ShieldCheck className="h-4 w-4" />}>Theo dõi cảnh báo</Button>
-                      </Link>
-                      <Link href="/help" className="inline-flex">
-                        <Button size="sm" variant="secondary" leftIcon={<MessageSquareText className="h-4 w-4" />}>Trung tâm hỗ trợ</Button>
-                      </Link>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="flex flex-col gap-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Gợi ý nhanh</p>
-                      <h2 className="text-lg font-semibold text-text-main">Tối ưu bảo mật</h2>
-                    </div>
-                    <Badge variant="primary">Hôm nay</Badge>
-                  </div>
-
-                  <div className="space-y-3">
-                    {securityItems.map((item) => (
-                      <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-bg-border bg-bg-cardHover/60 px-3 py-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-primary shadow-sm">
-                          <item.icon className="h-4 w-4" />
-                        </span>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-text-main">{item.label}</p>
-                          <p className="text-xs text-text-muted">{item.detail}</p>
-                        </div>
-                        <Badge variant={item.variant as any}>{item.status}</Badge>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Link href="/admin/settings/security" className="inline-flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/15">
-                    Mở bảng điều khiển bảo mật
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Card>
+                <SecurityStatusCard score={security?.securityScore ?? stats.trustScore} checks={checks} />
               </section>
 
-              <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hoạt động</p>
-                      <h2 className="text-lg font-semibold text-text-main">Dòng thời gian gần đây</h2>
-                    </div>
-                    <Button size="sm" variant="secondary">Xem toàn bộ</Button>
-                  </div>
-                  <div className="space-y-3">
-                    {recentActivities.map((activity, index) => (
-                      <div key={`${activity.detail}-${index}`} className="flex items-start gap-3 rounded-2xl border border-bg-border bg-bg-cardHover/40 px-3 py-3">
-                        <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-sm', activity.tone)}>
-                          <activity.icon className="h-4 w-4" />
-                        </span>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-text-main">{activity.label}</p>
-                          <p className="text-xs text-text-muted">{activity.detail}</p>
-                        </div>
-                        <span className="text-xs text-text-muted">{activity.time}</span>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Báo cáo</p>
-                      <h2 className="text-lg font-semibold text-text-main">Báo cáo gần đây</h2>
-                    </div>
-                    <Button size="sm" variant="secondary">Quản lý</Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {watchlist.length ? (
-                      watchlist.map((item) => (
-                        <div key={item.name} className="flex items-center justify-between gap-3 rounded-2xl border border-bg-border bg-bg-cardHover/40 px-3 py-3">
-                          <div>
-                            <p className="text-sm font-semibold text-text-main">{item.name}</p>
-                            <p className="text-xs text-text-muted">{item.type} • {item.updated}</p>
-                          </div>
-                          <Badge variant={item.variant as any}>{item.status}</Badge>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-bg-border bg-bg-cardHover/40 px-3 py-6 text-center text-sm text-text-muted">
-                        Chưa có báo cáo nào được ghi nhận.
-                      </div>
-                    )}
-                  </div>
-
-                  <Link href="/report-lua-dao" className="inline-flex items-center justify-between rounded-2xl border border-bg-border px-4 py-3 text-sm font-semibold text-text-main hover:border-primary/40 hover:text-primary">
-                    Thêm mới cảnh báo
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Card>
+              <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+                <RecentActivity items={state.activity} />
+                <TrustScoreCard score={stats.trustScore} metrics={trustMetrics} />
               </section>
 
-              <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Thông báo</p>
-                      <h2 className="text-lg font-semibold text-text-main">Kênh nhận tin</h2>
-                    </div>
-                    <Badge variant="primary">Theo hệ thống</Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {notificationPrefs.map((item) => (
-                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-2xl border border-bg-border bg-bg-cardHover/40 px-3 py-3">
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-primary shadow-sm">
-                            <item.icon className="h-4 w-4" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-semibold text-text-main">{item.label}</p>
-                            <p className="text-xs text-text-muted">{item.detail}</p>
-                          </div>
-                        </div>
-                        <Badge variant={item.variant as any}>{item.status}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
+              <section className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+                <UserReportsTable reports={state.reports} onCreate={handleCreateReport} onDelete={handleDeleteReport} />
+                <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
+              </section>
 
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
+              <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                <NotificationSettings prefs={state.notifications} onChange={handleNotifications} />
+                <Card className="space-y-3">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Mức độ an toàn</p>
-                      <h2 className="text-lg font-semibold text-text-main">Điểm bảo vệ cá nhân</h2>
+                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hướng dẫn</p>
+                      <h2 className="text-lg font-semibold text-text-main">Tài nguyên an toàn</h2>
                     </div>
-                    <Badge variant="success">{protectionSignals.score >= 80 ? 'Tốt' : protectionSignals.score >= 65 ? 'Khá' : 'Cần cải thiện'}</Badge>
+                    <Button size="sm" variant="secondary" leftIcon={<Sparkles className="h-4 w-4" />}>Khám phá</Button>
                   </div>
-                  <div className="rounded-2xl border border-bg-border bg-bg-cardHover/50 px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-text-main">Sức khỏe tài khoản</p>
-                      <span className="text-sm font-bold text-success">{protectionSignals.score}/100</span>
-                    </div>
-                    <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-bg-card">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-success to-primary"
-                        style={{ width: `${protectionSignals.score}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted">
-                      {protectionSignals.signals.map((signal) => (
-                        <span
-                          key={signal.label}
-                          className={cn(
-                            'inline-flex items-center gap-1 rounded-full border px-2 py-1',
-                            signal.ok ? 'border-success/30 bg-success/10 text-success' : 'border-warning/30 bg-warning/10 text-warning'
-                          )}
-                        >
-                          {signal.ok ? <CheckCircle2 className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
-                          {signal.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <Link href="/admin/settings/security" className="inline-flex">
-                      <Button size="sm" variant="secondary" leftIcon={<ShieldCheck className="h-4 w-4" />}>
-                        Kiểm tra bảo mật
-                      </Button>
-                    </Link>
-                    <Link href="/help" className="inline-flex">
-                      <Button size="sm" variant="ghost" leftIcon={<MessageSquareText className="h-4 w-4" />}>
-                        Trung tâm hỗ trợ
-                      </Button>
-                    </Link>
-                  </div>
+                  <ul className="space-y-2 text-sm text-text-secondary">
+                    <li>• Cách nhận biết website giả mạo</li>
+                    <li>• Thiết lập 2FA cho tài khoản</li>
+                    <li>• Quy trình gửi báo cáo lừa đảo</li>
+                  </ul>
                 </Card>
               </section>
             </>
           )}
 
-          {status === 'authenticated' && isLoading && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <Skeleton variant="rectangular" height={120} />
-              </Card>
-              <Card>
-                <Skeleton variant="rectangular" height={120} />
-              </Card>
-            </div>
+          {status === 'authenticated' && error && (
+            <Card className="border-danger/40 bg-danger/5 text-danger">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold">Lỗi tải dữ liệu</p>
+                  <p className="text-sm">{error}</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>Thử lại</Button>
+              </div>
+            </Card>
           )}
         </div>
       </main>

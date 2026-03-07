@@ -1,0 +1,35 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/nextAuthOptions';
+import { withApiObservability } from '@/lib/apiHandler';
+import { ensureUserInfra } from '@/lib/userInfra';
+import { getDb } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
+
+export const GET = withApiObservability(async () => {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+
+  const db = getDb();
+  await ensureUserInfra();
+  const [rows] = await db.query<any[]>(
+    `SELECT last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore
+     FROM users WHERE email = ? LIMIT 1`,
+    [session.user.email]
+  );
+  const row = rows?.[0];
+
+  return NextResponse.json({
+    success: true,
+    security: {
+      passwordSet: Boolean(row?.passwordSet),
+      emailVerified: true,
+      twoFactorEnabled: false,
+      oauthConnected: false,
+      recentLogin: row?.recentLogin || null,
+      securityScore: row?.securityScore ?? 72,
+    },
+  });
+});
+
