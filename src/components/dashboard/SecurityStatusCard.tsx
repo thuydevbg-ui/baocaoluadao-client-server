@@ -10,6 +10,7 @@ export interface SecurityCheck {
   detail?: string;
   actionLabel?: string;
   onAction?: () => void;
+  disabled?: boolean;
 }
 
 export interface SecurityStatusProps {
@@ -28,7 +29,7 @@ export function SecurityStatusCard({ score, checks }: SecurityStatusProps) {
         <Badge variant={score >= 80 ? 'success' : score >= 60 ? 'warning' : 'danger'}>{score}/100</Badge>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
@@ -70,8 +71,13 @@ export function SecurityStatusCard({ score, checks }: SecurityStatusProps) {
                 {item.status === 'ok' ? 'Ổn định' : item.status === 'warn' ? 'Cần xem' : 'Chưa bật'}
               </Badge>
               {item.onAction && (
-                <Button size="sm" variant="secondary" onClick={item.onAction}>
-                  {item.actionLabel || 'Thiết lập'}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={item.onAction}
+                  disabled={item.disabled}
+                >
+                  {item.disabled ? 'Đang xử lý...' : item.actionLabel || 'Thiết lập'}
                 </Button>
               )}
             </div>
@@ -81,4 +87,3 @@ export function SecurityStatusCard({ score, checks }: SecurityStatusProps) {
     </Card>
   );
 }
-

@@ -14,7 +14,8 @@ export const GET = withApiObservability(async () => {
   const db = getDb();
   await ensureUserInfra();
   const [rows] = await db.query<any[]>(
-    `SELECT last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore
+    `SELECT last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore,
+            twofa_enabled AS twofaEnabled, oauth_connected AS oauthConnected, email_verified AS emailVerified
      FROM users WHERE email = ? LIMIT 1`,
     [session.user.email]
   );
@@ -24,12 +25,11 @@ export const GET = withApiObservability(async () => {
     success: true,
     security: {
       passwordSet: Boolean(row?.passwordSet),
-      emailVerified: true,
-      twoFactorEnabled: false,
-      oauthConnected: false,
+      emailVerified: Boolean(row?.emailVerified ?? true),
+      twoFactorEnabled: Boolean(row?.twofaEnabled),
+      oauthConnected: Boolean(row?.oauthConnected),
       recentLogin: row?.recentLogin || null,
       securityScore: row?.securityScore ?? 72,
     },
   });
 });
-
