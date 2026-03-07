@@ -14,13 +14,14 @@ export async function ensureUserInfra() {
       name VARCHAR(120) NOT NULL,
       password_hash VARCHAR(255) DEFAULT NULL,
       image VARCHAR(500) DEFAULT NULL,
-      provider ENUM('credentials','google','unknown') NOT NULL DEFAULT 'credentials',
+      provider ENUM('credentials','google','facebook','twitter','telegram','unknown') NOT NULL DEFAULT 'credentials',
       role ENUM('user','admin') NOT NULL DEFAULT 'user',
       last_login_at DATETIME DEFAULT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+  await db.query(`ALTER TABLE users MODIFY COLUMN provider ENUM('credentials','google','facebook','twitter','telegram','unknown') NOT NULL DEFAULT 'credentials'`);
 
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(500) NULL AFTER image`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS securityScore INT DEFAULT 75 AFTER role`);
@@ -28,7 +29,8 @@ export async function ensureUserInfra() {
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS twofa_secret VARCHAR(64) NULL AFTER twofa_enabled`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS twofa_backup_codes TEXT NULL AFTER twofa_secret`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_connected TINYINT(1) NOT NULL DEFAULT 0 AFTER twofa_enabled`);
-  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified TINYINT(1) NOT NULL DEFAULT 1 AFTER oauth_connected`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(40) NULL AFTER oauth_connected`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified TINYINT(1) NOT NULL DEFAULT 1 AFTER oauth_provider`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_code VARCHAR(12) NULL AFTER email_verified`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires DATETIME NULL AFTER email_verification_code`);
 

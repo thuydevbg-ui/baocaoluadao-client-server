@@ -15,7 +15,8 @@ export const GET = withApiObservability(async () => {
   await ensureUserInfra();
   const [rows] = await db.query<any[]>(
     `SELECT last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore,
-            twofa_enabled AS twofaEnabled, oauth_connected AS oauthConnected, email_verified AS emailVerified
+            twofa_enabled AS twofaEnabled, oauth_connected AS oauthConnected, oauth_provider AS oauthProvider,
+            email_verified AS emailVerified
      FROM users WHERE email = ? LIMIT 1`,
     [session.user.email]
   );
@@ -28,6 +29,7 @@ export const GET = withApiObservability(async () => {
       emailVerified: Boolean(row?.emailVerified ?? true),
       twoFactorEnabled: Boolean(row?.twofaEnabled),
       oauthConnected: Boolean(row?.oauthConnected),
+      oauthProvider: row?.oauthProvider || null,
       recentLogin: row?.recentLogin || null,
       securityScore: row?.securityScore ?? 72,
     },

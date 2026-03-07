@@ -2,10 +2,14 @@ import bcrypt from 'bcrypt';
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
+import FacebookProvider from 'next-auth/providers/facebook';
+import TwitterProvider from 'next-auth/providers/twitter';
 import { getSiteSettings } from './siteSettings';
-import { findUserByEmail, updateUserLoginMeta, upsertOAuthUser } from './userRepository';
+import { findUserByEmail, updateUserLoginMeta, upsertOAuthUser, markOAuthLink } from './userRepository';
 
 const googleEnvReady = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const facebookEnvReady = Boolean(process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET);
+const twitterEnvReady = Boolean(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
@@ -61,6 +65,23 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
+    ...(facebookEnvReady
+      ? [
+          FacebookProvider({
+            clientId: process.env.FACEBOOK_CLIENT_ID!,
+            clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+          }),
+        ]
+      : []),
+    ...(twitterEnvReady
+      ? [
+          TwitterProvider({
+            clientId: process.env.TWITTER_CLIENT_ID!,
+            clientSecret: process.env.TWITTER_CLIENT_SECRET!,
+            version: '2.0',
+          }),
+        ]
+      : []),
   ],
   callbacks: {
     async signIn({ user, account }) {
@@ -73,14 +94,16 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      if (account?.provider === 'google' && user.email) {
+      if (account?.provider && user.email) {
+        const provider = account.provider as 'google' | 'facebook' | 'twitter';
         await upsertOAuthUser({
           email: user.email,
           name: user.name,
           image: user.image,
-          provider: 'google',
+          provider,
           providerAccountId: account.providerAccountId ?? account.id ?? null,
         });
+        await markOAuthLink(user.email, provider, true);
       }
       return true;
     },

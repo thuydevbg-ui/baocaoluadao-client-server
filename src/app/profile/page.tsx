@@ -31,6 +31,7 @@ interface SecurityStatus {
   emailVerified: boolean;
   twoFactorEnabled: boolean;
   oauthConnected: boolean;
+  oauthProvider?: string | null;
   recentLogin: string | null;
   securityScore?: number;
 }
@@ -58,7 +59,7 @@ export default function ProfilePage() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [twofaModalOpen, setTwofaModalOpen] = useState(false);
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<'google' | 'microsoft'>('google');
+  const [oauthProvider, setOauthProvider] = useState<'google' | 'facebook' | 'twitter' | 'telegram'>('google');
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [twofaPassword, setTwofaPassword] = useState('');
@@ -122,6 +123,13 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reloadKey]);
 
+  useEffect(() => {
+    if (oauthModalOpen && security?.oauthProvider) {
+      const key = security.oauthProvider.toLowerCase() as 'google' | 'facebook' | 'twitter' | 'telegram';
+      setOauthProvider(key);
+    }
+  }, [oauthModalOpen, security?.oauthProvider]);
+
   const user = state.user;
   const security = state.security;
 
@@ -131,6 +139,11 @@ export default function ProfilePage() {
     activeAlerts: state.watchlist.length,
     trustScore: security?.securityScore ?? user?.securityScore ?? 72,
   }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
+  const oauthLabel = useMemo(() => {
+    const key = (security?.oauthProvider || 'google').toLowerCase();
+    const map: Record<string, string> = { google: 'Google', facebook: 'Facebook', twitter: 'X (Twitter)', telegram: 'Telegram' };
+    return map[key] || 'Google';
+  }, [security?.oauthProvider]);
 
   const handleSubmitPassword = async () => {
     if (!passwordForm.next || passwordForm.next.length < 8) {
@@ -262,7 +275,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/user/security/oauth', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connected: connect, password: oauthPassword }),
+        body: JSON.stringify({ connected: connect, password: oauthPassword, provider: oauthProvider }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Không cập nhật được OAuth');
@@ -341,10 +354,10 @@ export default function ProfilePage() {
       key: 'oauth',
       label: 'Liên kết OAuth',
       status: security?.oauthConnected ? 'ok' : 'warn',
-      detail: security?.oauthConnected ? 'Đã liên kết Google' : 'Chưa liên kết',
+      detail: security?.oauthConnected ? `Đã liên kết ${oauthLabel}` : 'Chưa liên kết',
       actionLabel: security?.oauthConnected ? 'Quản lý' : 'Liên kết',
       onAction: () => setOauthModalOpen(true),
-      disabled: actionLoading === 'oauth',
+      disabled: actionLoading?.startsWith('oauth') ?? false,
     },
     {
       key: 'login',
@@ -739,35 +752,37 @@ export default function ProfilePage() {
           </p>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <Card className={`space-y-2 border ${oauthProvider === 'google' ? 'border-primary' : 'border-bg-border'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-text-main">Google</p>
-                  <p className="text-xs text-text-muted">Đăng nhập bằng Google OAuth</p>
+            {[
+              { key: 'google', title: 'Google', desc: 'Đăng nhập bằng Google OAuth', enabled: true },
+              { key: 'facebook', title: 'Facebook', desc: 'Đăng nhập bằng Facebook OAuth', enabled: true },
+              { key: 'twitter', title: 'X (Twitter)', desc: 'Đăng nhập bằng X OAuth 2.0', enabled: true },
+              { key: 'telegram', title: 'Telegram (sắp có)', desc: 'Kết nối bot/Telegram Login', enabled: false },
+            ].map((item) => (
+              <Card
+                key={item.key}
+                className={`space-y-2 border ${oauthProvider === item.key ? 'border-primary' : 'border-bg-border'} ${!item.enabled ? 'opacity-60' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-text-main">{item.title}</p>
+                    <p className="text-xs text-text-muted">{item.desc}</p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="oauth-provider"
+                    checked={oauthProvider === item.key}
+                    onChange={() => setOauthProvider(item.key as any)}
+                    className="h-4 w-4 accent-primary"
+                    disabled={!item.enabled}
+                  />
                 </div>
-                <input
-                  type="radio"
-                  name="oauth-provider"
-                  checked={oauthProvider === 'google'}
-                  onChange={() => setOauthProvider('google')}
-                  className="h-4 w-4 accent-primary"
-                />
-              </div>
-              <Badge variant={security?.oauthConnected ? 'success' : 'warning'}>
-                {security?.oauthConnected ? 'Đã liên kết' : 'Chưa liên kết'}
-              </Badge>
-            </Card>
-
-            <Card className="space-y-2 opacity-60">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-text-main">Microsoft (sắp có)</p>
-                  <p className="text-xs text-text-muted">Outlook / Azure AD</p>
-                </div>
-                <input type="radio" disabled className="h-4 w-4" />
-              </div>
-              <Badge variant="warning">Coming soon</Badge>
-            </Card>
+                {security?.oauthConnected && oauthProvider === item.key ? (
+                  <Badge variant="success">Đã liên kết</Badge>
+                ) : (
+                  <Badge variant={item.enabled ? 'warning' : 'default'}>{item.enabled ? 'Chưa liên kết' : 'Sắp có'}</Badge>
+                )}
+              </Card>
+            ))}
           </div>
 
           <Input
@@ -793,9 +808,9 @@ export default function ProfilePage() {
               <Button
                 onClick={() => handleSubmitOAuth(true)}
                 isLoading={actionLoading === 'oauthConnect'}
-                disabled={!oauthPassword || oauthProvider !== 'google'}
+                disabled={!oauthPassword || oauthProvider === 'telegram'}
               >
-                Liên kết Google
+                Liên kết {oauthLabel}
               </Button>
             )}
           </div>

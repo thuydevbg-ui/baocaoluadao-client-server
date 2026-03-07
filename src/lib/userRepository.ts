@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { RowDataPacket } from 'mysql2/promise';
 import { getDb } from './db';
 
-export type AuthProvider = 'credentials' | 'google' | 'unknown';
+export type AuthProvider = 'credentials' | 'google' | 'facebook' | 'twitter' | 'telegram' | 'unknown';
 
 export interface UserRecord {
   id: string;
@@ -126,6 +126,14 @@ export async function updateUserLoginMeta(id: string): Promise<void> {
   await db.query(
     `UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = ?`,
     [id]
+  );
+}
+
+export async function markOAuthLink(email: string, provider: AuthProvider, connected: boolean) {
+  const db = getDb();
+  await db.query(
+    `UPDATE users SET oauth_connected = ?, oauth_provider = ?, updated_at = NOW() WHERE email = ?`,
+    [connected ? 1 : 0, connected ? provider : null, email]
   );
 }
 

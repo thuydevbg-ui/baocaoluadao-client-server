@@ -12,10 +12,11 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
-  let body: { connected?: boolean; password?: string } = {};
+  let body: { connected?: boolean; password?: string; provider?: string } = {};
   try { body = await req.json(); } catch { return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 }); }
 
   const connected = Boolean(body.connected);
+  const provider = (body.provider || 'google').toLowerCase();
 
   await ensureUserInfra();
   const db = getDb();
@@ -26,7 +27,10 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
     if (!ok) return NextResponse.json({ success: false, error: 'Mật khẩu xác thực không đúng' }, { status: 400 });
   }
 
-  await db.query(`UPDATE users SET oauth_connected = ?, updated_at = NOW() WHERE email = ?`, [connected ? 1 : 0, session.user.email]);
+  await db.query(
+    `UPDATE users SET oauth_connected = ?, oauth_provider = ?, updated_at = NOW() WHERE email = ?`,
+    [connected ? 1 : 0, connected ? provider : null, session.user.email]
+  );
 
   return NextResponse.json({ success: true, connected });
 });
