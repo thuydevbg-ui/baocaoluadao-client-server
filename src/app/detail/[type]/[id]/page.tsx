@@ -19,6 +19,7 @@ import {
   Flag,
   Copy,
   BadgeCheck,
+  CheckCircle,
   ExternalLink,
   ShieldCheck,
   Star,
