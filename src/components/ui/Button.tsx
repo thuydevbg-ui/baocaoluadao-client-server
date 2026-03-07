@@ -63,13 +63,19 @@ export function Button({
       aria-label={isLoading ? 'Loading' : undefined}
       aria-busy={isLoading}
     >
-      {isLoading ? (
-        <FiIcon name="rr-loading" effect="none" className="animate-spin text-sm" />
-      ) : (
-        leftIcon
+      {(isLoading || leftIcon) && (
+        <span className="flex h-4 w-4 items-center justify-center">
+          {isLoading ? (
+            <FiIcon name="rr-loading" effect="none" className="h-4 w-4 animate-spin" />
+          ) : (
+            leftIcon
+          )}
+        </span>
       )}
-      {children}
-      {!isLoading && rightIcon}
+      <span className="leading-[1.1]">{children}</span>
+      {!isLoading && rightIcon && (
+        <span className="flex h-4 w-4 items-center justify-center">{rightIcon}</span>
+      )}
     </motion.button>
   );
 }
