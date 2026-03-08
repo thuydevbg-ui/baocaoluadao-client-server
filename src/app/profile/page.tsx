@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useToast } from '@/components/ui/Toast';
@@ -51,6 +51,7 @@ type TwofaInfo = { enabled: boolean; secret?: string; otpauthUrl?: string; backu
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const { showToast } = useToast();
+  const securitySectionRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [state, setState] = useState<ApiState>({ activity: [], reports: [], watchlist: [], notifications: defaultPrefs });
@@ -73,6 +74,16 @@ export default function ProfilePage() {
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [emailCooldown, setEmailCooldown] = useState(0);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', avatar: '' });
+
+  useEffect(() => {
+    if (!editModalOpen) return;
+    setEditForm({
+      name: state.user?.name || '',
+      avatar: state.user?.avatar || '',
+    });
+  }, [editModalOpen, state.user?.avatar, state.user?.name]);
 
   const loadAll = async () => {
     if (status !== 'authenticated') return;
@@ -158,6 +169,38 @@ export default function ProfilePage() {
     activeAlerts: state.watchlist.length,
     trustScore: security?.securityScore ?? user?.securityScore ?? 72,
   }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
+
+  const handleScrollToSecurity = () => {
+    securitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleUpdateProfile = async () => {
+    const name = editForm.name.trim();
+    const avatar = editForm.avatar.trim();
+
+    if (!name) {
+      showToast('error', 'Tên không được để trống');
+      return;
+    }
+
+    try {
+      setActionLoading('profile');
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, avatar: avatar || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không thể cập nhật hồ sơ');
+      showToast('success', 'Đã cập nhật hồ sơ');
+      setState((s) => ({ ...s, user: data.user }));
+      setEditModalOpen(false);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể cập nhật hồ sơ');
+    } finally {
+      setActionLoading(null);
+    }
+  };
   const handleSubmitPassword = async () => {
     if (!passwordForm.next || passwordForm.next.length < 8) {
       showToast('error', 'Mật khẩu mới tối thiểu 8 ký tự');
@@ -446,7 +489,7 @@ export default function ProfilePage() {
     <div className="min-h-screen flex flex-col bg-[#f6f8fb]">
       <Navbar />
 
-      <main className="flex-1 pt-20 pb-16">
+      <main className="flex-1 pt-20 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-16">
         <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-6">
           {status === 'authenticated' && (
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -489,14 +532,16 @@ export default function ProfilePage() {
                     joinDate={new Date(user.createdAt).toLocaleDateString('vi-VN')}
                     status={security?.recentLogin ? 'Hoạt động' : 'Mới'}
                     avatar={user.avatar}
-                    onEdit={() => showToast('warning', 'Chỉnh sửa hồ sơ đang được xây dựng')}
+                    onEdit={() => setEditModalOpen(true)}
                     onLogout={() => signOut({ callbackUrl: '/' })}
-                    onSecurity={() => showToast('warning', 'Đi tới bảo mật sẽ có trong bản kế tiếp')}
+                    onSecurity={handleScrollToSecurity}
                     stats={stats}
                   />
                 )}
 
-                <SecurityStatusCard score={security?.securityScore ?? stats.trustScore} checks={checks} />
+                <div ref={securitySectionRef}>
+                  <SecurityStatusCard score={security?.securityScore ?? stats.trustScore} checks={checks} />
+                </div>
               </section>
 
               <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -544,6 +589,57 @@ export default function ProfilePage() {
       </main>
 
       {/* Modals */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Chỉnh sửa hồ sơ"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
+            Cập nhật tên hiển thị và ảnh đại diện. Thay đổi sẽ áp dụng ngay cho tài khoản của bạn.
+          </div>
+
+          <Input
+            label="Tên hiển thị"
+            value={editForm.name}
+            onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Nhập tên của bạn"
+          />
+
+          <Input
+            label="Avatar (URL)"
+            value={editForm.avatar}
+            onChange={(e) => setEditForm((f) => ({ ...f, avatar: e.target.value }))}
+            placeholder="https://..."
+          />
+
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="h-12 w-12 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+              <img
+                src={editForm.avatar || '/favicon.ico'}
+                alt="Avatar preview"
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = '/favicon.ico';
+                }}
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-main truncate">{editForm.name || '—'}</p>
+              <p className="text-xs text-text-muted truncate">{user?.email || '—'}</p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setEditModalOpen(false)}>Hủy</Button>
+            <Button onClick={handleUpdateProfile} isLoading={actionLoading === 'profile'}>
+              Lưu thay đổi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal
         isOpen={passwordModalOpen}
         onClose={() => setPasswordModalOpen(false)}
@@ -638,8 +734,10 @@ export default function ProfilePage() {
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 p-3 bg-white">
                   <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
-                  <div className="flex items-center gap-2">
-                    <code className="px-2 py-1 rounded bg-slate-100 text-sm">{twofaInfo?.secret || '—'}</code>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="block max-w-full break-all rounded bg-slate-100 px-2 py-1 text-sm font-mono">
+                      {twofaInfo?.secret || '—'}
+                    </code>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -725,10 +823,12 @@ export default function ProfilePage() {
                     <p className="text-xs text-text-muted text-center">Quét QR để thêm thiết bị mới</p>
                   </div>
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <code className="px-2 py-1 rounded bg-slate-100 text-sm">{twofaInfo.secret}</code>
+                  <div className="rounded-xl border border-slate-200 p-3 bg-white">
+                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <code className="block max-w-full break-all rounded bg-slate-100 px-2 py-1 text-sm font-mono">
+                          {twofaInfo.secret}
+                        </code>
                         <Button
                           size="sm"
                           variant="secondary"

@@ -28,7 +28,52 @@ export function UserReportsTable({ reports, onCreate, onDelete }: Props) {
         <Button size="sm" onClick={onCreate}>Gửi báo cáo</Button>
       </div>
 
-      <div className="overflow-auto rounded-xl border border-slate-200">
+      {/* Mobile cards */}
+      <div className="space-y-3 sm:hidden">
+        {reports.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-text-muted">
+            Chưa có báo cáo nào.
+          </div>
+        )}
+        {reports.map((r) => {
+          const statusVariant = r.status === 'completed' ? 'success' : r.status === 'pending' ? 'warning' : 'primary';
+          const created = new Date(r.createdAt).toLocaleDateString('vi-VN');
+          const shortId = r.id ? `${r.id.slice(0, 8)}…${r.id.slice(-6)}` : '—';
+          return (
+            <div key={r.id} className="rounded-2xl border border-slate-200 bg-bg-cardHover/50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-text-muted">{shortId}</p>
+                  <p className="mt-1 text-sm font-semibold text-text-main break-all">{r.target}</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {created} • <span className="capitalize">{r.type}</span> • Rủi ro: <span className="font-semibold text-text-main">{r.riskScore}</span>
+                  </p>
+                </div>
+                <Badge variant={statusVariant}>{r.status}</Badge>
+              </div>
+
+              <div className="mt-3 flex items-center justify-end gap-4">
+                <Link
+                  href={`/detail/${r.type}/${encodeURIComponent(r.target)}`}
+                  className="text-sm font-semibold text-primary hover:underline"
+                >
+                  Xem
+                </Link>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-danger hover:underline"
+                  onClick={() => onDelete?.(r.id)}
+                >
+                  Xóa
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Table (tablet/desktop) */}
+      <div className="hidden overflow-auto rounded-xl border border-slate-200 sm:block">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -67,4 +112,3 @@ export function UserReportsTable({ reports, onCreate, onDelete }: Props) {
     </Card>
   );
 }
-

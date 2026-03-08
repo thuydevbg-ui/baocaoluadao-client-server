@@ -3,13 +3,12 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-interface BadgeProps {
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'primary';
   children: React.ReactNode;
-  className?: string;
 }
 
-export function Badge({ variant = 'default', children, className }: BadgeProps) {
+export function Badge({ variant = 'default', children, className, ...rest }: BadgeProps) {
   const variants = {
     default: 'bg-bg-cardHover text-text-secondary border-bg-border',
     success: 'bg-success/10 text-success border-success/30',
@@ -25,21 +24,21 @@ export function Badge({ variant = 'default', children, className }: BadgeProps) 
         variants[variant],
         className
       )}
+      {...rest}
     >
       {children}
     </span>
   );
 }
 
-interface ChipProps {
+interface ChipProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'primary';
   size?: 'sm' | 'md';
   leftIcon?: React.ReactNode;
   children: React.ReactNode;
-  className?: string;
 }
 
-export function Chip({ variant = 'default', size = 'md', leftIcon, children, className }: ChipProps) {
+export function Chip({ variant = 'default', size = 'md', leftIcon, children, className, ...rest }: ChipProps) {
   const variants = {
     default: 'bg-bg-cardHover text-text-secondary border-bg-border',
     success: 'bg-success/10 text-success border-success/30',
@@ -61,6 +60,7 @@ export function Chip({ variant = 'default', size = 'md', leftIcon, children, cla
         sizes[size],
         className
       )}
+      {...rest}
     >
       {leftIcon}
       {children}

@@ -40,7 +40,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -54,7 +54,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
             exit={{ opacity: 0, scale: 0.92 }}
             transition={{ duration: 0.2 }}
             className={cn(
-              'relative w-full bg-bg-card border border-bg-border rounded-modal',
+              'relative flex w-full max-h-[calc(100vh-2rem)] flex-col overflow-hidden bg-bg-card border border-bg-border rounded-modal',
               'shadow-2xl shadow-black/50',
               sizes[size]
             )}
@@ -70,7 +70,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
                 </button>
               </div>
             )}
-            <div className="p-6">{children}</div>
+            <div className="flex-1 overflow-y-auto p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">{children}</div>
           </motion.div>
         </div>
       )}

@@ -60,8 +60,8 @@ export function WatchlistCard({ items, onAdd, onRemove }: Props) {
         )}
         {items.map((item) => (
           <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 bg-bg-cardHover/50">
-            <div>
-              <p className="text-sm font-semibold text-text-main">{item.target}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-main break-all">{item.target}</p>
               <p className="text-xs text-text-muted">{item.type} • {new Date(item.createdAt).toLocaleDateString('vi-VN')}</p>
             </div>
             <Button size="sm" variant="ghost" onClick={() => onRemove?.(item.id)}>Gỡ</Button>
@@ -71,4 +71,3 @@ export function WatchlistCard({ items, onAdd, onRemove }: Props) {
     </Card>
   );
 }
-
