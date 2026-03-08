@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Bell, KeyRound, Lock, Save, Settings, ShieldCheck, UserCog } from 'lucide-react';
+import { Bell, KeyRound, Lock, Mail, Save, Settings, ShieldCheck, UserCog } from 'lucide-react';
+import { EmailSmtpSettingsPanel } from '@/components/admin/settings/EmailSmtpSettingsPanel';
 
 type SettingsPayload = {
   success: boolean;
@@ -26,13 +27,14 @@ type SettingsPayload = {
   error?: string;
 };
 
-type TabKey = 'general' | 'security' | 'auth' | 'notifications' | 'api';
+type TabKey = 'general' | 'security' | 'auth' | 'notifications' | 'email' | 'api';
 
 const tabs: Array<{ id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'security', label: 'Security', icon: ShieldCheck },
   { id: 'auth', label: 'Authentication', icon: UserCog },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'email', label: 'Email / SMTP', icon: Mail },
   { id: 'api', label: 'API', icon: KeyRound },
 ];
 
@@ -457,6 +459,10 @@ export default function SettingsPage() {
                       Save API Settings
                     </button>
                   </div>
+                )}
+
+                {activeTab === 'email' && (
+                  <EmailSmtpSettingsPanel />
                 )}
               </>
             )}
