@@ -11,6 +11,16 @@ const googleEnvReady = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGL
 const facebookEnvReady = Boolean(process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET);
 const twitterEnvReady = Boolean(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
 
+function getCanonicalBaseUrl(): string | null {
+  const raw = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
   secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_COOKIE_SECRET,
@@ -84,6 +94,20 @@ export const authOptions: NextAuthOptions = {
       : []),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const canonical = getCanonicalBaseUrl();
+      const effectiveBase = canonical || baseUrl;
+
+      try {
+        const baseOrigin = new URL(effectiveBase).origin;
+        if (url.startsWith('/')) return `${baseOrigin}${url}`;
+        const target = new URL(url);
+        if (target.origin === baseOrigin) return target.toString();
+        return baseOrigin;
+      } catch {
+        return baseUrl;
+      }
+    },
     async signIn({ user, account }) {
       const settings = await getSiteSettings();
       if (!settings.loginEnabled) return false;
