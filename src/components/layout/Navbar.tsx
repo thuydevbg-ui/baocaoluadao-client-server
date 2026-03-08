@@ -89,7 +89,14 @@ export function Navbar() {
             type="button"
             onClick={toggleMobileMenu}
             aria-label="Mở menu"
-            className="rounded-full border border-bg-border bg-bg-card p-2 text-text-muted shadow-sm"
+            className={cn(
+              'rounded-full p-2 shadow-sm shadow-slate-900/10 transition',
+              'border border-slate-200/70 bg-white/90 text-text-muted ring-1 ring-black/5',
+              'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-xl',
+              'hover:bg-white',
+              'dark:border-slate-800/70 dark:bg-slate-950/70 dark:text-slate-200 dark:ring-white/10',
+              'dark:hover:bg-slate-950/80'
+            )}
           >
             {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -103,13 +110,18 @@ export function Navbar() {
         )}
         aria-hidden={!isMobileMenuOpen}
       >
-        <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeMobileMenu} />
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-md" onClick={closeMobileMenu} />
         <div
           className={cn(
-            'absolute inset-y-0 right-0 flex w-full max-w-xs flex-col rounded-tl-3xl rounded-bl-3xl bg-bg-card/90 p-5 shadow-2xl transition-transform duration-200 ease-out dark:bg-[#0c1221]/90',
+            'absolute inset-y-0 right-0 flex w-full max-w-[22rem] flex-col rounded-tl-[28px] rounded-bl-[28px] p-5 transition-transform duration-200 ease-out',
+            'border border-slate-200/70 bg-white/95 shadow-[0_30px_80px_rgba(15,23,42,0.35)] ring-1 ring-black/5',
+            'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-2xl supports-[backdrop-filter]:backdrop-saturate-150',
+            'dark:border-slate-800/70 dark:bg-slate-950/90 dark:ring-white/10',
+            'dark:supports-[backdrop-filter]:bg-slate-950/55',
             isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
           )}
         >
+          <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-900/10 dark:bg-white/10" />
           <div className="mb-6 flex items-end justify-between">
             <span className="text-sm font-semibold text-text-secondary">Menu</span>
             <button
@@ -131,10 +143,12 @@ export function Navbar() {
                   href={link.href}
                   onClick={closeMobileMenu}
                   className={cn(
-                    'flex items-center gap-3 rounded-2xl border border-bg-border px-4 py-3 text-sm font-medium transition-shadow duration-200',
+                    'flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-medium transition-shadow duration-200',
+                    'border-slate-200/70 bg-white/90 shadow-sm shadow-slate-900/10 ring-1 ring-black/5',
+                    'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-xl',
                     isActive
-                      ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                      : 'bg-white/80 text-text-main shadow-inner shadow-black/5 hover:shadow-lg dark:bg-[#111828]/70 dark:text-text-secondary dark:hover:bg-slate-900/70'
+                      ? 'border-primary/25 bg-primary text-white shadow-[0_18px_40px_rgba(37,99,235,0.28)] ring-0'
+                      : 'text-text-main hover:bg-white hover:shadow-[0_18px_36px_rgba(15,23,42,0.14)] dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-950/75'
                   )}
                 >
                   <link.icon className={cn('h-4 w-4', isActive ? 'text-white' : 'text-primary')} />

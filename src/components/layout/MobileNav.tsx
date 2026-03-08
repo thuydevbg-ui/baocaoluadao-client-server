@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -15,10 +15,8 @@ const tabs = [
   { href: '/profile', icon: User, label: 'Hồ sơ' },
 ];
 
-// Safe zone constants
 const SAFE_ZONE_PADDING = 16; // px from edges
 const MAX_HEIGHT_PERCENT = 0.2; // 20% from bottom
-const SNAP_THRESHOLD = 50; // px to snap to edge
 const BUTTON_SIZE = 56; // px
 
 export function MobileNav() {
@@ -31,29 +29,27 @@ export function MobileNav() {
   const positionRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize position to bottom-right
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+
     const initialX = window.innerWidth - BUTTON_SIZE - SAFE_ZONE_PADDING;
-    const initialY = window.innerHeight - (window.innerHeight * MAX_HEIGHT_PERCENT);
-    
+    const initialY = window.innerHeight - window.innerHeight * MAX_HEIGHT_PERCENT;
+
     setPosition({ x: initialX, y: initialY });
     positionRef.current = { x: initialX, y: initialY };
   }, []);
 
-  // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       if (typeof window === 'undefined') return;
-      
+
       const maxX = window.innerWidth - BUTTON_SIZE - SAFE_ZONE_PADDING;
-      const maxY = window.innerHeight - (window.innerHeight * MAX_HEIGHT_PERCENT);
+      const maxY = window.innerHeight - window.innerHeight * MAX_HEIGHT_PERCENT;
       const minY = window.innerHeight - SAFE_ZONE_PADDING - BUTTON_SIZE;
-      
-      setPosition(prev => ({
+
+      setPosition((prev) => ({
         x: Math.min(prev.x, maxX),
-        y: Math.min(Math.max(prev.y, maxY), minY)
+        y: Math.min(Math.max(prev.y, maxY), minY),
       }));
     };
 
@@ -61,101 +57,83 @@ export function MobileNav() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Detect if content is overlapping and auto-adjust
   useEffect(() => {
     const detectOverlap = () => {
-      if (!containerRef.current || isDragging) return;
-      
+      if (!containerRef.current || isDragging || typeof window === 'undefined') return;
+
       const buttonRect = containerRef.current.getBoundingClientRect();
       const centerX = buttonRect.left + buttonRect.width / 2;
-      const centerY = buttonRect.top + buttonRect.height / 2;
-      
-      // Get all potential overlapping elements (cards, buttons, etc.)
+
       const elements = document.querySelectorAll('[data-mobile-card], button, a');
       let hasOverlap = false;
-      
-      elements.forEach(el => {
+
+      elements.forEach((el) => {
         if (el === containerRef.current || containerRef.current?.contains(el as Node)) return;
-        
-        const rect = el.getBoundingClientRect();
-        const overlap = !(buttonRect.right < rect.left || 
-                         buttonRect.left > rect.right || 
-                         buttonRect.bottom < rect.top || 
-                         buttonRect.top > rect.bottom);
-        
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        const overlap =
+          !(buttonRect.right < rect.left || buttonRect.left > rect.right || buttonRect.bottom < rect.top || buttonRect.top > rect.bottom);
         if (overlap) hasOverlap = true;
       });
-      
-      // If overlap detected, move to opposite side
-      if (hasOverlap && !isDragging) {
+
+      if (hasOverlap) {
         const windowWidth = window.innerWidth;
         const newIsRight = centerX > windowWidth / 2;
-        
         if (newIsRight !== isRightSide) {
           setIsRightSide(newIsRight);
-          const newX = newIsRight 
-            ? windowWidth - BUTTON_SIZE - SAFE_ZONE_PADDING 
-            : SAFE_ZONE_PADDING;
-          
-          setPosition(prev => ({ ...prev, x: newX }));
+          const newX = newIsRight ? windowWidth - BUTTON_SIZE - SAFE_ZONE_PADDING : SAFE_ZONE_PADDING;
+          setPosition((prev) => ({ ...prev, x: newX }));
           positionRef.current = { ...positionRef.current, x: newX };
         }
       }
     };
 
-    const interval = setInterval(detectOverlap, 500);
-    return () => clearInterval(interval);
+    const interval = window.setInterval(detectOverlap, 500);
+    return () => window.clearInterval(interval);
   }, [isDragging, isRightSide]);
 
-  // Touch/Mouse event handlers
   const handleDragStart = useCallback((clientX: number, clientY: number) => {
     setIsDragging(true);
     dragStartRef.current = { x: clientX, y: clientY };
   }, []);
 
-  const handleDragMove = useCallback((clientX: number, clientY: number) => {
-    if (!isDragging || typeof window === 'undefined') return;
-    
-    const deltaX = clientX - dragStartRef.current.x;
-    const deltaY = clientY - dragStartRef.current.y;
-    
-    const newX = positionRef.current.x + deltaX;
-    const newY = positionRef.current.y + deltaY;
-    
-    // Constrain to safe zones
-    const maxX = window.innerWidth - BUTTON_SIZE - SAFE_ZONE_PADDING;
-    const minX = SAFE_ZONE_PADDING;
-    const maxY = window.innerHeight - SAFE_ZONE_PADDING - BUTTON_SIZE;
-    const minY = window.innerHeight * (1 - MAX_HEIGHT_PERCENT);
-    
-    const constrainedX = Math.min(Math.max(newX, minX), maxX);
-    const constrainedY = Math.min(Math.max(newY, minY), maxY);
-    
-    setPosition({ x: constrainedX, y: constrainedY });
-  }, [isDragging]);
+  const handleDragMove = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!isDragging || typeof window === 'undefined') return;
+
+      const deltaX = clientX - dragStartRef.current.x;
+      const deltaY = clientY - dragStartRef.current.y;
+
+      const newX = positionRef.current.x + deltaX;
+      const newY = positionRef.current.y + deltaY;
+
+      const maxX = window.innerWidth - BUTTON_SIZE - SAFE_ZONE_PADDING;
+      const minX = SAFE_ZONE_PADDING;
+      const maxY = window.innerHeight - SAFE_ZONE_PADDING - BUTTON_SIZE;
+      const minY = window.innerHeight * (1 - MAX_HEIGHT_PERCENT);
+
+      const constrainedX = Math.min(Math.max(newX, minX), maxX);
+      const constrainedY = Math.min(Math.max(newY, minY), maxY);
+
+      setPosition({ x: constrainedX, y: constrainedY });
+    },
+    [isDragging]
+  );
 
   const handleDragEnd = useCallback(() => {
     if (!isDragging || typeof window === 'undefined') return;
-    
+
     setIsDragging(false);
-    
-    // Snap to nearest edge
+
     const windowWidth = window.innerWidth;
     const centerX = position.x + BUTTON_SIZE / 2;
     const shouldSnapRight = centerX > windowWidth / 2;
-    
     setIsRightSide(shouldSnapRight);
-    
-    const snappedX = shouldSnapRight 
-      ? windowWidth - BUTTON_SIZE - SAFE_ZONE_PADDING 
-      : SAFE_ZONE_PADDING;
-    
-    // Animate to snapped position
-    setPosition(prev => ({ ...prev, x: snappedX }));
+
+    const snappedX = shouldSnapRight ? windowWidth - BUTTON_SIZE - SAFE_ZONE_PADDING : SAFE_ZONE_PADDING;
+    setPosition((prev) => ({ ...prev, x: snappedX }));
     positionRef.current = { ...positionRef.current, x: snappedX };
   }, [isDragging, position.x]);
 
-  // Touch events
   const onTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     if (!touch) return;
@@ -172,7 +150,6 @@ export function MobileNav() {
     handleDragEnd();
   };
 
-  // Mouse events
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     handleDragStart(e.clientX, e.clientY);
@@ -186,23 +163,22 @@ export function MobileNav() {
     handleDragEnd();
   };
 
-  // Global mouse up handler
   useEffect(() => {
     if (!isDragging) return;
-    
+
     const handleGlobalMouseUp = () => handleDragEnd();
     const handleGlobalMouseMove = (e: MouseEvent) => handleDragMove(e.clientX, e.clientY);
-    
+
     window.addEventListener('mouseup', handleGlobalMouseUp);
     window.addEventListener('mousemove', handleGlobalMouseMove);
-    
+
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       window.removeEventListener('mousemove', handleGlobalMouseMove);
     };
   }, [isDragging, handleDragEnd, handleDragMove]);
 
-  const toggleMenu = () => setIsOpen(prev => !prev);
+  const toggleMenu = () => setIsOpen((prev) => !prev);
   const closeMenu = useCallback(() => setIsOpen(false), []);
 
   useEffect(() => {
@@ -216,9 +192,7 @@ export function MobileNav() {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeMenu();
-      }
+      if (event.key === 'Escape') closeMenu();
     };
 
     const previousOverflow = document.body.style.overflow;
@@ -234,23 +208,21 @@ export function MobileNav() {
     };
   }, [isOpen, closeMenu]);
 
-  // Calculate menu position based on button position
   const menuPositionClass = isRightSide ? 'right-0 items-end' : 'left-0 items-start';
 
   return (
     <>
-      {/* Backdrop */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-opacity duration-300 sm:hidden"
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-md transition-opacity duration-300 sm:hidden dark:bg-black/35"
           onClick={closeMenu}
+          aria-hidden="true"
         />
       )}
-      
-      {/* Floating Button Container */}
+
       <div
         ref={containerRef}
-        className="fixed z-50 sm:hidden touch-none"
+        className="fixed z-50 select-none sm:hidden touch-none"
         style={{
           left: position.x,
           top: position.y,
@@ -259,40 +231,50 @@ export function MobileNav() {
           transition: isDragging ? 'none' : 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        {/* Menu Items */}
-        <div 
+        <div
+          id="mobile-floating-menu"
           className={cn(
-            'absolute flex flex-col gap-2 mb-3 transition-all duration-200',
-            'opacity-0 translate-y-2 scale-95 pointer-events-none',
+            'absolute bottom-full flex flex-col gap-2 pb-3 transition-[opacity,transform] duration-200',
+            'opacity-0 translate-y-2 scale-[0.98] pointer-events-none',
             menuPositionClass,
             isOpen && 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
           )}
         >
-            {tabs.map((tab, index) => {
-              const Icon = tab.icon;
-              const isActive = pathname === tab.href;
-              
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  onClick={closeMenu}
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = pathname === tab.href;
+
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                onClick={closeMenu}
+                className={cn(
+                  'group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all duration-200',
+                  'min-w-[176px] border border-slate-200/70 bg-white/95 shadow-[0_18px_60px_rgba(15,23,42,0.14)] ring-1 ring-black/5',
+                  'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-2xl supports-[backdrop-filter]:backdrop-saturate-150',
+                  'hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_22px_70px_rgba(15,23,42,0.18)]',
+                  'dark:border-slate-800/70 dark:bg-slate-950/80 dark:text-slate-100 dark:ring-white/10',
+                  'dark:supports-[backdrop-filter]:bg-slate-950/55 dark:hover:bg-slate-950/85',
+                  isActive && 'border-primary/25 bg-primary text-white shadow-[0_20px_70px_rgba(37,99,235,0.35)] ring-0 hover:bg-primary'
+                )}
+              >
+                <span
                   className={cn(
-                    'flex items-center gap-3 px-4 py-3 rounded-2xl shadow-lg backdrop-blur-md transition-all duration-300',
-                    'border border-white/40 min-w-[160px]',
-                    isActive 
-                      ? 'bg-primary/90 text-white' 
-                      : 'bg-white/85 text-text-main hover:bg-white/95'
+                    'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors',
+                    isActive
+                      ? 'border-white/25 bg-white/15'
+                      : 'border-slate-200/70 bg-slate-50/80 group-hover:bg-white dark:border-slate-800/70 dark:bg-slate-900/40'
                   )}
                 >
-                  <Icon className={cn('w-5 h-5', isActive ? 'text-white' : 'text-primary')} />
-                  <span className="font-medium text-sm whitespace-nowrap">{tab.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+                  <Icon className={cn('h-5 w-5', isActive ? 'text-white' : 'text-primary')} />
+                </span>
+                <span className="text-sm font-semibold whitespace-nowrap">{tab.label}</span>
+              </Link>
+            );
+          })}
+        </div>
 
-        {/* AssistiveTouch Button */}
         <button
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
@@ -302,27 +284,24 @@ export function MobileNav() {
           onTouchEnd={onTouchEnd}
           onTouchCancel={onTouchEnd}
           onClick={() => !isDragging && toggleMenu()}
+          aria-controls="mobile-floating-menu"
+          aria-expanded={isOpen}
+          aria-label={isOpen ? 'Đóng menu' : 'Mở menu'}
           className={cn(
-            'w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300',
-            'backdrop-blur-xl bg-white/70 border border-white/50',
-            'shadow-[0_8px_32px_rgba(0,0,0,0.12)]',
-            'active:scale-95 hover:bg-white/80',
-            isOpen && 'bg-white/90 rotate-45',
+            'relative inline-flex h-14 w-14 items-center justify-center rounded-full transition-all duration-300',
+            'border border-slate-200/70 bg-white/95 shadow-[0_18px_55px_rgba(15,23,42,0.22)] ring-1 ring-black/5',
+            'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-2xl supports-[backdrop-filter]:backdrop-saturate-150',
+            'before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-white/60 before:to-transparent before:opacity-90 before:pointer-events-none',
+            'hover:shadow-[0_22px_70px_rgba(15,23,42,0.28)] active:scale-[0.97]',
+            'dark:border-slate-800/70 dark:bg-slate-950/80 dark:ring-white/10',
+            'dark:supports-[backdrop-filter]:bg-slate-950/55 dark:before:from-white/10 dark:before:opacity-70',
+            isOpen && 'rotate-45 bg-white',
             isDragging && 'scale-110 cursor-grabbing'
           )}
-          style={{
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.4)',
-          }}
-          aria-label={isOpen ? 'Đóng menu' : 'Mở menu'}
         >
-          {isOpen ? (
-            <X className="w-6 h-6 text-text-main" />
-          ) : (
-            <Menu className="w-6 h-6 text-text-main" />
-          )}
+          {isOpen ? <X className="h-6 w-6 text-text-main" /> : <Menu className="h-6 w-6 text-text-main" />}
         </button>
       </div>
-
     </>
   );
 }
