@@ -52,10 +52,10 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
             initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.25 }}
             className={cn(
-              'relative flex w-full max-h-[calc(100vh-2rem)] flex-col overflow-hidden bg-bg-card border border-bg-border rounded-modal',
-              'shadow-2xl shadow-black/50',
+              'relative flex w-full max-h-[calc(100vh-2rem)] flex-col overflow-hidden bg-gradient-to-br from-white to-white/90 border border-bg-border rounded-modal',
+              'shadow-2xl shadow-black/50 ring-1 ring-black/5 backdrop-blur-lg',
               sizes[size]
             )}
           >

@@ -23,10 +23,9 @@ export function Card({ children, className, hover = false, onClick }: CardProps)
   return (
     <Component
       className={cn(
-        'bg-bg-card/92 border border-bg-border rounded-card p-4 sm:p-5',
-        'surface-soft ring-1 ring-black/[0.03] dark:ring-white/[0.06]',
-        'transition-colors duration-normal',
-        hover && 'cursor-pointer hover:border-primary/35 hover:bg-bg-card/98',
+        'bg-bg-card/95 border border-slate-200 rounded-[32px] p-4 sm:p-5 shadow-[0_25px_70px_rgba(15,23,42,0.12)] transition duration-500 transform will-change-transform',
+        'hover:-translate-y-1 hover:shadow-[0_40px_90px_rgba(15,23,42,0.18)] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/40',
+        hover && 'cursor-pointer',
         className
       )}
       onClick={onClick}

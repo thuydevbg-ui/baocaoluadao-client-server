@@ -20,6 +20,26 @@
   color-scheme: light;
 }
 
+.gradient-pulse {
+  background: linear-gradient(135deg, #1fb47c, #48d9b0, #10b981, #0ea5e9);
+  background-size: 200% 200%;
+  animation: gradientPulse 8s ease infinite;
+}
+
+@keyframes gradientPulse {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 .dark {
   --bg-main: 11 17 32;
   --bg-dark: 11 17 32;

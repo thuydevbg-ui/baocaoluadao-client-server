@@ -5,13 +5,16 @@ import { Card, Badge } from '@/components/ui';
 export interface ActivityItem {
   id: string;
   type: string;
+  title: string;
   description: string;
+  icon?: React.ReactNode;
   createdAt: string;
+  timeAgo: string;
 }
 
 export function RecentActivity({ items }: { items: ActivityItem[] }) {
   return (
-    <Card className="space-y-4">
+    <Card className="space-y-4 w-full">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hoạt động</p>
@@ -42,4 +45,3 @@ export function RecentActivity({ items }: { items: ActivityItem[] }) {
     </Card>
   );
 }
-

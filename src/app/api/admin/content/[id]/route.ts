@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AdminContentStatus, upsertContent } from '@/lib/adminContentStore';
+import { AdminContentStatus, upsertContent, listAdminContent } from '@/lib/adminContentStore';
 import { getAdminAuth, requireRole } from '@/lib/adminApiAuth';
 
 type UpdateBody = {
@@ -8,7 +8,7 @@ type UpdateBody = {
   status?: AdminContentStatus;
 };
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, context: any) {
   const auth = await getAdminAuth(request);
   if (!requireRole(auth, ['super_admin', 'admin'])) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,16 +25,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'No update fields provided' }, { status: 400 });
   }
 
-  const existingItem = await import('@/lib/adminContentStore').then((mod) => mod.listAdminContent().find((i) => i.id === params.id));
+  const { id } = context.params;
+  const existingItem = listAdminContent().find((i) => i.id === id);
   if (!existingItem) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  const userEmail = auth?.email || existingItem.author;
   const updated = upsertContent({
     ...existingItem,
     ...payload,
     updatedAt: new Date().toISOString(),
-    author: auth.email || existingItem.author,
+    author: userEmail,
   });
 
   return NextResponse.json({ item: updated });

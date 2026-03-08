@@ -7,6 +7,7 @@ export interface UserReportRow {
   type: string;
   target: string;
   riskScore: number;
+  risk: string;
   status: string;
   createdAt: string;
 }
@@ -19,7 +20,7 @@ interface Props {
 
 export function UserReportsTable({ reports, onCreate, onDelete }: Props) {
   return (
-    <Card className="space-y-4">
+    <Card className="space-y-4 w-full">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Báo cáo</p>
@@ -73,8 +74,8 @@ export function UserReportsTable({ reports, onCreate, onDelete }: Props) {
       </div>
 
       {/* Table (tablet/desktop) */}
-      <div className="hidden overflow-auto rounded-xl border border-slate-200 sm:block">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 sm:block">
+        <table className="min-w-[640px] divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
               <th className="px-4 py-2 text-left font-semibold text-text-secondary">ID</th>

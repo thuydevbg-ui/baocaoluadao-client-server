@@ -1,21 +1,46 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
-import { Navbar, MobileNav, Footer } from '@/components/layout';
+import { Footer, MobileNav } from '@/components/layout';
 import { Button, Card, Skeleton, Modal, Input, Badge } from '@/components/ui';
-import { UserOverviewCard } from '@/components/dashboard/UserOverviewCard';
-import { SecurityStatusCard, type SecurityCheck } from '@/components/dashboard/SecurityStatusCard';
-import { RecentActivity, ActivityItem } from '@/components/dashboard/RecentActivity';
-import { UserReportsTable, UserReportRow } from '@/components/dashboard/UserReportsTable';
-import { WatchlistCard, WatchItem } from '@/components/dashboard/WatchlistCard';
 import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
-import { TrustScoreCard, TrustMetric } from '@/components/dashboard/TrustScoreCard';
-import { AdminContentManager } from '@/components/admin/AdminContentManager';
-import { FileText, Sparkles, Copy, Chrome, Facebook, Twitter, Send } from 'lucide-react';
+import { RecentActivity } from '@/components/dashboard/RecentActivity';
+import { UserReportsTable } from '@/components/dashboard/UserReportsTable';
+import { WatchlistCard } from '@/components/dashboard/WatchlistCard';
+import type { ActivityItem } from '@/components/dashboard/RecentActivity';
+import type { UserReportRow } from '@/components/dashboard/UserReportsTable';
+import type { WatchItem } from '@/components/dashboard/WatchlistCard';
+import type { SecurityCheck } from '@/components/dashboard/SecurityStatusCard';
+import type { TrustMetric } from '@/components/dashboard/TrustScoreCard';
+import {
+  FileText,
+  Sparkles,
+  Copy,
+  Chrome,
+  Facebook,
+  Twitter,
+  Send,
+  Home,
+  ShieldCheck,
+  UserCircle,
+  Plus,
+  ZoomIn,
+  Bike,
+  Search,
+  SlidersHorizontal,
+  Briefcase,
+  Building,
+  Clock3,
+  Globe,
+  Bookmark,
+} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { motion } from 'framer-motion';
 
 interface ProfileUser {
   id: string;
@@ -49,10 +74,47 @@ interface ApiState {
 const defaultPrefs: NotificationPrefs = { emailAlerts: true, pushAlerts: false, weeklySummary: true };
 type TwofaInfo = { enabled: boolean; secret?: string; otpauthUrl?: string; backupCodes?: string[] };
 
+type BottomNavKey = 'trangchu' | 'baocao' | 'antoan' | 'hoso';
+
+type BottomNavItem = {
+  key: BottomNavKey;
+  label: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  action: () => void;
+};
+
+type QuickAction = {
+  label: string;
+  subLabel: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  accent: string;
+};
+
+type DeviceCard = {
+  key: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  active: boolean;
+  accent: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  metadata: string[];
+};
+
+type FeatureCategory = {
+  key: string;
+  label: string;
+  description: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  accent: string;
+  action: () => void;
+};
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const { showToast } = useToast();
   const securitySectionRef = useRef<HTMLDivElement | null>(null);
+  const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [state, setState] = useState<ApiState>({ activity: [], reports: [], watchlist: [], notifications: defaultPrefs });
@@ -75,8 +137,15 @@ export default function ProfilePage() {
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [emailCooldown, setEmailCooldown] = useState(0);
+  const [bottomAction, setBottomAction] = useState<BottomNavKey>('trangchu');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', avatar: '' });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [watchTargetInput, setWatchTargetInput] = useState('');
+  const [watchTypeInput, setWatchTypeInput] = useState<'website' | 'phone' | 'bank' | 'crypto'>('website');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!editModalOpen) return;
@@ -84,6 +153,8 @@ export default function ProfilePage() {
       name: state.user?.name || '',
       avatar: state.user?.avatar || '',
     });
+    setAvatarPreview(state.user?.avatar || '');
+    setAvatarFile(null);
   }, [editModalOpen, state.user?.avatar, state.user?.name]);
 
   const loadAll = async () => {
@@ -171,8 +242,198 @@ export default function ProfilePage() {
     trustScore: security?.securityScore ?? user?.securityScore ?? 72,
   }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
 
+  const [deviceStates, setDeviceStates] = useState<Record<string, boolean>>({
+    myhome: true,
+    bicycle: false,
+  });
+
+  const deviceCards: DeviceCard[] = [
+    {
+      key: 'myhome',
+      title: 'My Home',
+      subtitle: '32 thiết bị đang hoạt động',
+      status: 'ON',
+      active: deviceStates.myhome,
+      accent: 'from-cyan-500/80 to-sky-400/70',
+      icon: Home,
+      metadata: ['32 Active devices'],
+    },
+    {
+      key: 'bicycle',
+      title: 'Bicycleev',
+      subtitle: '36% pin • 25km',
+      status: 'OFF',
+      active: deviceStates.bicycle,
+      accent: 'from-orange-400/80 to-amber-300/70',
+      icon: Bike,
+      metadata: ['36% battery', '25km range'],
+    },
+  ];
+
+  const quickActions: QuickAction[] = [
+    { label: 'Security', subLabel: 'Kiểm tra bảo mật', icon: ShieldCheck, accent: 'from-sky-400/80 to-sky-200/60' },
+    { label: 'Báo cáo', subLabel: 'Gửi scam nhanh', icon: FileText, accent: 'from-amber-400/80 to-orange-200/60' },
+    { label: '2FA', subLabel: 'Bảo vệ 2 lớp', icon: Sparkles, accent: 'from-emerald-400/80 to-lime-200/60' },
+    { label: 'Watchlist', subLabel: 'Theo dõi cảnh báo', icon: ZoomIn, accent: 'from-blue-400/80 to-cyan-200/60' },
+  ];
+
+  const checks: { key: string; label: string; detail: string; actionLabel: string; onAction: () => void; disabled?: boolean }[] = [
+    {
+      key: 'password',
+      label: 'Mật khẩu',
+      detail: security?.passwordSet ? 'Đã thiết lập' : 'Chưa thiết lập',
+      actionLabel: security?.passwordSet ? 'Đổi mật khẩu' : 'Thiết lập',
+      onAction: () => setPasswordModalOpen(true),
+      disabled: actionLoading === 'password',
+    },
+    {
+      key: 'twofa',
+      label: 'Xác thực 2 lớp',
+      detail: security?.twoFactorEnabled ? 'Đã bật' : 'Chưa bật',
+      actionLabel: security?.twoFactorEnabled ? 'Quản lý' : 'Bật 2FA',
+      onAction: () => setTwofaModalOpen(true),
+      disabled: actionLoading === 'twofaSetup' || actionLoading === 'twofaConfirm' || actionLoading === 'twofaDisable',
+    },
+    {
+      key: 'oauth',
+      label: 'Liên kết OAuth',
+      detail: security?.oauthConnected ? `Đã liên kết ${linkedOauthLabel}` : 'Chưa liên kết',
+      actionLabel: 'Quản lý',
+      onAction: () => setOauthModalOpen(true),
+    },
+    {
+      key: 'email',
+      label: 'Email xác minh',
+      detail: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh',
+      actionLabel: 'Xác minh',
+      onAction: () => setEmailModalOpen(true),
+      disabled: security?.emailVerified,
+    },
+  ];
+
+  const metricHighlights = [
+    { label: 'Cảnh báo', value: stats.activeAlerts, icon: 'fi fi-rr-bell', gradient: 'from-white to-[#eef8ff]' },
+    { label: 'Điểm tin cậy', value: `${stats.trustScore}%`, icon: 'fi fi-rr-shield-check', gradient: 'from-white to-[#f0fff5]' },
+    { label: 'Điểm bảo mật', value: security?.securityScore ?? stats.trustScore, icon: 'fi fi-rr-badge-check', gradient: 'from-white to-[#f8fbff]' },
+    { label: 'Danh sách theo dõi', value: state.watchlist.length, icon: 'fi fi-rr-eye', gradient: 'from-white to-[#fdf6ff]' },
+  ];
+
   const handleScrollToSecurity = () => {
     securitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleScrollToTop = () => {
+    if (typeof window === 'undefined') return;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const bottomNavItems: BottomNavItem[] = [
+    { key: 'trangchu', label: 'Trang chủ', icon: Home, action: handleScrollToTop },
+    { key: 'baocao', label: 'Báo cáo', icon: FileText, action: () => handleCreateReport() },
+    { key: 'antoan', label: 'Bảo mật', icon: ShieldCheck, action: handleScrollToSecurity },
+    { key: 'hoso', label: 'Hồ sơ', icon: UserCircle, action: () => setEditModalOpen(true) },
+  ];
+
+  const quickActionNavMap: Record<string, BottomNavKey> = {
+    Security: 'antoan',
+    'Báo cáo': 'baocao',
+    '2FA': 'antoan',
+    Watchlist: 'trangchu',
+  };
+
+  const handleCreateReport = async () => {
+    showToast('warning', 'Chức năng gửi báo cáo đang được tối ưu hóa.');
+  };
+
+  const featureCategories: FeatureCategory[] = [
+    {
+      key: 'reports',
+      label: 'Báo cáo',
+      description: `${state.reports.length} báo cáo`,
+      icon: FileText,
+      accent: 'from-sky-400/70 to-cyan-400/70',
+      action: () => {
+        setBottomAction('baocao');
+        handleCreateReport();
+      },
+    },
+    {
+      key: 'watchlist',
+      label: 'Theo dõi',
+      description: `${state.watchlist.length} mục`,
+      icon: ZoomIn,
+      accent: 'from-emerald-500/70 to-lime-400/70',
+      action: () => {
+        setBottomAction('trangchu');
+        watchlistSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
+    },
+    {
+      key: 'alerts',
+      label: 'Cảnh báo',
+      description: `${stats.activeAlerts} mới`,
+      icon: Sparkles,
+      accent: 'from-amber-400/70 to-orange-400/70',
+      action: () => {
+        setBottomAction('antoan');
+        handleScrollToSecurity();
+      },
+    },
+    {
+      key: 'security',
+      label: 'Bảo mật',
+      description: `${security?.securityScore ?? stats.trustScore}% điểm`,
+      icon: ShieldCheck,
+      accent: 'from-indigo-500/70 to-sky-400/70',
+      action: () => {
+        setBottomAction('antoan');
+        handleScrollToSecurity();
+      },
+    },
+  ];
+
+  const filteredReports = useMemo(() => {
+    const normalized = searchTerm.trim().toLowerCase();
+    const sorted = [...state.reports].sort((a, b) => {
+      const aDate = new Date(a.createdAt).getTime();
+      const bDate = new Date(b.createdAt).getTime();
+      return bDate - aDate;
+    });
+    if (!normalized) return sorted.slice(0, 5);
+    return sorted
+      .filter(
+        (report) =>
+          report.target.toLowerCase().includes(normalized) ||
+          report.type.toLowerCase().includes(normalized) ||
+          report.status.toLowerCase().includes(normalized)
+      )
+      .slice(0, 5);
+  }, [searchTerm, state.reports]);
+
+  const handleDeleteReport = async (id: string) => {
+    setState((s) => ({ ...s, reports: s.reports.filter((report) => report.id !== id) }));
+    showToast('success', 'Đã xóa báo cáo.');
+  };
+
+  const handleAddWatch = (target: string, type: string) => {
+    const newItem: WatchItem = {
+      id: crypto.randomUUID?.() ?? `${Date.now()}`,
+      target,
+      type,
+      createdAt: new Date().toISOString(),
+    };
+    setState((s) => ({ ...s, watchlist: [newItem, ...s.watchlist] }));
+    showToast('success', 'Đã thêm mục theo dõi.');
+  };
+
+  const handleRemoveWatch = (id: string) => {
+    setState((s) => ({ ...s, watchlist: s.watchlist.filter((item) => item.id !== id) }));
+    showToast('success', 'Đã gỡ mục theo dõi.');
+  };
+
+  const handleNotifications = (prefs: NotificationPrefs) => {
+    setState((s) => ({ ...s, notifications: prefs }));
+    showToast('success', 'Cập nhật cài đặt thông báo.');
   };
 
   const handleUpdateProfile = async () => {
@@ -231,6 +492,126 @@ export default function ProfilePage() {
     }
   };
 
+  const handleStartTwofaSetup = async () => {
+    try {
+      setActionLoading('twofaSetup');
+      const res = await fetch('/api/user/security/twofa/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: twofaPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không thể khởi tạo 2FA');
+      setTwofaInfo((prev) => ({ ...prev, secret: data.secret, otpauthUrl: data.otpauthUrl, backupCodes: data.backupCodes, enabled: false }));
+      setTwofaStep('verify');
+      showToast('success', 'Đã tạo mã QR. Quét và nhập mã xác thực.');
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không tạo được 2FA');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfirmTwofa = async () => {
+    try {
+      setActionLoading('twofaConfirm');
+      const res = await fetch('/api/user/security/twofa/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: twofaCode, password: twofaPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không xác thực được 2FA');
+      showToast('success', 'Đã bật 2FA.');
+      setTwofaStep('enabled');
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không xác thực được 2FA');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDisableTwofa = async () => {
+    try {
+      setActionLoading('twofaDisable');
+      const res = await fetch('/api/user/security/twofa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: twofaPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tắt được 2FA');
+      showToast('success', 'Đã tắt 2FA.');
+      setTwofaStep('overview');
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không tắt được 2FA');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSendEmailCode = async () => {
+    try {
+      setSendingCode(true);
+      const res = await fetch('/api/user/security/email/send', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.retryAfter) {
+          setEmailCooldown(data.retryAfter);
+        }
+        throw new Error(data.error || 'Không gửi được mã');
+      }
+      showToast('success', data.message || 'Đã gửi mã xác minh');
+      setEmailCooldown(60);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không gửi được mã');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    try {
+      setVerifyingCode(true);
+      const res = await fetch('/api/user/security/email/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: emailCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không xác minh được');
+      showToast('success', 'Xác minh email thành công');
+      setEmailModalOpen(false);
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không xác minh được');
+    } finally {
+      setVerifyingCode(false);
+    }
+  };
+
+  const handleSubmitOAuth = async (connect: boolean) => {
+    try {
+      setActionLoading(connect ? 'oauthConnect' : 'oauthDisconnect');
+      const res = await fetch('/api/user/security/oauth', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connected: connect, password: oauthPassword, provider: oauthProvider }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không thể cập nhật OAuth');
+      showToast('success', connect ? 'Đã liên kết OAuth' : 'Đã hủy liên kết OAuth');
+      setOauthModalOpen(false);
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể cập nhật OAuth');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const loadTwofaStatus = async () => {
     if (!twofaModalOpen) return;
     try {
@@ -267,411 +648,334 @@ export default function ProfilePage() {
     return () => window.clearInterval(id);
   }, [emailCooldown]);
 
-  const handleStartTwofaSetup = async () => {
-    try {
-      setActionLoading('twofaSetup');
-      const res = await fetch('/api/user/security/twofa/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không khởi tạo 2FA');
-      setTwofaInfo({ enabled: false, secret: data.secret, otpauthUrl: data.otpauthUrl, backupCodes: data.backupCodes });
-      setTwofaStep('verify');
-      showToast('success', 'Đã tạo mã 2FA, hãy quét và nhập mã');
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không khởi tạo 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleConfirmTwofa = async () => {
-    if (!twofaCode.trim()) {
-      showToast('error', 'Nhập mã 6 số từ ứng dụng Authenticator');
-      return;
-    }
-    try {
-      setActionLoading('twofaConfirm');
-      const res = await fetch('/api/user/security/twofa/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: twofaCode.trim(), password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không bật được 2FA');
-      showToast('success', 'Đã bật xác thực 2 lớp');
-      setTwofaStep('enabled');
-      setTwofaInfo((info) => info ? { ...info, enabled: true } : { enabled: true });
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không bật được 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDisableTwofa = async () => {
-    try {
-      setActionLoading('twofaDisable');
-      const res = await fetch('/api/user/security/twofa/disable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không tắt được 2FA');
-      showToast('success', 'Đã tắt 2FA');
-      setTwofaStep('overview');
-      setTwofaInfo({ enabled: false });
-      setTwofaPassword('');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không tắt được 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSubmitOAuth = async (connect: boolean) => {
-    try {
-      setActionLoading(connect ? 'oauthConnect' : 'oauthDisconnect');
-      const res = await fetch('/api/user/security/oauth', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connected: connect, password: oauthPassword, provider: oauthProvider }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không cập nhật được OAuth');
-      showToast('success', connect ? 'Đã liên kết OAuth' : 'Đã hủy liên kết OAuth');
-      setOauthPassword('');
-      setReloadKey((k) => k + 1);
-      if (!connect) setOauthModalOpen(false);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể đổi trạng thái OAuth');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSendEmailCode = async () => {
-    if (emailCooldown > 0) return;
-    try {
-      setSendingCode(true);
-      const res = await fetch('/api/user/security/email/send', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 429 && data.retryAfter) {
-          setEmailCooldown(Number(data.retryAfter));
-        }
-        throw new Error(data.error || 'Không gửi được mã');
-      }
-      setEmailDevCode(data.devCode || null);
-      setEmailCooldown(60);
-      showToast('success', 'Đã gửi mã xác minh (hiệu lực 10 phút)');
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không gửi được mã');
-    } finally {
-      setSendingCode(false);
-    }
-  };
-
-  const handleVerifyEmailCode = async () => {
-    if (!emailCode.trim()) {
-      showToast('error', 'Nhập mã xác minh');
-      return;
-    }
-    try {
-      setVerifyingCode(true);
-      const res = await fetch('/api/user/security/email/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: emailCode.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không xác minh được');
-      showToast('success', 'Email đã xác minh');
-      setEmailModalOpen(false);
-      setEmailCode('');
-      setEmailDevCode(null);
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không xác minh được');
-    } finally {
-      setVerifyingCode(false);
-    }
-  };
-
-  const checks = useMemo<SecurityCheck[]>(() => ([
-    {
-      key: 'password',
-      label: 'Mật khẩu',
-      status: security?.passwordSet ? 'ok' : 'todo',
-      detail: security?.passwordSet ? 'Đã thiết lập' : 'Chưa đặt mật khẩu',
-      actionLabel: security?.passwordSet ? 'Đổi mật khẩu' : 'Thiết lập',
-      onAction: () => setPasswordModalOpen(true),
-      disabled: actionLoading === 'password',
-    },
-    {
-      key: 'twofa',
-      label: 'Xác thực 2 lớp',
-      status: security?.twoFactorEnabled ? 'ok' : 'warn',
-      detail: security?.twoFactorEnabled ? 'Đang bật' : 'Chưa kích hoạt',
-      actionLabel: security?.twoFactorEnabled ? 'Quản lý' : 'Bật 2FA',
-      onAction: () => setTwofaModalOpen(true),
-      disabled: actionLoading?.startsWith('twofa') ?? false,
-    },
-    {
-      key: 'oauth',
-      label: 'Liên kết OAuth',
-      status: security?.oauthConnected ? 'ok' : 'warn',
-      detail: security?.oauthConnected ? `Đã liên kết ${linkedOauthLabel}` : 'Chưa liên kết',
-      actionLabel: security?.oauthConnected ? 'Quản lý' : 'Liên kết',
-      onAction: () => setOauthModalOpen(true),
-      disabled: actionLoading?.startsWith('oauth') ?? false,
-    },
-    {
-      key: 'login',
-      label: 'Lần đăng nhập gần nhất',
-      status: security?.recentLogin ? 'ok' : 'todo',
-      detail: security?.recentLogin || 'Chưa ghi nhận',
-      actionLabel: 'Làm mới',
-      onAction: () => setReloadKey((k) => k + 1),
-    },
-    {
-      key: 'email',
-      label: 'Email xác minh',
-      status: security?.emailVerified ? 'ok' : 'warn',
-      detail: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh',
-      actionLabel: security?.emailVerified ? 'Xem' : 'Xác minh',
-      onAction: () => setEmailModalOpen(true),
-    },
-  ]), [security, actionLoading]);
-
-  const trustMetrics: TrustMetric[] = [
-    { label: 'Mật khẩu', value: security?.passwordSet ? 'Đã thiết lập' : 'Chưa đặt', status: security?.passwordSet ? 'ok' : 'todo' },
-    { label: '2FA', value: security?.twoFactorEnabled ? 'Đang bật' : 'Chưa bật', status: security?.twoFactorEnabled ? 'ok' : 'warn' },
-    { label: 'Email', value: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh', status: security?.emailVerified ? 'ok' : 'warn' },
-    { label: 'Báo cáo', value: `${state.reports.length} báo cáo`, status: state.reports.length > 0 ? 'ok' : 'todo' },
-  ];
-
-  const handleDeleteReport = async (id: string) => {
-    try {
-      setActionLoading('deleteReport');
-      const res = await fetch(`/api/user/reports/${id}`, { method: 'DELETE' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Không thể xóa báo cáo');
-      showToast('success', 'Đã xóa báo cáo');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể xóa báo cáo');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleAddWatch = async (target: string, type: string) => {
-    try {
-      setActionLoading('addWatch');
-      const res = await fetch('/api/user/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target, type }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Không thể thêm watchlist');
-      showToast('success', 'Đã thêm vào watchlist');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể thêm watchlist');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleRemoveWatch = async (id: string) => {
-    try {
-      setActionLoading('removeWatch');
-      const res = await fetch(`/api/user/watchlist/${id}`, { method: 'DELETE' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Không thể gỡ watchlist');
-      showToast('success', 'Đã gỡ watchlist');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể gỡ watchlist');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleNotifications = async (prefs: NotificationPrefs) => {
-    setState((s) => ({ ...s, notifications: prefs }));
-    try {
-      setActionLoading('notifications');
-      const res = await fetch('/api/user/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(prefs),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Không thể lưu cài đặt');
-      showToast('success', 'Đã lưu cài đặt thông báo');
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể lưu cài đặt thông báo');
-      setReloadKey((k) => k + 1);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleCreateReport = () => {
-    window.location.href = '/report';
-  };
-
-  const isLoading = loading || status === 'loading';
-
   return (
-    <div className="min-h-screen flex flex-col bg-[#f6f8fb]">
-      <Navbar />
-
-      <main className="flex-1 pt-20 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-16">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-6">
-          {status === 'authenticated' && (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hồ sơ & bảo mật</p>
-                <h1 className="text-2xl font-bold text-text-main">Bảng điều khiển người dùng</h1>
-                <p className="text-sm text-text-secondary">Quản lý báo cáo, theo dõi cảnh báo và độ an toàn tài khoản.</p>
+    <div className="min-h-screen bg-[#dff5ef]">
+      <main className="flex justify-center pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-[420px] space-y-4 px-4 pt-8 pb-10">
+          <div className="rounded-[36px] bg-gradient-to-r from-emerald-500/90 to-cyan-500 p-5 text-white shadow-[0_45px_90px_rgba(16,185,129,0.45)]">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.4em] text-white/70">Profile</p>
+                <h1 className="text-2xl font-semibold">ScamGuard</h1>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/report">
-                  <Button size="sm" leftIcon={<FileText className="h-4 w-4" />}>Báo cáo mới</Button>
-                </Link>
-                <Button size="sm" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>Làm mới dữ liệu</Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="rounded-full bg-white/20 px-3 text-white shadow-lg">☀️</Button>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-600">9+</span>
               </div>
             </div>
-          )}
-
-          {status === 'authenticated' && ['admin', 'super_admin', 'moderator'].includes(user?.role?.toLowerCase() ?? '') && (
-            <>
-              <Card className="border border-slate-200 bg-slate-50/70">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Quản trị viên</p>
-                    <h2 className="text-lg font-semibold text-text-main">Admin panel tại chỗ</h2>
-                    <p className="text-sm text-text-secondary">
-                      Xem nhanh trạng thái bài viết, bật tắt nội dung và mở dashboard tổng.
-                    </p>
-                  </div>
-            <Button size="sm" variant="secondary" onClick={() => window.open('/admin', '_blank')}>
-              Mở admin
-            </Button>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              { label: 'Bài viết cần duyệt', value: '12', action: '/admin/content/pages' },
-              { label: 'Bản tin trạng thái', value: '3 lỗi', action: '/admin/seo-dashboard' },
-              { label: 'Đăng tin mới', value: 'Soạn bài', action: '/admin/content/blog' },
-              { label: 'Trạng thái hệ thống', value: 'Sẵn sàng', action: '/admin/settings' },
-            ].map((item) => (
-              <div key={item.label} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{item.label}</p>
-                <p className="text-lg font-bold text-text-main">{item.value}</p>
-                <Link href={item.action} className="text-xs font-semibold text-primary hover:underline">
-                  Mở
-                </Link>
+            <div className="mt-5 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">Hi, {user?.name?.split(' ')?.[0] ?? 'Bạn'}</p>
+                <p className="text-[12px] text-white/80">Bạn đang được bảo vệ</p>
               </div>
-            ))}
-          </div>
-        </Card>
-        <AdminContentManager />
-      </>
-      )}
-
-          {status === 'unauthenticated' && (
-            <Card className="max-w-2xl mx-auto text-center space-y-4">
-              <h2 className="text-xl font-semibold text-text-main">Bạn chưa đăng nhập</h2>
-              <p className="text-sm text-text-secondary">Đăng nhập để xem dashboard và quản lý cảnh báo.</p>
-              <div className="flex justify-center gap-3">
-                <Link href="/login"><Button>Đăng nhập</Button></Link>
-                <Link href="/register"><Button variant="secondary">Đăng ký</Button></Link>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-[0.4em] text-white/70">Nhiệt độ</p>
+                <p className="text-lg font-semibold">26°C</p>
+                <p className="text-[11px] text-white/70">Austin</p>
               </div>
-            </Card>
-          )}
+            </div>
+          </div>
 
-          {status === 'authenticated' && (
-            <>
-              <section className="grid gap-4 items-start lg:grid-cols-[2fr_1.1fr]">
-                {isLoading || !user ? (
-                  <Skeleton variant="rectangular" height={180} />
-                ) : (
-                  <UserOverviewCard
-                    name={user.name}
-                    email={user.email}
-                    role={user.role}
-                    accountId={user.id}
-                    joinDate={new Date(user.createdAt).toLocaleDateString('vi-VN')}
-                    status={security?.recentLogin ? 'Hoạt động' : 'Mới'}
-                    avatar={user.avatar}
-                    onEdit={() => setEditModalOpen(true)}
-                    onLogout={() => signOut({ callbackUrl: '/' })}
-                    onSecurity={handleScrollToSecurity}
-                    stats={stats}
-                  />
-                )}
+          <section className="rounded-[32px] bg-white px-4 py-4 shadow-[0_15px_45px_rgba(15,23,42,0.08)]">
+            <div className="flex items-center gap-3 rounded-[24px] border border-slate-200 bg-[#f8faff] px-4 py-2 shadow-inner">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Bạn muốn kiểm tra tên miền hoặc báo cáo nào?"
+                className="flex-1 border-0 bg-transparent text-sm font-semibold text-slate-600 outline-none placeholder:text-slate-400"
+              />
+              <SlidersHorizontal className="h-4 w-4 text-blue-500" />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
+              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
+                <p className="text-xl font-bold text-slate-900">{stats.reportsSubmitted}</p>
+                <span className="text-[10px] tracking-[0.35em] text-slate-400">BÁO CÁO</span>
+              </div>
+              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
+                <p className="text-xl font-bold text-slate-900">{stats.activeAlerts}</p>
+                <span className="text-[10px] tracking-[0.35em] text-slate-400">CẢNH BÁO</span>
+              </div>
+              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
+                <p className="text-xl font-bold text-slate-900">{Math.round(stats.trustScore)}</p>
+                <span className="text-[10px] tracking-[0.35em] text-slate-400">TRUST SCORE</span>
+              </div>
+            </div>
+          </section>
 
-                <div ref={securitySectionRef} id="security" className="scroll-mt-24">
-                  <SecurityStatusCard score={security?.securityScore ?? stats.trustScore} checks={checks} />
+          <section className="rounded-[32px] bg-gradient-to-r from-emerald-500 to-cyan-500 p-5 text-white shadow-[0_20px_45px_rgba(16,185,129,0.35)]">
+            <p className="text-[12px] uppercase tracking-[0.5em] text-white/80">Stay protected</p>
+            <h2 className="mt-2 text-2xl font-semibold">Cập nhật tình trạng an toàn của bạn</h2>
+            <p className="mt-2 text-sm text-white/80">
+              {state.watchlist.length} mục theo dõi, {state.reports.length} báo cáo và {stats.activeAlerts} cảnh báo đang được quét mỗi ngày.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button
+                size="sm"
+                className="flex items-center gap-2 whitespace-nowrap rounded-[22px] bg-white px-5 py-2 text-sm font-semibold text-emerald-600 shadow-lg transition hover:-translate-y-0.5"
+                onClick={handleCreateReport}
+              >
+                <FileText className="h-4 w-4 text-emerald-600" />
+                Gửi báo cáo mới
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex items-center gap-2 whitespace-nowrap rounded-[22px] border border-white/70 bg-white/20 px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(255,255,255,0.3)] transition hover:bg-white/40"
+                onClick={handleScrollToSecurity}
+              >
+                <ShieldCheck className="h-4 w-4 text-white" />
+                Xem kết quả bảo mật
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_25px_60px_rgba(0,0,0,0.08)]">
+            <h3 className="mb-3 text-lg font-semibold text-slate-700">Browse By Category</h3>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {featureCategories.map((category) => (
+                <button
+                  key={category.key}
+                  type="button"
+                  onClick={category.action}
+                  className="group flex flex-col items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white p-3 text-center shadow-[0_12px_25px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_15px_35px_rgba(15,23,42,0.15)]"
+                >
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${category.accent} text-white shadow-lg`}>
+                    <category.icon className="h-6 w-6" />
+                  </span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{category.label}</p>
+                  <p className="text-[11px] font-semibold text-slate-400">{category.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[32px] bg-white px-4 py-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-700">Báo cáo nổi bật</h3>
+              <Button size="sm" variant="ghost" className="text-xs font-semibold text-slate-500">
+                Xem tất cả
+              </Button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {filteredReports.length === 0 && (
+                <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  Chưa có báo cáo phù hợp với từ khoá.
                 </div>
-              </section>
+              )}
+              {filteredReports.map((report) => {
+                const statusVariant = report.status === 'completed' ? 'success' : report.status === 'pending' ? 'warning' : 'primary';
+                const createdDate = new Date(report.createdAt).toLocaleDateString('vi-VN');
+                return (
+                  <div key={report.id} className="flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-[#f6fbff] px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 break-all">{report.target}</p>
+                      <p className="text-xs text-slate-500">
+                        {report.type} • {createdDate}
+                      </p>
+                      <p className="text-[11px] text-slate-500">Rủi ro: {report.riskScore}</p>
+                    </div>
+                    <Badge variant={statusVariant}>{report.status}</Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
 
-              <section className="grid gap-4 items-start lg:grid-cols-[1.4fr_1fr]">
-                <RecentActivity items={state.activity} />
-                <TrustScoreCard score={stats.trustScore} metrics={trustMetrics} />
-              </section>
+          <section className="rounded-[34px] bg-white px-5 py-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 overflow-hidden rounded-full border-2 border-emerald-500 bg-slate-50">
+                <img src={user?.avatar || '/favicon.ico'} alt={user?.name} className="h-full w-full object-cover" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-lg font-semibold text-slate-900">{user?.name}</p>
+                <p className="text-xs text-slate-400">{user?.email}</p>
+                <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{user?.role}</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-600">{security?.recentLogin ? 'Hoạt động' : 'Mới'}</span>
+                </div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setEditModalOpen(true)}>✎</Button>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 text-center text-sm font-semibold text-slate-600">
+              <div className="rounded-[24px] bg-[#f0f7ff] px-4 py-4 shadow-[0_15px_35px_rgba(59,130,246,0.18)]">
+                <p className="text-[10px] uppercase tracking-[0.4em] text-slate-400">Đã gửi</p>
+                <p className="text-2xl text-slate-900">{stats.reportsSubmitted}</p>
+              </div>
+              <div className="rounded-[24px] bg-[#f0f7ff] px-4 py-4 shadow-[0_15px_35px_rgba(59,130,246,0.18)]">
+                <p className="text-[10px] uppercase tracking-[0.4em] text-slate-400">Đã xử lý</p>
+                <p className="text-2xl text-slate-900">{stats.reportsResolved}</p>
+              </div>
+            </div>
+          </section>
 
-              <section className="grid gap-4 items-start lg:grid-cols-[1.6fr_1fr]">
-                <UserReportsTable reports={state.reports} onCreate={handleCreateReport} onDelete={handleDeleteReport} />
-                <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
-              </section>
-
-              <section className="grid gap-4 items-start lg:grid-cols-[1fr_1fr]">
-                <NotificationSettings prefs={state.notifications} onChange={handleNotifications} />
-                <Card className="space-y-3">
+          <section className="rounded-[34px] bg-white px-4 py-5 shadow-[0_20px_40px_rgba(15,23,42,0.12)]">
+            <div className="grid grid-cols-2 gap-3">
+              {deviceCards.map((card) => (
+                <div key={card.key} className="relative rounded-[26px] border border-white/70 bg-gradient-to-b from-white to-[#f3f7ff] p-4 shadow-[0_12px_35px_rgba(15,23,42,0.15)]">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hướng dẫn</p>
-                      <h2 className="text-lg font-semibold text-text-main">Tài nguyên an toàn</h2>
+                      <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Smart</p>
+                      <h3 className="text-lg font-semibold text-slate-900">{card.title}</h3>
+                      <p className="text-[11px] text-slate-500">{card.subtitle}</p>
                     </div>
-                    <Link href="/faq">
-                      <Button size="sm" variant="secondary" leftIcon={<Sparkles className="h-4 w-4" />}>Xem FAQ</Button>
-                    </Link>
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${card.accent} text-white shadow-[0_10px_25px_rgba(15,23,42,0.25)]`}>
+                      <card.icon className="h-5 w-5" />
+                    </span>
                   </div>
-                  <ul className="space-y-2 text-sm text-text-secondary">
-                    <li>• Cách nhận biết website giả mạo</li>
-                    <li>• Thiết lập 2FA cho tài khoản</li>
-                    <li>• Quy trình gửi báo cáo lừa đảo</li>
-                  </ul>
-                </Card>
-              </section>
-            </>
-          )}
-
-          {status === 'authenticated' && error && (
-            <Card className="border-danger/40 bg-danger/5 text-danger">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold">Lỗi tải dữ liệu</p>
-                  <p className="text-sm">{error}</p>
+                  <div className="mt-4 flex items-center justify-between text-sm font-semibold text-slate-600">
+                    <span>{card.active ? 'ON' : 'OFF'}</span>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        className="peer sr-only"
+                        checked={card.active}
+                        onChange={() => setDeviceStates((prev) => ({ ...prev, [card.key]: !prev[card.key] }))}
+                      />
+                      <span className="inline-flex h-5 w-10 items-center rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+                        <span className="inline-block h-4 w-4 translate-x-1 rounded-full bg-white transition peer-checked:translate-x-5" />
+                      </span>
+                    </label>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                    {card.metadata.map((line) => (
+                      <span key={line} className="rounded-full bg-slate-100 px-2 py-1">{line}</span>
+                    ))}
+                  </div>
                 </div>
-                <Button size="sm" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>Thử lại</Button>
-              </div>
-            </Card>
-      )}
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.14)]">
+            <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.4em] text-slate-400">
+              <span>Thao tác nhanh</span>
+              <span>Vuốt →</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className="flex items-start gap-3 rounded-[28px] bg-[#f6fbff] p-3 text-left shadow-[0_4px_15px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_25px_rgba(15,23,42,0.15)]"
+                  onClick={() => {
+                  const target = quickActionNavMap[action.label] ?? bottomAction;
+                  setBottomAction(target);
+                  if (action.label === 'Báo cáo') {
+                    handleCreateReport();
+                  }
+                }}
+                >
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-[18px] bg-gradient-to-br ${action.accent} text-white`}>
+                    <action.icon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{action.label}</p>
+                    <p className="text-[11px] text-slate-500">{action.subLabel}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.12)]">
+            <div className="grid grid-cols-2 gap-3">
+              {metricHighlights.map((metric) => (
+                <div
+                  key={metric.label}
+                  className="rounded-[26px] bg-gradient-to-br from-white to-[#eaf6ff] px-4 py-4 text-center shadow-[0_10px_35px_rgba(59,130,246,0.18)]"
+                >
+                  <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">{metric.label}</p>
+                  <p className="text-2xl font-bold text-slate-900">{metric.value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <RecentActivity items={state.activity} />
+          <UserReportsTable reports={state.reports} onCreate={handleCreateReport} onDelete={handleDeleteReport} />
+          <div ref={watchlistSectionRef}>
+            <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
+          </div>
+          <NotificationSettings prefs={state.notifications} onChange={handleNotifications} />
+
+          <div ref={securitySectionRef} className="relative rounded-[38px] bg-white px-5 py-5 shadow-[0_30px_80px_rgba(15,23,42,0.15)]">
+            <div className="absolute inset-x-4 -top-5 h-24 rounded-[40px] bg-gradient-to-br from-[#e6f7ff] via-white to-white opacity-90 blur-[45px]" aria-hidden="true"></div>
+            <div className="relative z-10 flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.4em] text-slate-400">Kiểm tra bảo mật</h3>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Realtime</span>
+            </div>
+            <div className="relative z-10 mt-4 space-y-3">
+              {checks.map((check) => (
+                <div
+                  key={check.key}
+                  className="flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-gradient-to-b from-white to-[#f3f7ff] px-4 py-3 text-sm shadow-[0_10px_25px_rgba(15,23,42,0.1)]"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{check.label}</p>
+                    <p className="text-[11px] text-slate-500">{check.detail}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[11px] font-semibold text-slate-500 transition hover:text-slate-700"
+                    onClick={check.onAction}
+                    disabled={check.disabled}
+                  >
+                    {check.actionLabel}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </main>
-
+      <div className="fixed inset-x-4 bottom-4 flex justify-center pointer-events-none">
+        <div className="relative w-full max-w-[460px]">
+          <div className="flex h-16 items-center justify-between overflow-hidden rounded-[38px] bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-white shadow-[0_30px_60px_rgba(16,185,129,0.45)]">
+            {bottomNavItems.map((item) => {
+              const isActive = bottomAction === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={cn(
+                    'flex flex-1 flex-col items-center justify-center gap-1 rounded-[28px] px-2 py-1 text-[11px] font-semibold transition duration-200',
+                    isActive ? 'pointer-events-auto bg-white text-teal-600' : 'pointer-events-auto text-white/90 hover:text-white/95',
+                    'shadow-[0_2px_6px_rgba(15,23,42,0.18)]'
+                  )}
+                  onClick={() => {
+                    setBottomAction(item.key);
+                    item.action();
+                  }}
+                >
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-[18px] text-[20px]',
+                      isActive ? 'bg-white text-teal-600' : 'bg-white/15 text-white'
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setBottomAction('baocao');
+              handleCreateReport();
+            }}
+            aria-label="Tạo báo cáo mới"
+            className="pointer-events-auto absolute -top-8 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-white text-emerald-600 shadow-[0_20px_45px_rgba(16,185,129,0.45)]"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </div>
+      </div>
       {/* Modals */}
       <Modal
         isOpen={editModalOpen}
@@ -691,12 +995,79 @@ export default function ProfilePage() {
             placeholder="Nhập tên của bạn"
           />
 
-          <Input
-            label="Avatar (URL)"
-            value={editForm.avatar}
-            onChange={(e) => setEditForm((f) => ({ ...f, avatar: e.target.value }))}
-            placeholder="https://..."
-          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-medium text-text-muted">
+              <span>Avatar (ảnh mới)</span>
+              <span className="text-[11px]">Chấp nhận JPG/PNG up to 3MB</span>
+            </div>
+            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-4">
+              <label
+                htmlFor="avatar-upload"
+                className="cursor-pointer text-sm font-semibold text-primary"
+              >
+                {avatarFile ? avatarFile.name : 'Chọn ảnh từ thiết bị'}
+              </label>
+              <input
+                id="avatar-upload"
+                type="file"
+                className="hidden"
+                accept="image/png,image/jpeg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  if (file) {
+                    setAvatarFile(file);
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setAvatarPreview(reader.result as string);
+                      setEditForm((f) => ({ ...f, avatar: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span>Ảnh hiện tại</span>
+                {avatarPreview && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">xem được</span>
+                )}
+              </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          if (!avatarFile) {
+                            showToast('error', 'Chọn ảnh trước khi tải lên');
+                            return;
+                          }
+                          setAvatarUploading(true);
+                          const reader = new FileReader();
+                          reader.onloadend = async () => {
+                            try {
+                              const base64 = reader.result as string;
+                              const res = await fetch('/api/user/profile', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ avatar: base64 }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Không thể cập nhật ảnh');
+                              setState((s) => ({ ...s, user: data.user }));
+                              showToast('success', 'Ảnh đại diện đã được cập nhật');
+                              setAvatarFile(null);
+                            } catch (err: any) {
+                              showToast('error', err?.message || 'Không cập nhật được ảnh');
+                            } finally {
+                              setAvatarUploading(false);
+                            }
+                          };
+                          reader.readAsDataURL(avatarFile);
+                        }}
+                        isLoading={avatarUploading}
+                      >
+                        Tải lên
+                      </Button>
+            </div>
+          </div>
 
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
             <div className="h-12 w-12 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
@@ -806,7 +1177,7 @@ export default function ProfilePage() {
           )}
 
           {twofaStep === 'verify' && (
-            <div className="grid gap-4 md:grid-cols-[180px_1fr]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
               <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
                 {twofaInfo?.otpauthUrl ? (
                   <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
@@ -848,7 +1219,7 @@ export default function ProfilePage() {
                   <p className="text-xs text-warning mt-2">Lưu các mã này ở nơi an toàn; dùng khi mất thiết bị.</p>
                 </div>
 
-                <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
                   <Input
                     label="Nhập mã 6 số từ ứng dụng"
                     value={twofaCode}
@@ -897,7 +1268,7 @@ export default function ProfilePage() {
               </Card>
 
               {twofaInfo?.secret && (
-                <Card className="grid gap-4 md:grid-cols-[180px_1fr]">
+                <Card className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
                     {twofaInfo?.otpauthUrl ? (
                       <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
@@ -968,7 +1339,7 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {[
               {
                 key: 'google',

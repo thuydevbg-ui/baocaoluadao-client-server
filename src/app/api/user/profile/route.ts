@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import crypto from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
@@ -54,7 +56,25 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   }
 
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : undefined;
-  const avatar = typeof body.avatar === 'string' ? body.avatar.trim().slice(0, 500) : null;
+  let avatar: string | null = null;
+  if (typeof body.avatar === 'string' && body.avatar.trim()) {
+    const raw = body.avatar.trim();
+    if (raw.startsWith('data:image/')) {
+      const matches = raw.match(/^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/);
+      if (matches) {
+        const ext = matches[2] === 'jpeg' ? 'jpg' : matches[2];
+        const buffer = Buffer.from(matches[3], 'base64');
+        const uploadsDir = path.resolve(process.cwd(), 'public', 'uploads', 'avatars');
+        await fs.mkdir(uploadsDir, { recursive: true });
+        const fileName = `${crypto.randomUUID()}.${ext}`;
+        const target = path.join(uploadsDir, fileName);
+        await fs.writeFile(target, buffer);
+        avatar = `/uploads/avatars/${fileName}`;
+      }
+    } else if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      avatar = raw;
+    }
+  }
 
   if (!name && body.avatar === undefined) {
     return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
@@ -63,11 +83,10 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const db = getDb();
   await ensureUserInfra();
   await db.query(
-    `UPDATE users SET name = COALESCE(?, name), image = ? , updated_at = NOW() WHERE email = ? LIMIT 1`,
+    `UPDATE users SET name = COALESCE(?, name), image = COALESCE(?, image), updated_at = NOW() WHERE email = ? LIMIT 1`,
     [name, avatar, email.toLowerCase()]
   );
 
   const updated = await getUser(email.toLowerCase());
   return NextResponse.json({ success: true, user: updated });
 });
-

@@ -35,9 +35,10 @@ export async function POST(request: NextRequest) {
     status: body.status as AdminContentStatus,
   };
 
+  const author = auth?.email || 'admin';
   const created = createContent({
     ...data,
-    author: auth.email || 'admin',
+    author,
   });
 
   return NextResponse.json({ item: created }, { status: 201 });
