@@ -13,6 +13,7 @@ import { UserReportsTable, UserReportRow } from '@/components/dashboard/UserRepo
 import { WatchlistCard, WatchItem } from '@/components/dashboard/WatchlistCard';
 import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
 import { TrustScoreCard, TrustMetric } from '@/components/dashboard/TrustScoreCard';
+import { AdminContentManager } from '@/components/admin/AdminContentManager';
 import { FileText, Sparkles, Copy, Chrome, Facebook, Twitter, Send } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -553,37 +554,40 @@ export default function ProfilePage() {
           )}
 
           {status === 'authenticated' && user?.role === 'admin' && (
-            <Card className="border border-slate-200 bg-slate-50/70">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Quản trị viên</p>
-                  <h2 className="text-lg font-semibold text-text-main">Admin panel tại chỗ</h2>
-                  <p className="text-sm text-text-secondary">
-                    Xem nhanh trạng thái bài viết, bật tắt nội dung và mở dashboard tổng.
-                  </p>
-                </div>
-                <Button size="sm" variant="secondary" onClick={() => window.open('/admin', '_blank')}>
-                  Mở admin
-                </Button>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  { label: 'Bài viết cần duyệt', value: '12', action: '/admin/content/pages' },
-                  { label: 'Bản tin trạng thái', value: '3 lỗi', action: '/admin/seo-dashboard' },
-                  { label: 'Đăng tin mới', value: 'Soạn bài', action: '/admin/content/blog' },
-                  { label: 'Trạng thái hệ thống', value: 'Sẵn sàng', action: '/admin/settings' },
-                ].map((item) => (
-                  <div key={item.label} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{item.label}</p>
-                    <p className="text-lg font-bold text-text-main">{item.value}</p>
-                    <Link href={item.action} className="text-xs font-semibold text-primary hover:underline">
-                      Mở
-                    </Link>
+            <>
+              <Card className="border border-slate-200 bg-slate-50/70">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Quản trị viên</p>
+                    <h2 className="text-lg font-semibold text-text-main">Admin panel tại chỗ</h2>
+                    <p className="text-sm text-text-secondary">
+                      Xem nhanh trạng thái bài viết, bật tắt nội dung và mở dashboard tổng.
+                    </p>
                   </div>
-                ))}
+            <Button size="sm" variant="secondary" onClick={() => window.open('/admin', '_blank')}>
+              Mở admin
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: 'Bài viết cần duyệt', value: '12', action: '/admin/content/pages' },
+              { label: 'Bản tin trạng thái', value: '3 lỗi', action: '/admin/seo-dashboard' },
+              { label: 'Đăng tin mới', value: 'Soạn bài', action: '/admin/content/blog' },
+              { label: 'Trạng thái hệ thống', value: 'Sẵn sàng', action: '/admin/settings' },
+            ].map((item) => (
+              <div key={item.label} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{item.label}</p>
+                <p className="text-lg font-bold text-text-main">{item.value}</p>
+                <Link href={item.action} className="text-xs font-semibold text-primary hover:underline">
+                  Mở
+                </Link>
               </div>
-            </Card>
-          )}
+            ))}
+          </div>
+        </Card>
+        <AdminContentManager />
+      </>
+      )}
 
           {status === 'unauthenticated' && (
             <Card className="max-w-2xl mx-auto text-center space-y-4">
