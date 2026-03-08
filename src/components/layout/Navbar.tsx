@@ -23,7 +23,8 @@ export function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'admin';
+  const adminRoles = ['admin', 'super_admin', 'moderator'];
+  const isAdmin = adminRoles.includes(String(session?.user?.role || '').toLowerCase());
 
   const navItems = useMemo(
     () =>

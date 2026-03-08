@@ -553,7 +553,7 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {status === 'authenticated' && user?.role === 'admin' && (
+          {status === 'authenticated' && ['admin', 'super_admin', 'moderator'].includes(user?.role?.toLowerCase() ?? '') && (
             <>
               <Card className="border border-slate-200 bg-slate-50/70">
                 <div className="flex flex-wrap items-center justify-between gap-3">
