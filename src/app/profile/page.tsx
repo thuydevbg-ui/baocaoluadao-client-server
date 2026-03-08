@@ -552,6 +552,39 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {status === 'authenticated' && user?.role === 'admin' && (
+            <Card className="border border-slate-200 bg-slate-50/70">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Quản trị viên</p>
+                  <h2 className="text-lg font-semibold text-text-main">Admin panel tại chỗ</h2>
+                  <p className="text-sm text-text-secondary">
+                    Xem nhanh trạng thái bài viết, bật tắt nội dung và mở dashboard tổng.
+                  </p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => window.open('/admin', '_blank')}>
+                  Mở admin
+                </Button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: 'Bài viết cần duyệt', value: '12', action: '/admin/content/pages' },
+                  { label: 'Bản tin trạng thái', value: '3 lỗi', action: '/admin/seo-dashboard' },
+                  { label: 'Đăng tin mới', value: 'Soạn bài', action: '/admin/content/blog' },
+                  { label: 'Trạng thái hệ thống', value: 'Sẵn sàng', action: '/admin/settings' },
+                ].map((item) => (
+                  <div key={item.label} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{item.label}</p>
+                    <p className="text-lg font-bold text-text-main">{item.value}</p>
+                    <Link href={item.action} className="text-xs font-semibold text-primary hover:underline">
+                      Mở
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           {status === 'unauthenticated' && (
             <Card className="max-w-2xl mx-auto text-center space-y-4">
               <h2 className="text-xl font-semibold text-text-main">Bạn chưa đăng nhập</h2>

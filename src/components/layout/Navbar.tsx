@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User } from 'lucide-react';
+import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User, ShieldCheck } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { useSession } from 'next-auth/react';
 
 const navLinks = [
   { label: 'Trang chủ', href: '/', icon: Home },
@@ -21,6 +22,8 @@ const secondaryLinks = navLinks.slice(4);
 export function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
 
   const navItems = useMemo(
     () =>
@@ -47,8 +50,8 @@ export function Navbar() {
           <span className="text-text-main">ScamGuard</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-3">
-          {navItems.slice(0, 4).map((link) => (
+          <nav className="hidden md:flex items-center gap-3">
+            {navItems.slice(0, 4).map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -74,6 +77,12 @@ export function Navbar() {
           >
             <LifeBuoy className="h-4 w-4" /> FAQ
           </Link>
+          {isAdmin && (
+            <Link href="/admin" className="flex items-center gap-1 rounded-full border border-bg-border px-3 py-2 text-sm font-medium text-green-700 bg-emerald-50 hover:bg-emerald-100">
+              <ShieldCheck className="h-4 w-4" />
+              Admin
+            </Link>
+          )}
           <ThemeToggle className="ml-2" />
           <Link
             href="/profile"
@@ -186,6 +195,18 @@ export function Navbar() {
             <span className="text-sm font-medium text-text-secondary">Giao diện</span>
             <ThemeToggle className="ml-auto" />
           </div>
+          {isAdmin && (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm font-medium text-emerald-800 shadow-inner">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                <span>Admin panel</span>
+              </div>
+              <p className="text-xs text-emerald-700/80">Truy cập nhanh dashboard admin</p>
+              <Link href="/admin" className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-600">
+                Mở admin
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </header>
