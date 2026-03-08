@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, ShieldOff, KeyRound, Lock, Link, Clock } from 'lucide-react';
+import { ShieldCheck, ShieldOff, KeyRound, Lock, Link, Clock, Mail } from 'lucide-react';
 import { Badge, Button, Card } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -58,7 +58,8 @@ export function SecurityStatusCard({ score, checks }: SecurityStatusProps) {
                 {item.key === 'twofa' && <KeyRound className="h-4 w-4" />}
                 {item.key === 'oauth' && <Link className="h-4 w-4" />}
                 {item.key === 'login' && <Clock className="h-4 w-4" />}
-                {!['password', 'twofa', 'oauth', 'login'].includes(item.key) && <ShieldOff className="h-4 w-4" />}
+                {item.key === 'email' && <Mail className="h-4 w-4" />}
+                {!['password', 'twofa', 'oauth', 'login', 'email'].includes(item.key) && <ShieldOff className="h-4 w-4" />}
               </span>
               <div>
                 <p className="text-sm font-semibold text-text-main">{item.label}</p>

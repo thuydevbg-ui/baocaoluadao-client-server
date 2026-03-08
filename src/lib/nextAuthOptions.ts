@@ -104,14 +104,18 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      if (account?.provider && user.email) {
-        const provider = account.provider as 'google' | 'facebook' | 'twitter';
+      if (
+        user.email &&
+        account &&
+        (account.provider === 'google' || account.provider === 'facebook' || account.provider === 'twitter')
+      ) {
+        const provider = account.provider;
         await upsertOAuthUser({
           email: user.email,
           name: user.name,
           image: user.image,
           provider,
-          providerAccountId: account.providerAccountId ?? account.id ?? null,
+          providerAccountId: account.providerAccountId ?? null,
         });
         await markOAuthLink(user.email, provider, true);
       }

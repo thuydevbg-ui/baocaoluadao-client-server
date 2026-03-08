@@ -7,14 +7,14 @@ import { useToast } from '@/components/ui/Toast';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
 import { Button, Card, Skeleton, Modal, Input, Badge } from '@/components/ui';
 import { UserOverviewCard } from '@/components/dashboard/UserOverviewCard';
-import { SecurityStatusCard } from '@/components/dashboard/SecurityStatusCard';
+import { SecurityStatusCard, type SecurityCheck } from '@/components/dashboard/SecurityStatusCard';
 import { RecentActivity, ActivityItem } from '@/components/dashboard/RecentActivity';
 import { UserReportsTable, UserReportRow } from '@/components/dashboard/UserReportsTable';
 import { WatchlistCard, WatchItem } from '@/components/dashboard/WatchlistCard';
 import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
 import { TrustScoreCard, TrustMetric } from '@/components/dashboard/TrustScoreCard';
-import { FileText, Sparkles, Copy } from 'lucide-react';
-import QRCode from 'qrcode.react';
+import { FileText, Sparkles, Copy, Chrome, Facebook, Twitter, Send } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface ProfileUser {
   id: string;
@@ -72,6 +72,7 @@ export default function ProfilePage() {
   const [emailDevCode, setEmailDevCode] = useState<string | null>(null);
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(0);
 
   const loadAll = async () => {
     if (status !== 'authenticated') return;
@@ -123,15 +124,33 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reloadKey]);
 
+  const user = state.user;
+  const security = state.security;
+  const oauthLabelMap: Record<string, string> = {
+    google: 'Google',
+    facebook: 'Facebook',
+    twitter: 'X (Twitter)',
+    telegram: 'Telegram',
+  };
+  const linkedOauthProviderKey = (security?.oauthProvider || '').toLowerCase();
+  const linkedOauthLabel = oauthLabelMap[linkedOauthProviderKey] || 'OAuth';
+  const selectedOauthLabel = oauthLabelMap[oauthProvider] || 'OAuth';
+  const selectedOauthIcon =
+    oauthProvider === 'facebook'
+      ? <Facebook className="h-4 w-4" />
+      : oauthProvider === 'twitter'
+        ? <Twitter className="h-4 w-4" />
+        : oauthProvider === 'telegram'
+          ? <Send className="h-4 w-4" />
+          : <Chrome className="h-4 w-4" />;
+
   useEffect(() => {
-    if (oauthModalOpen && security?.oauthProvider) {
-      const key = security.oauthProvider.toLowerCase() as 'google' | 'facebook' | 'twitter' | 'telegram';
+    if (!oauthModalOpen) return;
+    const key = (security?.oauthProvider || '').toLowerCase();
+    if (key === 'google' || key === 'facebook' || key === 'twitter' || key === 'telegram') {
       setOauthProvider(key);
     }
   }, [oauthModalOpen, security?.oauthProvider]);
-
-  const user = state.user;
-  const security = state.security;
 
   const stats = useMemo(() => ({
     reportsSubmitted: state.reports.length,
@@ -139,12 +158,6 @@ export default function ProfilePage() {
     activeAlerts: state.watchlist.length,
     trustScore: security?.securityScore ?? user?.securityScore ?? 72,
   }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
-  const oauthLabel = useMemo(() => {
-    const key = (security?.oauthProvider || 'google').toLowerCase();
-    const map: Record<string, string> = { google: 'Google', facebook: 'Facebook', twitter: 'X (Twitter)', telegram: 'Telegram' };
-    return map[key] || 'Google';
-  }, [security?.oauthProvider]);
-
   const handleSubmitPassword = async () => {
     if (!passwordForm.next || passwordForm.next.length < 8) {
       showToast('error', 'Mật khẩu mới tối thiểu 8 ký tự');
@@ -201,6 +214,14 @@ export default function ProfilePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [twofaModalOpen]);
+
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setEmailCooldown((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [emailCooldown]);
 
   const handleStartTwofaSetup = async () => {
     try {
@@ -291,13 +312,20 @@ export default function ProfilePage() {
   };
 
   const handleSendEmailCode = async () => {
+    if (emailCooldown > 0) return;
     try {
       setSendingCode(true);
       const res = await fetch('/api/user/security/email/send', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không gửi được mã');
+      if (!res.ok) {
+        if (res.status === 429 && data.retryAfter) {
+          setEmailCooldown(Number(data.retryAfter));
+        }
+        throw new Error(data.error || 'Không gửi được mã');
+      }
       setEmailDevCode(data.devCode || null);
-      showToast('success', 'Đã gửi mã xác minh');
+      setEmailCooldown(60);
+      showToast('success', 'Đã gửi mã xác minh (hiệu lực 10 phút)');
     } catch (err: any) {
       showToast('error', err?.message || 'Không gửi được mã');
     } finally {
@@ -331,7 +359,7 @@ export default function ProfilePage() {
     }
   };
 
-  const checks = useMemo(() => ([
+  const checks = useMemo<SecurityCheck[]>(() => ([
     {
       key: 'password',
       label: 'Mật khẩu',
@@ -354,7 +382,7 @@ export default function ProfilePage() {
       key: 'oauth',
       label: 'Liên kết OAuth',
       status: security?.oauthConnected ? 'ok' : 'warn',
-      detail: security?.oauthConnected ? `Đã liên kết ${oauthLabel}` : 'Chưa liên kết',
+      detail: security?.oauthConnected ? `Đã liên kết ${linkedOauthLabel}` : 'Chưa liên kết',
       actionLabel: security?.oauthConnected ? 'Quản lý' : 'Liên kết',
       onAction: () => setOauthModalOpen(true),
       disabled: actionLoading?.startsWith('oauth') ?? false,
@@ -601,7 +629,7 @@ export default function ProfilePage() {
             <div className="grid gap-4 md:grid-cols-[180px_1fr]">
               <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
                 {twofaInfo?.otpauthUrl ? (
-                  <QRCode value={twofaInfo.otpauthUrl} size={150} />
+                  <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
                 ) : (
                   <div className="text-sm text-text-secondary">Không có QR</div>
                 )}
@@ -690,7 +718,7 @@ export default function ProfilePage() {
                 <Card className="grid gap-4 md:grid-cols-[180px_1fr]">
                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
                     {twofaInfo?.otpauthUrl ? (
-                      <QRCode value={twofaInfo.otpauthUrl} size={150} />
+                      <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
                     ) : (
                       <div className="text-sm text-text-secondary">Không có QR</div>
                     )}
@@ -748,41 +776,84 @@ export default function ProfilePage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Kết nối tài khoản Google để đăng nhập nhanh và bảo vệ tài khoản. Nhập mật khẩu để xác thực trước khi liên kết / hủy liên kết.
+            Kết nối tài khoản mạng xã hội để đăng nhập nhanh và tăng bảo mật. Nhập mật khẩu để xác thực trước khi liên kết / hủy liên kết.
           </p>
+          {security?.oauthConnected && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
+              Đang liên kết: <span className="font-semibold text-text-main">{linkedOauthLabel}</span>
+            </div>
+          )}
 
           <div className="grid gap-3 md:grid-cols-2">
             {[
-              { key: 'google', title: 'Google', desc: 'Đăng nhập bằng Google OAuth', enabled: true },
-              { key: 'facebook', title: 'Facebook', desc: 'Đăng nhập bằng Facebook OAuth', enabled: true },
-              { key: 'twitter', title: 'X (Twitter)', desc: 'Đăng nhập bằng X OAuth 2.0', enabled: true },
-              { key: 'telegram', title: 'Telegram (sắp có)', desc: 'Kết nối bot/Telegram Login', enabled: false },
-            ].map((item) => (
-              <Card
-                key={item.key}
-                className={`space-y-2 border ${oauthProvider === item.key ? 'border-primary' : 'border-bg-border'} ${!item.enabled ? 'opacity-60' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-text-main">{item.title}</p>
-                    <p className="text-xs text-text-muted">{item.desc}</p>
+              {
+                key: 'google',
+                title: 'Google',
+                desc: 'Đăng nhập bằng Google OAuth',
+                enabled: true,
+                icon: <Chrome className="h-5 w-5 text-[#EA4335]" />,
+                iconBg: 'bg-[#EA4335]/10',
+              },
+              {
+                key: 'facebook',
+                title: 'Facebook',
+                desc: 'Đăng nhập bằng Facebook OAuth',
+                enabled: true,
+                icon: <Facebook className="h-5 w-5 text-[#1877F2]" />,
+                iconBg: 'bg-[#1877F2]/10',
+              },
+              {
+                key: 'twitter',
+                title: 'X (Twitter)',
+                desc: 'Đăng nhập bằng X OAuth 2.0',
+                enabled: true,
+                icon: <Twitter className="h-5 w-5 text-sky-600" />,
+                iconBg: 'bg-sky-500/10',
+              },
+              {
+                key: 'telegram',
+                title: 'Telegram (sắp có)',
+                desc: 'Kết nối bot/Telegram Login',
+                enabled: false,
+                icon: <Send className="h-5 w-5 text-cyan-600" />,
+                iconBg: 'bg-cyan-500/10',
+              },
+            ].map((item) => {
+              const isLinked = Boolean(security?.oauthConnected) && linkedOauthProviderKey === item.key;
+              return (
+                <Card
+                  key={item.key}
+                  className={`space-y-2 border p-4 ${oauthProvider === item.key ? 'border-primary/50 ring-2 ring-primary/10' : 'border-bg-border hover:border-slate-300'} ${!item.enabled ? 'opacity-60' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl ${item.iconBg}`}>
+                        {item.icon}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-text-main">{item.title}</p>
+                        <p className="text-xs text-text-muted">{item.desc}</p>
+                      </div>
+                    </div>
+                    <input
+                      type="radio"
+                      name="oauth-provider"
+                      checked={oauthProvider === item.key}
+                      onChange={() => setOauthProvider(item.key as any)}
+                      className="h-4 w-4 accent-primary"
+                      disabled={!item.enabled}
+                    />
                   </div>
-                  <input
-                    type="radio"
-                    name="oauth-provider"
-                    checked={oauthProvider === item.key}
-                    onChange={() => setOauthProvider(item.key as any)}
-                    className="h-4 w-4 accent-primary"
-                    disabled={!item.enabled}
-                  />
-                </div>
-                {security?.oauthConnected && oauthProvider === item.key ? (
-                  <Badge variant="success">Đã liên kết</Badge>
-                ) : (
-                  <Badge variant={item.enabled ? 'warning' : 'default'}>{item.enabled ? 'Chưa liên kết' : 'Sắp có'}</Badge>
-                )}
-              </Card>
-            ))}
+                  {isLinked ? (
+                    <Badge variant="success">Đã liên kết</Badge>
+                  ) : (
+                    <Badge variant={item.enabled ? 'warning' : 'default'}>
+                      {item.enabled ? 'Chưa liên kết' : 'Sắp có'}
+                    </Badge>
+                  )}
+                </Card>
+              );
+            })}
           </div>
 
           <Input
@@ -809,8 +880,9 @@ export default function ProfilePage() {
                 onClick={() => handleSubmitOAuth(true)}
                 isLoading={actionLoading === 'oauthConnect'}
                 disabled={!oauthPassword || oauthProvider === 'telegram'}
+                leftIcon={selectedOauthIcon}
               >
-                Liên kết {oauthLabel}
+                Liên kết {selectedOauthLabel}
               </Button>
             )}
           </div>
@@ -823,39 +895,52 @@ export default function ProfilePage() {
         title="Xác minh email"
         size="sm"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-text-secondary">
-            Gửi mã xác minh tới email của bạn và nhập mã 6 chữ số để hoàn tất.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={handleSendEmailCode}
-              isLoading={sendingCode}
-            >
-              Gửi mã
-            </Button>
-            {emailDevCode && (
-              <span className="text-xs text-warning">Mã dev: {emailDevCode}</span>
-            )}
+        {security?.emailVerified ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
+              Email của bạn đã được xác minh. Nếu bạn thay đổi email trong tương lai, hệ thống sẽ yêu cầu xác minh lại.
+            </div>
+            <div className="flex justify-end">
+              <Button variant="ghost" onClick={() => setEmailModalOpen(false)}>Đóng</Button>
+            </div>
           </div>
-          <Input
-            label="Mã xác minh"
-            value={emailCode}
-            onChange={(e) => setEmailCode(e.target.value)}
-            placeholder="Nhập mã 6 chữ số"
-          />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setEmailModalOpen(false)}>Đóng</Button>
-            <Button
-              onClick={handleVerifyEmailCode}
-              isLoading={verifyingCode}
-              disabled={!emailCode}
-            >
-              Xác minh
-            </Button>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Gửi mã xác minh tới email của bạn và nhập mã 6 chữ số để hoàn tất.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={handleSendEmailCode}
+                isLoading={sendingCode}
+                disabled={emailCooldown > 0}
+              >
+                {emailCooldown > 0 ? `Gửi lại (${emailCooldown}s)` : 'Gửi mã'}
+              </Button>
+              {emailDevCode && (
+                <span className="text-xs text-warning">Mã dev: {emailDevCode}</span>
+              )}
+              <span className="text-xs text-text-muted">Hiệu lực 10 phút</span>
+            </div>
+            <Input
+              label="Mã xác minh"
+              value={emailCode}
+              onChange={(e) => setEmailCode(e.target.value)}
+              placeholder="Nhập mã 6 chữ số"
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setEmailModalOpen(false)}>Đóng</Button>
+              <Button
+                onClick={handleVerifyEmailCode}
+                isLoading={verifyingCode}
+                disabled={!emailCode}
+              >
+                Xác minh
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
 
       <Footer />

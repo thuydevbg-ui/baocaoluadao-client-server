@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,12 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.query(`UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?`, [hashed, user.id]);
 
+  await db
+    .query(
+      `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
+      [crypto.randomUUID(), user.id, 'Đổi mật khẩu']
+    )
+    .catch(() => {});
+
   return NextResponse.json({ success: true, message: 'Đổi mật khẩu thành công' });
 });
-

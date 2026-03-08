@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export const POST = withApiObservability(async (req: NextRequest) => {
   await ensureUserInfra();
   const db = getDb();
   const [rows] = await db.query<any[]>(
-    `SELECT email_verification_code AS code, email_verification_expires AS exp FROM users WHERE email = ? LIMIT 1`,
+    `SELECT id, email_verification_code AS code, email_verification_expires AS exp FROM users WHERE email = ? LIMIT 1`,
     [session.user.email]
   );
   const user = rows?.[0];
@@ -33,6 +34,15 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     `UPDATE users SET email_verified = 1, email_verification_code = NULL, email_verification_expires = NULL WHERE email = ?`,
     [session.user.email]
   );
+
+  if (user?.id) {
+    await db
+      .query(
+        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
+        [crypto.randomUUID(), user.id, 'Xác minh email thành công']
+      )
+      .catch(() => {});
+  }
 
   return NextResponse.json({ success: true, message: 'Xác minh email thành công' });
 });

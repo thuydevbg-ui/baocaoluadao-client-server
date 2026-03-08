@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,10 @@ export const POST = withApiObservability(async (req: NextRequest) => {
 
   await ensureUserInfra();
   const db = getDb();
-  const [rows] = await db.query<any[]>(`SELECT password_hash FROM users WHERE email = ? LIMIT 1`, [session.user.email]);
+  const [rows] = await db.query<any[]>(
+    `SELECT id, password_hash FROM users WHERE email = ? LIMIT 1`,
+    [session.user.email]
+  );
   const record = rows?.[0];
   if (record?.password_hash) {
     const ok = await bcrypt.compare(body.password || '', record.password_hash);
@@ -28,6 +32,15 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     `UPDATE users SET twofa_enabled = 0, twofa_secret = NULL, twofa_backup_codes = NULL, updated_at = NOW() WHERE email = ?`,
     [session.user.email]
   );
+
+  if (record?.id) {
+    await db
+      .query(
+        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
+        [crypto.randomUUID(), record.id, 'Tắt 2FA']
+      )
+      .catch(() => {});
+  }
 
   return NextResponse.json({ success: true });
 });

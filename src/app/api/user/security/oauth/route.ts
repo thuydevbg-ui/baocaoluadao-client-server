@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,10 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
 
   await ensureUserInfra();
   const db = getDb();
-  const [rows] = await db.query<any[]>(`SELECT password_hash FROM users WHERE email = ? LIMIT 1`, [session.user.email]);
+  const [rows] = await db.query<any[]>(
+    `SELECT id, password_hash FROM users WHERE email = ? LIMIT 1`,
+    [session.user.email]
+  );
   const record = rows?.[0];
   if (record?.password_hash) {
     const ok = await bcrypt.compare(body.password || '', record.password_hash);
@@ -31,6 +35,17 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
     `UPDATE users SET oauth_connected = ?, oauth_provider = ?, updated_at = NOW() WHERE email = ?`,
     [connected ? 1 : 0, connected ? provider : null, session.user.email]
   );
+
+  if (record?.id) {
+    const action = connected ? 'Liên kết' : 'Hủy liên kết';
+    const providerLabel = provider === 'twitter' ? 'X (Twitter)' : provider === 'google' ? 'Google' : provider === 'facebook' ? 'Facebook' : provider;
+    await db
+      .query(
+        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
+        [crypto.randomUUID(), record.id, `${action} OAuth: ${providerLabel}`]
+      )
+      .catch(() => {});
+  }
 
   return NextResponse.json({ success: true, connected });
 });

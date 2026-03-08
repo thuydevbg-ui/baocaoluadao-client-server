@@ -23,6 +23,15 @@ export interface SiteSettings {
   twitterClientSecret: string | null;
   telegramAuthEnabled: boolean;
   telegramBotToken: string | null;
+  smtpHost: string | null;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpRequireTLS: boolean;
+  smtpAuthEnabled: boolean;
+  smtpUser: string | null;
+  smtpPasswordEnc: string | null;
+  smtpFromName: string | null;
+  smtpFromEmail: string | null;
   allowedDocsIps: string | null; // comma or newline separated
   updatedAt: string;
 }
@@ -37,6 +46,7 @@ export interface PublicSiteSettings
     | 'twitterClientId'
     | 'twitterClientSecret'
     | 'telegramBotToken'
+    | 'smtpPasswordEnc'
   > {
   googleClientIdSet: boolean;
   googleClientSecretSet: boolean;
@@ -45,6 +55,7 @@ export interface PublicSiteSettings
   twitterClientIdSet: boolean;
   twitterClientSecretSet: boolean;
   telegramBotTokenSet: boolean;
+  smtpPasswordSet: boolean;
   googleClientId?: never;
   googleClientSecret?: never;
   facebookClientId?: never;
@@ -52,6 +63,7 @@ export interface PublicSiteSettings
   twitterClientId?: never;
   twitterClientSecret?: never;
   telegramBotToken?: never;
+  smtpPasswordEnc?: never;
 }
 
 const defaultSettings: SiteSettings = {
@@ -77,6 +89,15 @@ const defaultSettings: SiteSettings = {
   twitterClientSecret: null,
   telegramAuthEnabled: false,
   telegramBotToken: null,
+  smtpHost: null,
+  smtpPort: 587,
+  smtpSecure: false,
+  smtpRequireTLS: true,
+  smtpAuthEnabled: true,
+  smtpUser: null,
+  smtpPasswordEnc: null,
+  smtpFromName: 'ScamGuard',
+  smtpFromEmail: null,
   allowedDocsIps: null,
   updatedAt: new Date().toISOString(),
 };
@@ -117,6 +138,15 @@ async function ensureTable() {
       twitterClientSecret VARCHAR(300) NULL,
       telegramAuthEnabled TINYINT(1) NOT NULL DEFAULT 0,
       telegramBotToken VARCHAR(300) NULL,
+      smtpHost VARCHAR(191) NULL,
+      smtpPort INT NOT NULL DEFAULT 587,
+      smtpSecure TINYINT(1) NOT NULL DEFAULT 0,
+      smtpRequireTLS TINYINT(1) NOT NULL DEFAULT 1,
+      smtpAuthEnabled TINYINT(1) NOT NULL DEFAULT 1,
+      smtpUser VARCHAR(191) NULL,
+      smtpPasswordEnc TEXT NULL,
+      smtpFromName VARCHAR(120) NULL,
+      smtpFromEmail VARCHAR(191) NULL,
       allowedDocsIps TEXT NULL,
       updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -149,8 +179,35 @@ async function ensureTable() {
     `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS telegramBotToken VARCHAR(300) NULL AFTER telegramAuthEnabled`
   ).catch(() => {});
   await db.query(
-    `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, allowedDocsIps, updatedAt)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpHost VARCHAR(191) NULL AFTER telegramBotToken`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpPort INT NOT NULL DEFAULT 587 AFTER smtpHost`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpSecure TINYINT(1) NOT NULL DEFAULT 0 AFTER smtpPort`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpRequireTLS TINYINT(1) NOT NULL DEFAULT 1 AFTER smtpSecure`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpAuthEnabled TINYINT(1) NOT NULL DEFAULT 1 AFTER smtpRequireTLS`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpUser VARCHAR(191) NULL AFTER smtpAuthEnabled`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpPasswordEnc TEXT NULL AFTER smtpUser`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpFromName VARCHAR(120) NULL AFTER smtpPasswordEnc`
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpFromEmail VARCHAR(191) NULL AFTER smtpFromName`
+  ).catch(() => {});
+  await db.query(
+    `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, smtpHost, smtpPort, smtpSecure, smtpRequireTLS, smtpAuthEnabled, smtpUser, smtpPasswordEnc, smtpFromName, smtpFromEmail, allowedDocsIps, updatedAt)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       defaultSettings.siteName,
       defaultSettings.siteDescription,
@@ -174,6 +231,15 @@ async function ensureTable() {
       defaultSettings.twitterClientSecret,
       defaultSettings.telegramAuthEnabled,
       defaultSettings.telegramBotToken,
+      defaultSettings.smtpHost,
+      defaultSettings.smtpPort,
+      defaultSettings.smtpSecure,
+      defaultSettings.smtpRequireTLS,
+      defaultSettings.smtpAuthEnabled,
+      defaultSettings.smtpUser,
+      defaultSettings.smtpPasswordEnc,
+      defaultSettings.smtpFromName,
+      defaultSettings.smtpFromEmail,
       defaultSettings.allowedDocsIps,
     ]
   );
@@ -203,6 +269,15 @@ function mapRowToSettings(row: any): SiteSettings {
     twitterClientSecret: row.twitterClientSecret ?? null,
     telegramAuthEnabled: Boolean(row.telegramAuthEnabled),
     telegramBotToken: row.telegramBotToken ?? null,
+    smtpHost: row.smtpHost ?? null,
+    smtpPort: Number(row.smtpPort ?? defaultSettings.smtpPort),
+    smtpSecure: Boolean(row.smtpSecure),
+    smtpRequireTLS: Boolean(row.smtpRequireTLS ?? defaultSettings.smtpRequireTLS),
+    smtpAuthEnabled: Boolean(row.smtpAuthEnabled ?? defaultSettings.smtpAuthEnabled),
+    smtpUser: row.smtpUser ?? null,
+    smtpPasswordEnc: row.smtpPasswordEnc ?? null,
+    smtpFromName: row.smtpFromName ?? defaultSettings.smtpFromName,
+    smtpFromEmail: row.smtpFromEmail ?? null,
     allowedDocsIps: row.allowedDocsIps ?? null,
     updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : defaultSettings.updatedAt,
   };
@@ -238,6 +313,7 @@ export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
     twitterClientIdSet: Boolean(settings.twitterClientId),
     twitterClientSecretSet: Boolean(settings.twitterClientSecret),
     telegramBotTokenSet: Boolean(settings.telegramBotToken),
+    smtpPasswordSet: Boolean(settings.smtpPasswordEnc),
     googleClientId: undefined as never,
     googleClientSecret: undefined as never,
     facebookClientId: undefined as never,
@@ -245,6 +321,7 @@ export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
     twitterClientId: undefined as never,
     twitterClientSecret: undefined as never,
     telegramBotToken: undefined as never,
+    smtpPasswordEnc: undefined as never,
   };
 }
 
@@ -345,6 +422,33 @@ export async function updateSiteSettings(
       typeof partial.telegramBotToken === 'string'
         ? sanitizeString(partial.telegramBotToken, 300) || null
         : current.telegramBotToken,
+    smtpHost:
+      typeof partial.smtpHost === 'string' ? sanitizeString(partial.smtpHost, 191) || null : current.smtpHost,
+    smtpPort:
+      typeof partial.smtpPort === 'number'
+        ? Math.max(1, Math.min(65535, Math.floor(partial.smtpPort)))
+        : current.smtpPort,
+    smtpSecure: typeof partial.smtpSecure === 'boolean' ? partial.smtpSecure : current.smtpSecure,
+    smtpRequireTLS:
+      typeof partial.smtpRequireTLS === 'boolean' ? partial.smtpRequireTLS : current.smtpRequireTLS,
+    smtpAuthEnabled:
+      typeof partial.smtpAuthEnabled === 'boolean' ? partial.smtpAuthEnabled : current.smtpAuthEnabled,
+    smtpUser:
+      typeof partial.smtpUser === 'string' ? sanitizeString(partial.smtpUser, 191) || null : current.smtpUser,
+    smtpPasswordEnc:
+      typeof partial.smtpPasswordEnc === 'string'
+        ? sanitizeString(partial.smtpPasswordEnc, 5000) || null
+        : partial.smtpPasswordEnc === null
+          ? null
+          : current.smtpPasswordEnc,
+    smtpFromName:
+      typeof partial.smtpFromName === 'string'
+        ? sanitizeString(partial.smtpFromName, 120) || null
+        : current.smtpFromName,
+    smtpFromEmail:
+      typeof partial.smtpFromEmail === 'string'
+        ? sanitizeString(partial.smtpFromEmail, 191) || null
+        : current.smtpFromEmail,
     updatedAt: new Date().toISOString(),
   };
 
@@ -361,6 +465,8 @@ export async function updateSiteSettings(
         facebookAuthEnabled=?, facebookClientId=?, facebookClientSecret=?,
         twitterAuthEnabled=?, twitterClientId=?, twitterClientSecret=?,
         telegramAuthEnabled=?, telegramBotToken=?,
+        smtpHost=?, smtpPort=?, smtpSecure=?, smtpRequireTLS=?, smtpAuthEnabled=?,
+        smtpUser=?, smtpPasswordEnc=?, smtpFromName=?, smtpFromEmail=?,
         allowedDocsIps=?, updatedAt=NOW()
        WHERE id=1`,
       [
@@ -386,6 +492,15 @@ export async function updateSiteSettings(
         next.twitterClientSecret,
         next.telegramAuthEnabled,
         next.telegramBotToken,
+        next.smtpHost,
+        next.smtpPort,
+        next.smtpSecure,
+        next.smtpRequireTLS,
+        next.smtpAuthEnabled,
+        next.smtpUser,
+        next.smtpPasswordEnc,
+        next.smtpFromName,
+        next.smtpFromEmail,
         next.allowedDocsIps,
       ]
     );

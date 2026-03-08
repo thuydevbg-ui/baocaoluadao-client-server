@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { RowDataPacket } from 'mysql2/promise';
 import { getDb } from './db';
+import { ensureUserInfra } from './userInfra';
 
 export type AuthProvider = 'credentials' | 'google' | 'facebook' | 'twitter' | 'telegram' | 'unknown';
 
@@ -67,12 +68,13 @@ export async function createUserWithPassword(options: {
   passwordHash: string;
 }): Promise<UserRecord> {
   const db = getDb();
+  await ensureUserInfra();
   const id = newId();
   const normalizedEmail = options.email.trim().toLowerCase();
 
   await db.query(
-    `INSERT INTO users (id, email, name, password_hash, provider, role, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'credentials', 'user', NOW(), NOW())`,
+    `INSERT INTO users (id, email, name, password_hash, provider, role, email_verified, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'credentials', 'user', 0, NOW(), NOW())`,
     [id, normalizedEmail, options.name.trim(), options.passwordHash]
   );
 
@@ -87,12 +89,19 @@ export async function upsertOAuthUser(options: {
   provider: AuthProvider;
 }): Promise<UserRecord> {
   const db = getDb();
+  await ensureUserInfra();
   const normalizedEmail = options.email.trim().toLowerCase();
   const existing = await findUserByEmail(normalizedEmail);
 
   if (existing) {
     await db.query(
-      `UPDATE users SET name = COALESCE(?, name), image = COALESCE(?, image), provider = ?, updated_at = NOW() WHERE id = ?`,
+      `UPDATE users
+       SET name = COALESCE(?, name),
+           image = COALESCE(?, image),
+           provider = ?,
+           email_verified = 1,
+           updated_at = NOW()
+       WHERE id = ?`,
       [options.name?.trim() || existing.name, options.image || existing.image, options.provider, existing.id]
     );
 
@@ -105,8 +114,8 @@ export async function upsertOAuthUser(options: {
 
   const id = newId();
   await db.query(
-    `INSERT INTO users (id, email, name, image, provider, role, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'user', NOW(), NOW())`,
+    `INSERT INTO users (id, email, name, image, provider, role, email_verified, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'user', 1, NOW(), NOW())`,
     [id, normalizedEmail, options.name?.trim() || normalizedEmail, options.image || null, options.provider]
   );
 

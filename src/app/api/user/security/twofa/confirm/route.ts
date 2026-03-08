@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import bcrypt from 'bcrypt';
-import { authenticator } from 'otplib';
+import { verifySync } from 'otplib';
 import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export const POST = withApiObservability(async (req: NextRequest) => {
   await ensureUserInfra();
   const db = getDb();
   const [rows] = await db.query<any[]>(
-    `SELECT password_hash, twofa_secret, twofa_enabled FROM users WHERE email = ? LIMIT 1`,
+    `SELECT id, password_hash, twofa_secret, twofa_enabled FROM users WHERE email = ? LIMIT 1`,
     [session.user.email]
   );
   const record = rows?.[0];
@@ -33,13 +34,22 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     if (!ok) return NextResponse.json({ success: false, error: 'Mật khẩu xác thực không đúng' }, { status: 400 });
   }
 
-  const valid = authenticator.check(code, record.twofa_secret);
-  if (!valid) return NextResponse.json({ success: false, error: 'Mã 2FA không đúng' }, { status: 400 });
+  const result = verifySync({ secret: record.twofa_secret, token: code });
+  if (!result.valid) return NextResponse.json({ success: false, error: 'Mã 2FA không đúng' }, { status: 400 });
 
   await db.query(
     `UPDATE users SET twofa_enabled = 1, updated_at = NOW() WHERE email = ?`,
     [session.user.email]
   );
+
+  if (record?.id) {
+    await db
+      .query(
+        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
+        [crypto.randomUUID(), record.id, 'Bật 2FA']
+      )
+      .catch(() => {});
+  }
 
   return NextResponse.json({ success: true });
 });

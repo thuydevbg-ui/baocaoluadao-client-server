@@ -2,11 +2,15 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAuthValidated, requireRole } from '@/lib/adminApiAuth';
 import { getPublicSiteSettings, updateSiteSettings } from '@/lib/siteSettings';
+import { encryptSecret } from '@/lib/secretCrypto';
 
 export const GET = withApiObservability(async (request: NextRequest) => {
   const auth = await getAdminAuthValidated(request);
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!requireRole(auth, ['super_admin', 'admin'])) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 
   return NextResponse.json({
@@ -20,9 +24,22 @@ export const PUT = withApiObservability(async (request: NextRequest) => {
   if (!auth) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
+  if (!requireRole(auth, ['super_admin', 'admin'])) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const body = await request.json();
+    const smtpPort = typeof body.smtpPort === 'number' ? body.smtpPort : Number(body.smtpPort);
+    const smtpPasswordRaw = typeof body.smtpPassword === 'string' ? body.smtpPassword : undefined;
+    const smtpPasswordEnc =
+      smtpPasswordRaw === undefined
+        ? undefined
+        : smtpPasswordRaw === ''
+          ? null
+          : smtpPasswordRaw === '********'
+            ? undefined
+            : encryptSecret(smtpPasswordRaw);
 
     await updateSiteSettings({
       siteName: body.siteName,
@@ -47,6 +64,15 @@ export const PUT = withApiObservability(async (request: NextRequest) => {
       twitterClientSecret: body.twitterClientSecret,
       telegramAuthEnabled: body.telegramAuthEnabled,
       telegramBotToken: body.telegramBotToken,
+      smtpHost: body.smtpHost,
+      smtpPort: Number.isFinite(smtpPort) ? smtpPort : undefined,
+      smtpSecure: body.smtpSecure,
+      smtpRequireTLS: body.smtpRequireTLS,
+      smtpAuthEnabled: body.smtpAuthEnabled,
+      smtpUser: body.smtpUser,
+      smtpPasswordEnc,
+      smtpFromName: body.smtpFromName,
+      smtpFromEmail: body.smtpFromEmail,
       allowedDocsIps: body.allowedDocsIps,
     });
 

@@ -22,8 +22,7 @@ import {
   Activity,
   Menu,
   X,
-  BookOpen,
-  Server
+  BookOpen
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -88,7 +87,13 @@ const menuItems = [
   {
     title: 'Cài đặt',
     icon: Settings,
-    href: '/admin/settings'
+    href: '/admin/settings',
+    children: [
+      { title: 'Tổng quan', href: '/admin/settings' },
+      { title: 'Bảo mật & OAuth', href: '/admin/settings/security' },
+      { title: 'Email / SMTP', href: '/admin/settings/email' },
+      { title: 'API', href: '/admin/settings/api' },
+    ],
   },
   {
     title: 'API Docs',

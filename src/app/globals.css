@@ -133,6 +133,12 @@ body {
   }
 }
 
+/* Fix SVG spinner wobble (transform origin differs between browsers for inline SVG). */
+svg.animate-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 /* Risk level gradients */
 .risk-safe {
   background: linear-gradient(90deg, #16A34A, #22C55E);

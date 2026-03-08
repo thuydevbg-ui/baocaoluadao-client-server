@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { generateURI } from 'otplib';
 import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
@@ -19,7 +20,15 @@ export const GET = withApiObservability(async () => {
     [session.user.email]
   );
   const row = rows?.[0] || {};
-  const backupCodes: string[] = row.backups ? JSON.parse(row.backups) : [];
+  let backupCodes: string[] = [];
+  if (row.backups) {
+    try {
+      const parsed = JSON.parse(row.backups);
+      backupCodes = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      backupCodes = [];
+    }
+  }
 
   const hasPendingSetup = !row.enabled && row.secret;
 
@@ -31,9 +40,7 @@ export const GET = withApiObservability(async () => {
       // Hiển thị QR & backup codes cả khi đang bật để hỗ trợ đổi thiết bị
       backupCodes: row.secret ? backupCodes : [],
       secret: row.secret || undefined,
-      otpauthUrl: row.secret
-        ? `otpauth://totp/ScamGuard:${session.user.email}?secret=${row.secret}&issuer=ScamGuard`
-        : undefined,
+      otpauthUrl: row.secret ? generateURI({ issuer: 'ScamGuard', label: session.user.email, secret: row.secret }) : undefined,
     },
   });
 });
