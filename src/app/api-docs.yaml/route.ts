@@ -25,8 +25,23 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Not Found', { status: 404 });
   }
 
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
-  const scheme = (req.headers.get('x-forwarded-proto') || 'http').split(',')[0];
+  const canonicalBase =
+    process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const canonicalOrigin = (() => {
+    try {
+      return new URL(canonicalBase).origin;
+    } catch {
+      return 'http://localhost:3000';
+    }
+  })();
+
+  const host =
+    req.headers.get('x-forwarded-host') ||
+    req.headers.get('host') ||
+    new URL(canonicalOrigin).host;
+  const scheme =
+    (req.headers.get('x-forwarded-proto') || new URL(canonicalOrigin).protocol.replace(':', '')).split(',')[0] ||
+    'http';
   const serverUrl = `${scheme}://${host}`;
 
   const yaml = `openapi: 3.0.3
