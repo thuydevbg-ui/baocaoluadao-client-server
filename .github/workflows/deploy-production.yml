@@ -40,6 +40,8 @@ jobs:
         run: npm run lint
 
       - name: Build
+        env:
+          NODE_ENV: production
         run: npm run build
 
   deploy:
@@ -87,5 +89,6 @@ jobs:
           envs: AUTH_COOKIE_SECRET,ADMIN_EMAIL,ADMIN_PASSWORD_HASH
           script: |
             set -euo pipefail
+            export NODE_ENV=production
             cd /var/www/baocaoluadao.com
             ./deploy.sh

@@ -31,7 +31,7 @@ deploy_worktree() {
   ./scripts/run-migrations.sh
 
   echo "Building project..."
-  npm run build
+  NODE_ENV=production npm run build
 
   echo "Reloading PM2..."
   pm2 reload ecosystem.config.js --update-env
