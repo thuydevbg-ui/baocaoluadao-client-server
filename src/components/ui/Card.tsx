@@ -23,7 +23,7 @@ export function Card({ children, className, hover = false, onClick }: CardProps)
   return (
     <Component
       className={cn(
-        'bg-bg-card/92 border border-bg-border rounded-card p-5',
+        'bg-bg-card/92 border border-bg-border rounded-card p-4 sm:p-5',
         'surface-soft ring-1 ring-black/[0.03] dark:ring-white/[0.06]',
         'transition-colors duration-normal',
         hover && 'cursor-pointer hover:border-primary/35 hover:bg-bg-card/98',

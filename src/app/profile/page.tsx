@@ -456,27 +456,72 @@ export default function ProfilePage() {
   ];
 
   const handleDeleteReport = async (id: string) => {
-    await fetch(`/api/user/reports/${id}`, { method: 'DELETE' });
-    showToast('success', 'Đã xóa báo cáo');
-    setReloadKey((k) => k + 1);
+    try {
+      setActionLoading('deleteReport');
+      const res = await fetch(`/api/user/reports/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể xóa báo cáo');
+      showToast('success', 'Đã xóa báo cáo');
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể xóa báo cáo');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleAddWatch = async (target: string, type: string) => {
-    await fetch('/api/user/watchlist', { method: 'POST', body: JSON.stringify({ target, type }) });
-    showToast('success', 'Đã thêm vào watchlist');
-    setReloadKey((k) => k + 1);
+    try {
+      setActionLoading('addWatch');
+      const res = await fetch('/api/user/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, type }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể thêm watchlist');
+      showToast('success', 'Đã thêm vào watchlist');
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể thêm watchlist');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleRemoveWatch = async (id: string) => {
-    await fetch(`/api/user/watchlist/${id}`, { method: 'DELETE' });
-    showToast('success', 'Đã gỡ watchlist');
-    setReloadKey((k) => k + 1);
+    try {
+      setActionLoading('removeWatch');
+      const res = await fetch(`/api/user/watchlist/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể gỡ watchlist');
+      showToast('success', 'Đã gỡ watchlist');
+      setReloadKey((k) => k + 1);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể gỡ watchlist');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleNotifications = async (prefs: NotificationPrefs) => {
     setState((s) => ({ ...s, notifications: prefs }));
-    await fetch('/api/user/notifications', { method: 'PATCH', body: JSON.stringify(prefs) });
-    showToast('success', 'Đã lưu cài đặt thông báo');
+    try {
+      setActionLoading('notifications');
+      const res = await fetch('/api/user/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể lưu cài đặt');
+      showToast('success', 'Đã lưu cài đặt thông báo');
+    } catch (err: any) {
+      showToast('error', err?.message || 'Không thể lưu cài đặt thông báo');
+      setReloadKey((k) => k + 1);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleCreateReport = () => {
@@ -520,7 +565,7 @@ export default function ProfilePage() {
 
           {status === 'authenticated' && (
             <>
-              <section className="grid gap-4 lg:grid-cols-[2fr_1.1fr]">
+              <section className="grid gap-4 items-start lg:grid-cols-[2fr_1.1fr]">
                 {isLoading || !user ? (
                   <Skeleton variant="rectangular" height={180} />
                 ) : (
@@ -539,22 +584,22 @@ export default function ProfilePage() {
                   />
                 )}
 
-                <div ref={securitySectionRef}>
+                <div ref={securitySectionRef} id="security" className="scroll-mt-24">
                   <SecurityStatusCard score={security?.securityScore ?? stats.trustScore} checks={checks} />
                 </div>
               </section>
 
-              <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <section className="grid gap-4 items-start lg:grid-cols-[1.4fr_1fr]">
                 <RecentActivity items={state.activity} />
                 <TrustScoreCard score={stats.trustScore} metrics={trustMetrics} />
               </section>
 
-              <section className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+              <section className="grid gap-4 items-start lg:grid-cols-[1.6fr_1fr]">
                 <UserReportsTable reports={state.reports} onCreate={handleCreateReport} onDelete={handleDeleteReport} />
                 <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
               </section>
 
-              <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+              <section className="grid gap-4 items-start lg:grid-cols-[1fr_1fr]">
                 <NotificationSettings prefs={state.notifications} onChange={handleNotifications} />
                 <Card className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -562,7 +607,9 @@ export default function ProfilePage() {
                       <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Hướng dẫn</p>
                       <h2 className="text-lg font-semibold text-text-main">Tài nguyên an toàn</h2>
                     </div>
-                    <Button size="sm" variant="secondary" leftIcon={<Sparkles className="h-4 w-4" />}>Khám phá</Button>
+                    <Link href="/faq">
+                      <Button size="sm" variant="secondary" leftIcon={<Sparkles className="h-4 w-4" />}>Xem FAQ</Button>
+                    </Link>
                   </div>
                   <ul className="space-y-2 text-sm text-text-secondary">
                     <li>• Cách nhận biết website giả mạo</li>

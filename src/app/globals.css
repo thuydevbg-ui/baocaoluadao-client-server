@@ -135,8 +135,10 @@ body {
 
 /* Fix SVG spinner wobble (transform origin differs between browsers for inline SVG). */
 svg.animate-spin {
+  display: block;
   transform-box: fill-box;
   transform-origin: center;
+  will-change: transform;
 }
 
 /* Risk level gradients */
