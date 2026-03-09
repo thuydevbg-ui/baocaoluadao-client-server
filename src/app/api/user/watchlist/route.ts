@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import { adjustProfileSummary, ensureProfileSummary } from '@/lib/userSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,10 +51,11 @@ export const POST = withApiObservability(async (req: NextRequest) => {
   if (!target) return NextResponse.json({ success: false, error: 'target required' }, { status: 400 });
 
   const db = getDb();
+  await ensureProfileSummary(userId);
   await db.query(
     `INSERT INTO watchlist (id, userId, target, type, createdAt) VALUES (?, ?, ?, ?, NOW())`,
     [crypto.randomUUID(), userId, target, type]
   );
+  await adjustProfileSummary(userId, { watchlistCount: 1, alertCount: 1 });
   return NextResponse.json({ success: true });
 });
-

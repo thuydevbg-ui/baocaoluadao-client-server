@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import { adjustProfileSummary, ensureProfileSummary } from '@/lib/userSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,12 +64,14 @@ export const POST = withApiObservability(async (req: NextRequest) => {
 
   const db = getDb();
   const id = crypto.randomUUID();
+  await ensureProfileSummary(userId);
   await db.query(
     `INSERT INTO user_reports (id, userId, type, target, riskScore, status, createdAt)
      VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
     [id, userId, type, target, riskScore]
   );
 
+  await adjustProfileSummary(userId, { reportsCount: 1 });
   await db.query(
     `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'report', ?, NOW())`,
     [crypto.randomUUID(), userId, `Gửi báo cáo ${target}`]
@@ -76,4 +79,3 @@ export const POST = withApiObservability(async (req: NextRequest) => {
 
   return NextResponse.json({ success: true, id });
 });
-

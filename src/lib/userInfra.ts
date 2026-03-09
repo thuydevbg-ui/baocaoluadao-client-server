@@ -76,6 +76,18 @@ export async function ensureUserInfra() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  // profile summary
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_profile_summary (
+      userId CHAR(36) PRIMARY KEY,
+      reportsCount INT NOT NULL DEFAULT 0,
+      watchlistCount INT NOT NULL DEFAULT 0,
+      alertCount INT NOT NULL DEFAULT 0,
+      updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_user_profile_summary_user FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
   // notifications_settings
   await db.query(`
     CREATE TABLE IF NOT EXISTS notifications_settings (

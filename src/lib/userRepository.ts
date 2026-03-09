@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { RowDataPacket } from 'mysql2/promise';
 import { getDb } from './db';
 import { ensureUserInfra } from './userInfra';
+import { ensureProfileSummary } from './userSummary';
 
 export type AuthProvider = 'credentials' | 'google' | 'facebook' | 'twitter' | 'telegram' | 'unknown';
 
@@ -78,6 +79,8 @@ export async function createUserWithPassword(options: {
     [id, normalizedEmail, options.name.trim(), options.passwordHash]
   );
 
+  await ensureProfileSummary(id);
+
   return (await findUserByEmail(normalizedEmail))!;
 }
 
@@ -94,6 +97,7 @@ export async function upsertOAuthUser(options: {
   const existing = await findUserByEmail(normalizedEmail);
 
   if (existing) {
+    await ensureProfileSummary(existing.id);
     await db.query(
       `UPDATE users
        SET name = COALESCE(?, name),
@@ -118,6 +122,8 @@ export async function upsertOAuthUser(options: {
      VALUES (?, ?, ?, ?, ?, 'user', 1, NOW(), NOW())`,
     [id, normalizedEmail, options.name?.trim() || normalizedEmail, options.image || null, options.provider]
   );
+
+  await ensureProfileSummary(id);
 
   if (options.providerAccountId) {
     await ensureAccountLink(id, options.provider, options.providerAccountId);

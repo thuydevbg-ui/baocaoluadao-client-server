@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import { ensureProfileSummary, getProfileSummary } from '@/lib/userSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,13 +15,16 @@ export const GET = withApiObservability(async () => {
   const db = getDb();
   await ensureUserInfra();
   const [rows] = await db.query<any[]>(
-    `SELECT last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore,
+    `SELECT id, last_login_at AS recentLogin, password_hash AS passwordSet, image AS avatar, securityScore,
             twofa_enabled AS twofaEnabled, oauth_connected AS oauthConnected, oauth_provider AS oauthProvider,
             email_verified AS emailVerified
      FROM users WHERE email = ? LIMIT 1`,
     [session.user.email]
   );
   const row = rows?.[0];
+  if (!row) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  await ensureProfileSummary(row.id);
+  const summary = await getProfileSummary(row.id);
   const rawOauthProvider = String(row?.oauthProvider || '').toLowerCase();
   const oauthProviderValid = ['google', 'facebook', 'twitter', 'telegram'].includes(rawOauthProvider);
   const oauthConnected = Boolean(row?.oauthConnected) && oauthProviderValid;
@@ -44,6 +48,7 @@ export const GET = withApiObservability(async () => {
       oauthProvider: oauthConnected ? rawOauthProvider : null,
       recentLogin: row?.recentLogin || null,
       securityScore: row?.securityScore ?? 72,
+      summary,
     },
   });
 });

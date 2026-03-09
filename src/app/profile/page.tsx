@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { Footer, MobileNav } from '@/components/layout';
 import { Button, Card, Skeleton, Modal, Input, Badge } from '@/components/ui';
-import { NotificationSettings, NotificationPrefs } from '@/components/dashboard/NotificationSettings';
+import type { NotificationPrefs } from '@/components/dashboard/NotificationSettings';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { UserReportsTable } from '@/components/dashboard/UserReportsTable';
 import { WatchlistCard } from '@/components/dashboard/WatchlistCard';
@@ -52,6 +52,12 @@ interface ProfileUser {
   securityScore?: number;
 }
 
+type SummaryCounts = {
+  reports: number;
+  watchlist: number;
+  alerts: number;
+};
+
 interface SecurityStatus {
   passwordSet: boolean;
   emailVerified: boolean;
@@ -60,6 +66,11 @@ interface SecurityStatus {
   oauthProvider?: string | null;
   recentLogin: string | null;
   securityScore?: number;
+  summary?: {
+    reportsCount: number;
+    watchlistCount: number;
+    alertCount: number;
+  };
 }
 
 interface ApiState {
@@ -69,9 +80,11 @@ interface ApiState {
   reports: UserReportRow[];
   watchlist: WatchItem[];
   notifications: NotificationPrefs;
+  summary: SummaryCounts;
 }
 
 const defaultPrefs: NotificationPrefs = { emailAlerts: true, pushAlerts: false, weeklySummary: true };
+const defaultSummary: SummaryCounts = { reports: 0, watchlist: 0, alerts: 0 };
 type TwofaInfo = { enabled: boolean; secret?: string; otpauthUrl?: string; backupCodes?: string[] };
 
 type BottomNavKey = 'trangchu' | 'baocao' | 'antoan' | 'hoso';
@@ -117,7 +130,13 @@ export default function ProfilePage() {
   const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [state, setState] = useState<ApiState>({ activity: [], reports: [], watchlist: [], notifications: defaultPrefs });
+  const [state, setState] = useState<ApiState>({
+    activity: [],
+    reports: [],
+    watchlist: [],
+    notifications: defaultPrefs,
+    summary: defaultSummary,
+  });
   const [reloadKey, setReloadKey] = useState(0);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -157,53 +176,70 @@ export default function ProfilePage() {
     setAvatarFile(null);
   }, [editModalOpen, state.user?.avatar, state.user?.name]);
 
-  const loadAll = async () => {
-    if (status !== 'authenticated') return;
-    setLoading(true);
-    setError('');
-    try {
-      const [profileRes, securityRes, activityRes, reportsRes, watchlistRes, notifRes] = await Promise.all([
-        fetch('/api/user/profile', { cache: 'no-store' }),
-        fetch('/api/user/security-status', { cache: 'no-store' }),
-        fetch('/api/user/activity', { cache: 'no-store' }),
-        fetch('/api/user/reports', { cache: 'no-store' }),
-        fetch('/api/user/watchlist', { cache: 'no-store' }),
-        fetch('/api/user/notifications', { cache: 'no-store' }),
-      ]);
+  const loadPrimary = async () => {
+    const [profileRes, securityRes] = await Promise.all([
+      fetch('/api/user/profile', { cache: 'no-store' }),
+      fetch('/api/user/security-status', { cache: 'no-store' }),
+    ]);
+    const [profile, securityPayload] = await Promise.all([profileRes.json(), securityRes.json()]);
+    if (!profileRes.ok) throw new Error(profile.error || 'Tải hồ sơ thất bại');
+    if (!securityRes.ok) throw new Error(securityPayload.error || 'Tải bảo mật thất bại');
+    const securityData = securityPayload.security;
+    const summaryPayload = securityData?.summary;
+    const summaryData = {
+      reports: summaryPayload?.reportsCount ?? 0,
+      watchlist: summaryPayload?.watchlistCount ?? 0,
+      alerts: summaryPayload?.alertCount ?? summaryPayload?.watchlistCount ?? 0,
+    };
+    setState((prev) => ({
+      ...prev,
+      user: profile.user,
+      security: securityData,
+      summary: summaryData,
+    }));
+  };
 
-      const [profile, security, activity, reports, watchlist, notifications] = await Promise.all([
-        profileRes.json(),
-        securityRes.json(),
-        activityRes.json(),
-        reportsRes.json(),
-        watchlistRes.json(),
-        notifRes.json(),
-      ]);
-
-      if (!profileRes.ok) throw new Error(profile.error || 'Tải hồ sơ thất bại');
-      if (!securityRes.ok) throw new Error(security.error || 'Tải bảo mật thất bại');
-      if (!activityRes.ok) throw new Error(activity.error || 'Tải hoạt động thất bại');
-      if (!reportsRes.ok) throw new Error(reports.error || 'Tải báo cáo thất bại');
-      if (!watchlistRes.ok) throw new Error(watchlist.error || 'Tải watchlist thất bại');
-      if (!notifRes.ok) throw new Error(notifications.error || 'Tải thông báo thất bại');
-
-      setState({
-        user: profile.user,
-        security: security.security,
-        activity: activity.items || [],
-        reports: reports.items || [],
-        watchlist: watchlist.items || [],
-        notifications: notifications.settings || defaultPrefs,
-      });
-    } catch (err: any) {
-      setError(err?.message || 'Không thể tải dữ liệu');
-    } finally {
-      setLoading(false);
-    }
+  const loadSecondary = async () => {
+    const [activityRes, reportsRes, watchlistRes, notifRes] = await Promise.all([
+      fetch('/api/user/activity', { cache: 'no-store' }),
+      fetch('/api/user/reports', { cache: 'no-store' }),
+      fetch('/api/user/watchlist', { cache: 'no-store' }),
+      fetch('/api/user/notifications', { cache: 'no-store' }),
+    ]);
+    const [activity, reports, watchlist, notifications] = await Promise.all([
+      activityRes.json(),
+      reportsRes.json(),
+      watchlistRes.json(),
+      notifRes.json(),
+    ]);
+    if (!activityRes.ok) throw new Error(activity.error || 'Tải hoạt động thất bại');
+    if (!reportsRes.ok) throw new Error(reports.error || 'Tải báo cáo thất bại');
+    if (!watchlistRes.ok) throw new Error(watchlist.error || 'Tải watchlist thất bại');
+    if (!notifRes.ok) throw new Error(notifications.error || 'Tải thông báo thất bại');
+    setState((prev) => ({
+      ...prev,
+      activity: activity.items || [],
+      reports: reports.items || [],
+      watchlist: watchlist.items || [],
+      notifications: notifications.settings || defaultPrefs,
+    }));
   };
 
   useEffect(() => {
-    loadAll();
+    if (status !== 'authenticated') return;
+    setLoading(true);
+    setError('');
+    loadPrimary()
+      .then(() => {
+        setLoading(false);
+        loadSecondary().catch((err: any) => {
+          showToast('error', err?.message || 'Không thể tải dữ liệu phụ');
+        });
+      })
+      .catch((err: any) => {
+        setLoading(false);
+        setError(err?.message || 'Không thể tải dữ liệu');
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reloadKey]);
 
@@ -235,12 +271,17 @@ export default function ProfilePage() {
     }
   }, [oauthModalOpen, security?.oauthProvider]);
 
-  const stats = useMemo(() => ({
-    reportsSubmitted: state.reports.length,
-    reportsResolved: state.reports.filter((r) => r.status === 'completed').length,
-    activeAlerts: state.watchlist.length,
-    trustScore: security?.securityScore ?? user?.securityScore ?? 72,
-  }), [state.reports, state.watchlist.length, security?.securityScore, user?.securityScore]);
+  const stats = useMemo(() => {
+    const summary = state.summary || defaultSummary;
+    const reportCount = summary.reports ?? state.reports.length;
+    const alertsCount = summary.alerts ?? summary.watchlist ?? state.watchlist.length;
+    return {
+      reportsSubmitted: reportCount,
+      reportsResolved: state.reports.filter((r) => r.status === 'completed').length,
+      activeAlerts: alertsCount,
+      trustScore: security?.securityScore ?? user?.securityScore ?? 72,
+    };
+  }, [state.reports, state.watchlist.length, state.summary, security?.securityScore, user?.securityScore]);
 
   const [deviceStates, setDeviceStates] = useState<Record<string, boolean>>({
     myhome: true,
@@ -340,6 +381,12 @@ export default function ProfilePage() {
     '2FA': 'antoan',
     Watchlist: 'trangchu',
   };
+
+  const notificationItems: { key: keyof NotificationPrefs; label: string; desc: string }[] = [
+    { key: 'emailAlerts', label: 'Email alerts', desc: 'Nhận cảnh báo qua email' },
+    { key: 'pushAlerts', label: 'Push notifications', desc: 'Bật thông báo trình duyệt' },
+    { key: 'weeklySummary', label: 'Weekly summary', desc: 'Tổng hợp báo cáo hàng tuần' },
+  ];
 
   const handleCreateReport = async () => {
     showToast('warning', 'Chức năng gửi báo cáo đang được tối ưu hóa.');
@@ -722,11 +769,11 @@ export default function ProfilePage() {
               <Button
                 size="sm"
                 variant="secondary"
-                className="flex items-center gap-2 whitespace-nowrap rounded-[22px] border border-white/70 bg-white/20 px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(255,255,255,0.3)] transition hover:bg-white/40"
+                className="flex flex-row items-center justify-center gap-2 whitespace-nowrap rounded-[22px] border border-white/70 bg-white/20 px-6 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(255,255,255,0.3)] transition hover:bg-white/40"
                 onClick={handleScrollToSecurity}
               >
                 <ShieldCheck className="h-4 w-4 text-white" />
-                Xem kết quả bảo mật
+                <span className="leading-none">Xem kết quả bảo mật</span>
               </Button>
             </div>
           </section>
@@ -848,7 +895,7 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.14)]">
+          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.12)]">
             <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.4em] text-slate-400">
               <span>Thao tác nhanh</span>
               <span>Vuốt →</span>
@@ -858,24 +905,57 @@ export default function ProfilePage() {
                 <button
                   key={action.label}
                   type="button"
-                  className="flex items-start gap-3 rounded-[28px] bg-[#f6fbff] p-3 text-left shadow-[0_4px_15px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_25px_rgba(15,23,42,0.15)]"
+                  className="flex items-center gap-3 rounded-[28px] bg-[#f6fbff] px-3 py-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(15,23,42,0.15)]"
                   onClick={() => {
-                  const target = quickActionNavMap[action.label] ?? bottomAction;
-                  setBottomAction(target);
-                  if (action.label === 'Báo cáo') {
-                    handleCreateReport();
-                  }
-                }}
+                    const target = quickActionNavMap[action.label] ?? bottomAction;
+                    setBottomAction(target);
+                    if (action.label === 'Báo cáo') {
+                      handleCreateReport();
+                    }
+                  }}
                 >
-                  <span className={`flex h-12 w-12 items-center justify-center rounded-[18px] bg-gradient-to-br ${action.accent} text-white`}>
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${action.accent} text-white`}>
                     <action.icon className="h-5 w-5" />
                   </span>
-                  <div>
+                  <div className="flex-1 text-left">
                     <p className="text-sm font-semibold text-slate-900">{action.label}</p>
                     <p className="text-[11px] text-slate-500">{action.subLabel}</p>
                   </div>
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_25px_60px_rgba(15,23,42,0.15)]">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Thông báo</p>
+                <h3 className="text-lg font-semibold text-slate-900">Cài đặt thông báo</h3>
+              </div>
+              <Badge variant="primary">Realtime</Badge>
+            </div>
+            <div className="mt-4 space-y-3">
+              {notificationItems.map((item) => {
+                const isEnabled = state.notifications[item.key];
+                return (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between gap-3 rounded-[22px] border border-slate-200 bg-gradient-to-b from-white to-[#f6fbff] px-4 py-3 shadow-[0_10px_25px_rgba(15,23,42,0.1)]"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                      <p className="text-[11px] text-slate-500">{item.desc}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={isEnabled ? 'secondary' : 'ghost'}
+                      onClick={() => handleNotifications({ ...state.notifications, [item.key]: !isEnabled })}
+                    >
+                      {isEnabled ? 'Đang bật' : 'Bật lên'}
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
@@ -898,8 +978,6 @@ export default function ProfilePage() {
           <div ref={watchlistSectionRef}>
             <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
           </div>
-          <NotificationSettings prefs={state.notifications} onChange={handleNotifications} />
-
           <div ref={securitySectionRef} className="relative rounded-[38px] bg-white px-5 py-5 shadow-[0_30px_80px_rgba(15,23,42,0.15)]">
             <div className="absolute inset-x-4 -top-5 h-24 rounded-[40px] bg-gradient-to-br from-[#e6f7ff] via-white to-white opacity-90 blur-[45px]" aria-hidden="true"></div>
             <div className="relative z-10 flex items-center justify-between">
@@ -932,7 +1010,7 @@ export default function ProfilePage() {
         </div>
       </main>
       <div className="fixed inset-x-4 bottom-4 flex justify-center pointer-events-none">
-        <div className="relative w-full max-w-[460px]">
+        <div className="relative w-full max-w-[420px]">
           <div className="flex h-16 items-center justify-between overflow-hidden rounded-[38px] bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-white shadow-[0_30px_60px_rgba(16,185,129,0.45)]">
             {bottomNavItems.map((item) => {
               const isActive = bottomAction === item.key;
