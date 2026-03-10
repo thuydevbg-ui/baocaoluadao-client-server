@@ -216,3 +216,157 @@ MIT License - xem [LICENSE](LICENSE) file để biết thêm chi tiết.
 
 - Website: https://baocaoluadao.com
 - Email: contact@baocaoluadao.com
+
+---
+
+## 🔄 Hướng Dẫn Chuyển VPS Mới
+
+Khi cần di chuyển sang VPS mới, chỉ cần làm theo các bước sau vì **API đã được xử lý bởi Cloudflare Workers**.
+
+### Bước 1: Chuẩn Bị VPS Mới
+
+```bash
+# Cài đặt các package cần thiết
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y nodejs npm git nginx postgresql postgresql-contrib
+
+# Cài đặt PM2
+sudo npm install -g pm2
+
+# Cài đặt Redis (nếu cần)
+sudo apt install -y redis-server
+```
+
+### Bước 2: Clone Repository
+
+```bash
+# Clone repo về VPS mới
+git clone https://github.com/thuydevbg-ui/baocaoluadao-client-server.git
+cd baocaoluadao.com
+
+# Checkout production branch
+git checkout production
+```
+
+### Bước 3: Cài Đặt Dependencies
+
+```bash
+npm install
+```
+
+### Bước 4: Cấu Hình Environment
+
+```bash
+# Copy file mẫu
+cp .env.production.example .env.production
+
+# Edit các biến môi trường
+nano .env.production
+```
+
+Các biến cần thiết:
+```env
+NODE_ENV=production
+NEXTAUTH_SECRET=your-secret-here
+NEXTAUTH_URL=https://baocaoluadao.com
+AUTH_COOKIE_SECRET=your-cookie-secret
+ADMIN_EMAIL=admin@baocaoluadao.com
+ADMIN_PASSWORD_HASH=bcrypt-hash-of-password
+DB_HOST=localhost
+DB_USER=postgres
+DB_PASSWORD=your-db-password
+DB_NAME=baocaoluadao
+NEXT_PUBLIC_API_URL=https://api.baocaoluadao.com
+```
+
+### Bước 5: Setup Database
+
+```bash
+# Tạo database
+sudo -u postgres psql
+CREATE DATABASE baocaoluadao;
+\q
+
+# Chạy migrations
+npm run db:migrate
+```
+
+### Bước 6: Build Application
+
+```bash
+npm run build
+```
+
+### Bước 7: Deploy với PM2
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+### Bước 8: Cấu Hình Nginx (Optional)
+
+```bash
+sudo nano /etc/nginx/sites-available/baocaoluadao
+```
+
+```nginx
+server {
+    listen 80;
+    server_name baocaoluadao.com www.baocaoluadao.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/baocaoluadao /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Bước 9: Cập Nhật DNS (Quan Trọng!)
+
+**Chỉ cần thay đổi A record cho domain chính:**
+
+| Type | Name | Value | Priority |
+|------|------|-------|----------|
+| A | baocaoluadao.com | IP_VPS_MỚI | - |
+| A | www | IP_VPS_MỚI | - |
+
+**KHÔNG cần thay đổi gì cho api.baocaoluadao.com** - nó đã trỏ đến Cloudflare Workers!
+
+### Bước 10: Xác Nhận Hoạt Động
+
+```bash
+# Kiểm tra PM2
+pm2 status
+
+# Kiểm tra website
+curl https://baocaoluadao.com
+
+# Kiểm tra API
+curl https://api.baocaoluadao.com/health
+```
+
+---
+
+### 📌 Tóm Tắt: Không Cần Làm Gì Cho API!
+
+Vì API đã được xử lý bởi Cloudflare Workers (không phụ thuộc VPS):
+
+| Thành phần | Cần cấu hình lại? |
+|------------|-------------------|
+| Frontend (Next.js) | ✅ Cần deploy |
+| API (Cloudflare Workers) | ❌ Không cần - đã deploy sẵn |
+| Database (Cloudflare D1) | ❌ Không cần - đã có sẵn |
+| DNS api.baocaoluadao.com | ❌ Không cần thay đổi |
+
+**Chỉ cần deploy frontend lên VPS mới, mọi thứ khác đã sẵn sàng!**
