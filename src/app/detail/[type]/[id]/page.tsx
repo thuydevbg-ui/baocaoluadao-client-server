@@ -1260,6 +1260,21 @@ export default function DetailPage() {
   const guidanceCardTone = isHighRisk ? 'to-danger/5' : data.risk === 'unknown' ? 'to-warning/5' : 'to-success/5';
   const policySourceHref = policyMetaSnapshot?.policySourceUrl?.trim() || undefined;
   const policySourceTitle = policyMetaSnapshot?.policySourceTitle?.trim() || 'Nguồn công bố chính thức';
+  const inlineRiskTag = (() => {
+    if (insight.status === 'trusted') {
+      return { label: 'Đã xác minh', tone: 'border-success/40 bg-success/10 text-success' };
+    }
+    if (data.risk === 'policy') {
+      return { label: 'Cảnh báo pháp lý', tone: 'border-warning/40 bg-warning/10 text-warning' };
+    }
+    if (data.risk === 'scam') {
+      return { label: 'Nguy hiểm', tone: 'border-danger/40 bg-danger/10 text-danger' };
+    }
+    if (data.risk === 'suspicious' || data.risk === 'unknown') {
+      return { label: 'Cần kiểm tra', tone: 'border-warning/40 bg-warning/10 text-warning' };
+    }
+    return null;
+  })();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -1268,32 +1283,11 @@ export default function DetailPage() {
       <main className="flex-1 pt-20 pb-20 md:pb-8">
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <Card className="mb-6 border-primary/20 overflow-visible">
-              <div className="relative overflow-visible p-5 md:p-6 border-b border-bg-border bg-gradient-to-r from-primary/10 via-bg-card to-bg-card">
-                {insight.status === 'trusted' && (
-                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
-                    <div className="rotate-[-10deg] border-[3px] border-success/75 text-success/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(16,185,129,0.18)]">
-                      ĐÃ XÁC MINH UY TÍN
-                    </div>
-                  </div>
-                )}
-                {data.risk === 'policy' && (
-                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
-                    <div className="rotate-[-10deg] border-[3px] border-warning/85 text-warning/95 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(245,158,11,0.22)]">
-                      CẢNH BÁO PHÁP LÝ
-                    </div>
-                  </div>
-                )}
-                {(data.risk === 'scam' || insight.status === 'confirmed' || insight.status === 'suspected') && (
-                  <div className="pointer-events-none absolute inset-6 flex items-center justify-center">
-                    <div className="rotate-[-10deg] border-[3px] border-danger/85 text-danger/90 font-black uppercase tracking-[0.24em] text-sm md:text-base px-4 md:px-6 py-2 rounded-xl bg-white/60 backdrop-blur-[2px] shadow-[0_10px_22px_rgba(229,57,53,0.25)]">
-                      NGUY HIỂM
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
+            <Card className="mb-10 border-primary/20 overflow-visible rounded-[32px] shadow-[0_30px_60px_rgba(15,23,42,0.08)]">
+              <div className="relative overflow-visible rounded-[28px] border border-bg-border/60 bg-gradient-to-r from-primary/10 via-bg-card to-bg-card p-5 md:p-6 pb-10 md:pb-12 space-y-6">
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
                       <div
                         className={cn(
                           'w-14 h-14 rounded-xl flex items-center justify-center shrink-0',
@@ -1330,43 +1324,60 @@ export default function DetailPage() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words flex items-center gap-2 flex-wrap">
-                          <span className="break-words">{data.value}</span>
-                          {insight.isTrustedEntity && (
-                            <span className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/10 px-2 text-primary border border-primary/20">
-                              <BadgeCheck className="h-4 w-4" />
-                              Đã xác minh
-                            </span>
-                          )}
-                        </h1>
-                        <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
-                        <div className="flex flex-wrap items-center gap-2 mt-3">
-                          <Chip variant="success" size="md" leftIcon={<BadgeCheck className="w-3.5 h-3.5" />}>
-                            Uy tín
-                          </Chip>
-                          {(() => {
-                            const variant =
-                              data.risk === 'scam'
-                                ? 'danger'
-                                : data.risk === 'suspicious' || data.risk === 'policy'
-                                  ? 'warning'
-                                  : data.risk === 'unknown'
-                                    ? 'default'
-                                    : 'success';
-                            return (
-                              <Chip variant={variant} size="md" leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}>
-                                Độ tin cậy nguồn: {insight.confidence}%
-                              </Chip>
-                            );
-                          })()}
-                          <Chip variant="default" size="md" leftIcon={<Clock className="w-3.5 h-3.5 text-primary" />}>
-                            Cập nhật: {insight.updatedAt}
-                          </Chip>
-                          {viewCount !== null && (
-                            <Chip variant="default" size="md" leftIcon={<Eye className="w-3.5 h-3.5 text-primary" />}>
-                              {formatNumber(viewCount)} lượt xem
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words flex items-center gap-2 flex-wrap">
+                                <span className="break-words">{data.value}</span>
+                                {insight.isTrustedEntity && (
+                                  <span className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/10 px-2 text-primary border border-primary/20">
+                                    <BadgeCheck className="h-4 w-4" />
+                                    Đã xác minh
+                                  </span>
+                                )}
+                                {inlineRiskTag && (
+                                  <span className="inline-flex items-center justify-center text-[0.75rem] font-black tracking-[0.28em] rounded-[12px] px-3 py-1 border-2 border-danger/80 text-danger bg-white/95 shadow-[0_12px_24px_rgba(15,23,42,0.12)]">
+                                    {inlineRiskTag.label}
+                                  </span>
+                                )}
+                              </h1>
+                              <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="px-4"
+                              leftIcon={copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                              onClick={handleCopy}
+                            >
+                              {copied ? 'Đã sao chép' : 'Sao chép'}
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(() => {
+                              const variant =
+                                data.risk === 'scam'
+                                  ? 'danger'
+                                  : data.risk === 'suspicious' || data.risk === 'policy'
+                                    ? 'warning'
+                                    : data.risk === 'unknown'
+                                      ? 'default'
+                                      : 'success';
+                              return (
+                                <Chip variant={variant} size="md" leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}>
+                                  Độ tin cậy nguồn: {insight.confidence}%
+                                </Chip>
+                              );
+                            })()}
+                            <Chip variant="default" size="md" leftIcon={<Clock className="w-3.5 h-3.5 text-primary" />}>
+                              Cập nhật: {insight.updatedAt}
                             </Chip>
-                          )}
+                            {viewCount !== null && (
+                              <Chip variant="default" size="md" leftIcon={<Eye className="w-3.5 h-3.5 text-primary" />}>
+                                {formatNumber(viewCount)} lượt xem
+                              </Chip>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1379,27 +1390,6 @@ export default function DetailPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      leftIcon={copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      onClick={handleCopy}
-                    >
-                      {copied ? 'Đã sao chép' : 'Sao chép'}
-                    </Button>
-                    <Button variant="secondary" size="sm" leftIcon={<Share2 className="w-4 h-4" />} onClick={handleShare}>
-                      {t('detail.share')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      leftIcon={<Flag className="w-4 h-4" />}
-                      onClick={() => router.push(reportHref)}
-                    >
-                      {t('detail.report')}
-                    </Button>
-                  </div>
                 </div>
                 {data.risk === 'policy' && policyMetaSnapshot && (
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1418,160 +1408,20 @@ export default function DetailPage() {
                       </div>
                     </div>
 
-                  <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex items-center gap-3 text-sm font-medium">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                      <Globe className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
-                      <p className="mt-1 text-xs text-text-muted line-clamp-2">
-                        {policySourceHref || 'Không có đường dẫn nguồn kèm theo.'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-              <div className="p-5 md:p-6">
-                <div className="mb-5">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-text-muted">{t('risk.score')}</span>
-                    <span
-                      className={cn(
-                        'font-mono font-bold',
-                        data.risk === 'scam'
-                          ? 'text-danger'
-                          : data.risk === 'suspicious'
-                            ? 'text-warning'
-                            : data.risk === 'policy'
-                              ? 'text-warning'
-                            : data.risk === 'unknown'
-                              ? 'text-text-secondary'
-                            : 'text-success'
-                      )}
-                    >
-                      {data.riskScore}/100
-                    </span>
-                  </div>
-                  <div className="h-3 bg-bg-border rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${data.riskScore}%` }}
-                      transition={{ duration: 0.9, ease: 'easeOut' }}
-                      className={cn(
-                        'h-full rounded-full',
-                        data.risk === 'scam'
-                          ? 'risk-scam'
-                          : data.risk === 'suspicious'
-                            ? 'risk-suspicious'
-                            : data.risk === 'policy'
-                              ? 'risk-policy'
-                            : data.risk === 'unknown'
-                              ? 'risk-unknown'
-                            : 'risk-safe'
-                      )}
-                    />
-                  </div>
-                </div>
-
-                {normalizedType === 'website' && (
-                  <Card className="mt-4 border border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-info/5 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          'w-11 h-11 rounded-xl flex items-center justify-center shrink-0',
-                          aiScan.verdict === 'scam'
-                            ? 'bg-danger/10 text-danger border border-danger/30'
-                            : aiScan.verdict === 'unknown'
-                              ? 'bg-warning/10 text-warning border border-warning/30'
-                            : aiScan.loading
-                              ? 'bg-warning/10 text-warning border border-warning/30'
-                              : 'bg-success/10 text-success border border-success/30'
-                        )}
-                      >
-                        {aiScan.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Bot className="w-5 h-5" />}
+                    <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex flex-col gap-2">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                        <Globe className="h-5 w-5" />
                       </div>
-                      <div className="flex-1 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-text-main hidden sm:block">Tích hợp các công nghệ tiên tiến phát hiện lừa đảo</p>
-                          <p className="font-semibold text-text-main sm:hidden">AI Phân tích</p>
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide',
-                              aiScan.loading
-                                ? 'bg-warning/10 text-warning border border-warning/40'
-                                : aiScan.verdict === 'scam'
-                                  ? 'bg-danger/10 text-danger border border-danger/50'
-                                  : aiScan.verdict === 'unknown'
-                                    ? 'bg-warning/10 text-warning border border-warning/50'
-                                  : 'bg-success/10 text-success border border-success/50'
-                            )}
-                          >
-                            {aiScan.loading
-                              ? <><span className="sm:hidden">...</span><span className="hidden sm:inline">Đang quét</span></>
-                              : aiScan.verdict === 'scam'
-                                ? 'Nguy hiểm'
-                                : aiScan.verdict === 'unknown'
-                                  ? 'Chưa đủ dữ liệu'
-                                  : 'An toàn'}
-                          </span>
-                          {aiScan.error && <span className="text-xs text-danger font-medium">({aiScan.error})</span>}
-                        </div>
-
-                        {aiScan.loading && (
-                          <p className="text-sm text-text-muted flex items-center gap-2 hidden sm:flex">
-                            <Loader2 className="w-4 h-4 animate-spin" /> AI đang phân tích liên kết này...
-                          </p>
-                        )}
-
-                        {!aiScan.loading && aiScan.verdict && (
-                          <>
-                            <div className="flex flex-wrap gap-2 text-sm">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
-                                <span className="sm:hidden">Rủi ro:</span>
-                                <span className="hidden sm:inline">Điểm rủi ro:</span>
-                                <strong className="text-danger">{aiScan.risk ?? 0}%</strong>
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
-                                Uy tín:{' '}
-                                <strong className={cn(
-                                  aiScan.verdict === 'scam'
-                                    ? 'text-danger'
-                                    : aiScan.verdict === 'unknown'
-                                      ? 'text-warning'
-                                      : 'text-success',
-                                  'font-semibold'
-                                )}>
-                                  {aiScan.trust ?? 0}%
-                                </strong>
-                              </span>
-                              <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-bg-cardHover border border-bg-border px-2 py-1">
-                                Kết luận: {aiScan.verdict === 'scam'
-                                  ? 'Nguy hiểm, có dấu hiệu lừa đảo'
-                                  : aiScan.verdict === 'unknown'
-                                    ? 'Chưa đủ dữ liệu để kết luận'
-                                    : 'Chưa thấy dấu hiệu nguy hiểm'}
-                              </span>
-                            </div>
-                            {aiScan.description && (
-                              <p className="hidden sm:block text-sm text-text-secondary bg-bg-cardHover border border-bg-border rounded-lg px-3 py-2 leading-relaxed">
-                                {aiScan.description}
-                              </p>
-                            )}
-                            <p className="hidden sm:block text-xs text-text-muted">Nguồn: mô hình GPT ScamGuard + dữ liệu TinNhiemMang.vn</p>
-                          </>
-                        )}
-
-                        {!aiScan.loading && !aiScan.verdict && aiScan.error && (
-                          <p className="text-sm text-danger">Không thể phân tích AI: {aiScan.error}</p>
-                        )}
+                      <div className="flex-1 text-left">
+                        <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
+                        <p className="mt-1 text-xs text-text-muted line-clamp-2">
+                          {policySourceHref || 'Không có đường dẫn nguồn kèm theo.'}
+                        </p>
                       </div>
                     </div>
-                  </Card>
+                  </div>
                 )}
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-bg-cardHover rounded-xl p-3 text-center">
                     {data.risk === 'safe' ? (
                       <ShieldCheck className="w-4 h-4 text-success mx-auto mb-1.5" />
@@ -1605,7 +1455,7 @@ export default function DetailPage() {
             </Card>
           </motion.div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[1.55fr_1fr] gap-6">
+          <div className="space-y-6">
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1671,7 +1521,7 @@ export default function DetailPage() {
 
             </motion.div>
 
-            <motion.aside
+            <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -1788,7 +1638,7 @@ export default function DetailPage() {
                 </h3>
                 <p className="text-sm text-text-secondary">{insight.source}</p>
               </Card>
-            </motion.aside>
+            </motion.div>
           </div>
 
           <motion.div

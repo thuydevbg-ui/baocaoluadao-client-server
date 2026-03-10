@@ -7,6 +7,7 @@ import TwitterProvider from 'next-auth/providers/twitter';
 import { getSiteSettings } from './siteSettings';
 import { findUserByEmail, updateUserLoginMeta, upsertOAuthUser, markOAuthLink } from './userRepository';
 
+// OAuth providers are conditionally enabled based on environment variables
 const googleEnvReady = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 const facebookEnvReady = Boolean(process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET);
 const twitterEnvReady = Boolean(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
@@ -33,7 +34,7 @@ export const authOptions: NextAuthOptions = {
       name: 'Email & Password',
       credentials: {
         email: { label: 'Email', type: 'email', placeholder: 'ban@example.com' },
-        password: { label: 'M?t kh?u', type: 'password' },
+        password: { label: 'Mật khẩu', type: 'password' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) return null;
@@ -64,7 +65,7 @@ export const authOptions: NextAuthOptions = {
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-            profile(profile) {
+            profile(profile: any) {
               return {
                 id: profile.sub,
                 name: profile.name || profile.given_name || profile.email,

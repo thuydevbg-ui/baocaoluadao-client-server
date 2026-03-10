@@ -38,6 +38,9 @@ import {
   Clock3,
   Globe,
   Bookmark,
+  AlertTriangle,
+  XCircle,
+  CheckCircle,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'framer-motion';
@@ -165,6 +168,61 @@ export default function ProfilePage() {
   const [watchTargetInput, setWatchTargetInput] = useState('');
   const [watchTypeInput, setWatchTypeInput] = useState<'website' | 'phone' | 'bank' | 'crypto'>('website');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Search Modal State
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
+  const [modalSearchResults, setModalSearchResults] = useState<any[]>([]);
+  const [modalIsSearching, setModalIsSearching] = useState(false);
+  const [modalSearched, setModalSearched] = useState(false);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  
+  const SEARCH_CATEGORIES = ['organizations', 'websites', 'devices', 'systems', 'apps'];
+  
+  const handleModalSearch = async (query: string) => {
+    if (!query || query.trim().length < 2) {
+      setModalSearchResults([]);
+      setModalSearched(false);
+      return;
+    }
+    
+    setModalIsSearching(true);
+    setModalSearched(true);
+    
+    try {
+      const settled = await Promise.allSettled(
+        SEARCH_CATEGORIES.map(async (categoryKey) => {
+          const response = await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: categoryKey, page: 1, query: query.trim(), perPage: 20 }),
+          });
+          return response.ok ? response.json() : null;
+        })
+      );
+      
+      const allResults: any[] = [];
+      const seenIds = new Set<string>();
+      settled.forEach((entry) => {
+        if (entry.status === 'fulfilled' && entry.value?.items) {
+          entry.value.items.forEach((item: any) => {
+            if (item.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              allResults.push({ ...item, category: entry.value.category, mode: entry.value.mode });
+            } else if (!item.id) {
+              allResults.push({ ...item, category: entry.value.category, mode: entry.value.mode });
+            }
+          });
+        }
+      });
+      
+      setModalSearchResults(allResults.slice(0, 20));
+    } catch (error) {
+      console.error('Search error:', error);
+      setModalSearchResults([]);
+    } finally {
+      setModalIsSearching(false);
+    }
+  };
 
   useEffect(() => {
     if (!editModalOpen) return;
@@ -733,6 +791,9 @@ export default function ProfilePage() {
                 placeholder="Bạn muốn kiểm tra tên miền hoặc báo cáo nào?"
                 className="flex-1 border-0 bg-transparent text-sm font-semibold text-slate-600 outline-none placeholder:text-slate-400"
               />
+              <button onClick={() => setSearchModalOpen(true)} className="rounded-full bg-blue-500 p-1.5 text-white hover:bg-blue-600">
+                <Search className="h-3 w-3" />
+              </button>
               <SlidersHorizontal className="h-4 w-4 text-blue-500" />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
@@ -1574,6 +1635,131 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Search Modal */}
+      <Modal
+        isOpen={searchModalOpen}
+        onClose={() => {
+          setSearchModalOpen(false);
+          setModalSearchTerm('');
+          setModalSearchResults([]);
+          setModalSearched(false);
+        }}
+        title="Tìm kiếm nâng cao"
+        size="lg"
+      >
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Nhập tên miền, email, số điện thoại..."
+                value={modalSearchTerm}
+                onChange={(e) => setModalSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleModalSearch(modalSearchTerm);
+                  }
+                }}
+                className="flex-1 rounded-full border border-slate-200 bg-slate-50 py-2 text-sm"
+              />
+              <Button
+                onClick={() => handleModalSearch(modalSearchTerm)}
+                isLoading={modalIsSearching}
+                className="rounded-full px-4"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+              {['Website', 'Điện thoại', 'Email', 'Ngân hàng'].map((option) => (
+                <span key={option} className="rounded-full border border-slate-200 bg-white/60 px-2 py-1 text-[10px] font-medium text-slate-500">
+                  {option}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {modalSearched && (
+            <div className="space-y-2">
+              {modalIsSearching ? (
+                <div className="flex justify-center py-4">
+                  <Skeleton className="w-full h-20" />
+                </div>
+              ) : modalSearchResults.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Không tìm thấy kết quả</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {modalSearchResults.slice(0, 5).map((result, index) => (
+                    <Card key={result.id || `fallback-${index}`} className={cn(
+                      'p-3 border-l-4',
+                      result.status === 'safe' ? 'border-l-success bg-success/5' :
+                      result.status === 'suspected' ? 'border-l-warning bg-warning/5' :
+                      'border-l-danger bg-danger/5'
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0">
+                          {result.icon ? (
+                            <img src={result.icon} alt="icon" className="w-10 h-10 rounded-lg object-cover" onError={(e) => { e.currentTarget.src = 'https://tinnhiemmang.vn/img/icon_web2.png'; }} />
+                          ) : result.status === 'safe' ? (
+                            <ShieldCheck className="w-10 h-10 text-success" />
+                          ) : result.status === 'suspected' ? (
+                            <AlertTriangle className="w-10 h-10 text-warning" />
+                          ) : (
+                            <XCircle className="w-10 h-10 text-danger" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-3 h-3 text-text-muted flex-shrink-0" />
+                            <span className="font-semibold text-text-main text-sm truncate">{result.name || result.title}</span>
+                          </div>
+                          {result.description && (
+                            <p className="text-xs text-text-secondary truncate">{result.description}</p>
+                          )}
+                        </div>
+                        <div className={cn(
+                          'px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 flex-shrink-0',
+                          result.status === 'safe' ? 'bg-success text-white' :
+                          result.status === 'suspected' ? 'bg-warning text-black' :
+                          'bg-danger text-white'
+                        )}>
+                          {result.status === 'safe' ? <CheckCircle className="w-3 h-3" /> :
+                           result.status === 'suspected' ? <Clock3 className="w-3 h-3" /> :
+                           <XCircle className="w-3 h-3" />}
+                          <span className="hidden sm:inline">
+                            {result.status === 'safe' ? 'An toàn' : result.status === 'suspected' ? 'Nghi ngờ' : 'Nguy hiểm'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 gap-2">
+                        <div className="text-center flex-1">
+                          <p className="text-sm font-bold text-text-main">{result.count_report || 0}</p>
+                          <p className="text-[10px] text-text-muted">Báo cáo</p>
+                        </div>
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-bold text-text-main">{result.created_at ? new Date(result.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : 'N/A'}</p>
+                          <p className="text-[10px] text-text-muted">Ngày tạo</p>
+                        </div>
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-bold text-text-main capitalize">{result.category || 'N/A'}</p>
+                          <p className="text-[10px] text-text-muted">Danh mục</p>
+                        </div>
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-bold text-text-main truncate">{result.source || 'TNM'}</p>
+                          <p className="text-[10px] text-text-muted">Nguồn</p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
 
       <Footer />

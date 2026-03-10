@@ -39,7 +39,7 @@ export function withApiObservability<T extends Response, RouteContext = unknown>
 
       return response;
     } catch (error) {
-    captureException(error, {
+      await captureException(error, {
       requestId,
       path: request.nextUrl.pathname,
       method: request.method,

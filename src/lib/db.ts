@@ -93,4 +93,6 @@ export async function closeDb(): Promise<void> {
   }
 }
 
-export default getDb();
+// Note: Use getDb() wherever you need the pool. Do not eagerly call getDb() at module
+// import time since it would create the pool as a side-effect during module initialization,
+// showing "✅ Database pool created successfully" twice (once per webpack compilation context).
