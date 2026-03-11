@@ -209,7 +209,7 @@ export const riskApi = {
     }),
 };
 
-export default {
+const apiClient = {
   report: reportApi,
   scan: scanApi,
   scams: scamsApi,
@@ -223,3 +223,5 @@ export default {
   views: viewsApi,
   risk: riskApi,
 };
+
+export default apiClient;
