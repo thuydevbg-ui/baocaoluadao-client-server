@@ -147,12 +147,17 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, user }) {
+      // Store user info in token on initial login/signup
       if (user) {
         token.id = (user as any).id || token.id;
         token.role = (user as any).role || token.role || 'user';
+        token.picture = (user as any).image || token.picture;
       }
 
+      // Only query DB if token doesn't have required info (fallback for legacy tokens)
+      // This should rarely happen after first login since token is persisted
       if (!token.id && token.email) {
+        console.warn('[Auth] JWT token missing id, fetching from DB for:', token.email);
         const dbUser = await findUserByEmail(token.email);
         if (dbUser) {
           token.id = dbUser.id;

@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { RowDataPacket } from 'mysql2/promise';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getDb } from '@/lib/db';
+import { getRedisClientSafe } from '@/lib/redis';
+import { d1Query, shouldUseD1Reads } from '@/lib/d1Client';
 import {
-  ensureTinnhiemScamsSynced,
+  getTinnhiemSyncSnapshot,
   getCategoryNameByType,
   getCategorySlugByType,
   mapCategoryParamToScamType,
@@ -66,6 +68,11 @@ const DEFAULT_LIMIT = 6;
 const MAX_LIMIT = 100;
 const SOURCE_NAME = 'tinnhiemmang.vn';
 
+// Cache configuration
+const CACHE_TTL_SECONDS = 300; // 5 minutes cache for list endpoints
+const CACHE_TTL_STATS_SECONDS = 60; // 1 minute cache for stats (faster changing data)
+const CACHE_KEY_PREFIX = 'api:scams';
+
 function parsePositiveInt(input: string | null, fallback: number, max: number): number {
   const value = Number.parseInt(String(input || fallback), 10);
   if (!Number.isFinite(value) || value < 1) return fallback;
@@ -76,6 +83,77 @@ function parsePage(input: string | null): number {
   const page = Number.parseInt(String(input || '1'), 10);
   if (!Number.isFinite(page) || page < 1) return 1;
   return page;
+}
+
+function buildCacheKey(params: {
+  page: number;
+  limit: number;
+  categoryParam: string;
+  includeTrusted: boolean;
+  getStats: boolean;
+}): string {
+  return `${CACHE_KEY_PREFIX}:${params.getStats ? 'stats' : `list:${params.categoryParam}:${params.includeTrusted}:p${params.page}:l${params.limit}`}`;
+}
+
+/**
+ * Try to get cached response from Redis
+ */
+async function getCachedResponse(params: {
+  page: number;
+  limit: number;
+  categoryParam: string;
+  includeTrusted: boolean;
+  getStats: boolean;
+}): Promise<{ data: unknown; fromCache: boolean } | null> {
+  const redis = await getRedisClientSafe();
+  if (!redis) return null;
+
+  const cacheKey = buildCacheKey(params);
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log('[Cache] Scams data retrieved from Redis');
+      let parsedData: unknown;
+      try {
+        parsedData = JSON.parse(cached);
+      } catch (parseError) {
+        console.warn('[Cache] Failed to parse cached data, ignoring cache');
+        await redis.del(cacheKey);
+        return null;
+      }
+      return { data: parsedData, fromCache: true };
+    }
+  } catch (error) {
+    console.warn('[Cache] Failed to get cached scams:', error);
+  }
+  return null;
+}
+
+/**
+ * Cache the response in Redis
+ */
+async function cacheResponse(
+  params: {
+    page: number;
+    limit: number;
+    categoryParam: string;
+    includeTrusted: boolean;
+    getStats: boolean;
+  },
+  responseData: unknown
+): Promise<void> {
+  const redis = await getRedisClientSafe();
+  if (!redis) return;
+
+  const cacheKey = buildCacheKey(params);
+  // Use shorter TTL for stats (1 min) vs list (5 min)
+  const ttl = params.getStats ? CACHE_TTL_STATS_SECONDS : CACHE_TTL_SECONDS;
+  try {
+    await redis.setex(cacheKey, ttl, JSON.stringify(responseData));
+    console.log(`[Cache] Scams data cached for ${ttl}s`);
+  } catch (error) {
+    console.warn('[Cache] Failed to cache scams:', error);
+  }
 }
 
 function mapScamStatus(externalStatus: string | null, internalStatus: string): string {
@@ -168,6 +246,88 @@ async function fetchViewCounts(detailKeys: string[]): Promise<Record<string, num
   }
 }
 
+async function fetchFeedbackCountsFromD1(detailKeys: string[]): Promise<Record<string, { ratings: number; comments: number }>> {
+  if (detailKeys.length === 0) return {};
+
+  try {
+    const placeholders = detailKeys.map(() => '?').join(', ');
+    const result: Record<string, { ratings: number; comments: number }> = {};
+
+    try {
+      const ratingRows = await d1Query<DbFeedbackCount>(
+        `
+          SELECT detail_key, COUNT(*) AS ratings
+          FROM detail_ratings
+          WHERE detail_key IN (${placeholders})
+          GROUP BY detail_key
+        `,
+        detailKeys
+      );
+
+      for (const row of ratingRows || []) {
+        result[row.detail_key] = { ratings: Number(row.ratings ?? 0), comments: 0 };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      if (!message.toLowerCase().includes('no such table')) {
+        console.warn('[api/scams] D1 detail_ratings unavailable:', error);
+      }
+    }
+
+    try {
+      const commentRows = await d1Query<DbFeedbackCount>(
+        `
+          SELECT detail_key, COUNT(*) AS comments
+          FROM detail_feedback
+          WHERE detail_key IN (${placeholders})
+          GROUP BY detail_key
+        `,
+        detailKeys
+      );
+
+      for (const row of commentRows || []) {
+        const base = result[row.detail_key] || { ratings: 0, comments: 0 };
+        base.comments = Number(row.comments ?? 0);
+        result[row.detail_key] = base;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      if (!message.toLowerCase().includes('no such table')) {
+        console.warn('[api/scams] D1 detail_feedback unavailable:', error);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('[api/scams] Failed to load D1 feedback counters:', error);
+    return {};
+  }
+}
+
+async function fetchViewCountsFromD1(detailKeys: string[]): Promise<Record<string, number>> {
+  if (detailKeys.length === 0) return {};
+
+  try {
+    const placeholders = detailKeys.map(() => '?').join(', ');
+    const rows = await d1Query<DbViewCount>(
+      `
+        SELECT detail_key, views
+        FROM detail_view_counts
+        WHERE detail_key IN (${placeholders})
+      `,
+      detailKeys
+    );
+    const result: Record<string, number> = {};
+    for (const row of rows || []) {
+      result[row.detail_key] = Number(row.views ?? 0);
+    }
+    return result;
+  } catch (error) {
+    console.error('[api/scams] Failed to load D1 view counters:', error);
+    return {};
+  }
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
@@ -198,24 +358,45 @@ export async function GET(request: Request) {
   const categoryType = mapCategoryParamToScamType(categoryParam);
   const includeTrusted = searchParams.get('includeTrusted') === 'true';
 
+  // Build cache params
+  const cacheParams = { page, limit, categoryParam, includeTrusted, getStats };
+
+  // Check cache first (use shorter TTL for stats)
+  const cachedResult = await getCachedResponse(cacheParams);
+  if (cachedResult) {
+    console.log('[Cache] Returning cached scams data');
+    return NextResponse.json(cachedResult.data as object);
+  }
+
   try {
-    const syncInfo = await ensureTinnhiemScamsSynced();
-    const db = getDb();
+    // Use lighter sync snapshot to avoid triggering background sync
+    const syncInfo = await getTinnhiemSyncSnapshot().catch(() => null);
+    const useD1 = shouldUseD1Reads();
 
     if (getStats) {
-      const [rows] = await db.query<TypeCountRow[]>(
-        `
-          SELECT type, COUNT(*) AS count
-          FROM scams
-          WHERE source = ? ${includeTrusted ? '' : 'AND is_scam = 1'}
-          GROUP BY type
-        `,
-        [SOURCE_NAME]
-      );
+      const rows = useD1
+        ? await d1Query<TypeCountRow>(
+            `
+              SELECT type, COUNT(*) AS count
+              FROM scams
+              WHERE source = ? ${includeTrusted ? '' : 'AND is_scam = 1'}
+              GROUP BY type
+            `,
+            [SOURCE_NAME]
+          )
+        : (await getDb().query<TypeCountRow[]>(
+            `
+              SELECT type, COUNT(*) AS count
+              FROM scams
+              WHERE source = ? ${includeTrusted ? '' : 'AND is_scam = 1'}
+              GROUP BY type
+            `,
+            [SOURCE_NAME]
+          ))[0];
 
       const byType = new Map<string, number>();
       for (const row of rows || []) {
-        byType.set(row.type, row.count || 0);
+        byType.set(row.type, Number(row.count || 0));
       }
 
       const orderedTypes: ScamType[] = [
@@ -238,12 +419,15 @@ export async function GET(request: Request) {
         icon: '🛡️',
       }));
 
-      return NextResponse.json({
+      const statsResponse = {
         success: true,
         source: SOURCE_NAME,
         data,
         sync: syncInfo,
-      });
+      };
+      // Cache stats with shorter TTL
+      await cacheResponse({ ...cacheParams, getStats: true }, statsResponse);
+      return NextResponse.json(statsResponse);
     }
 
     const where: string[] = ['source = ?'];
@@ -260,48 +444,84 @@ export async function GET(request: Request) {
 
     const whereClause = `WHERE ${where.join(' AND ')}`;
 
-    const [countRows] = await db.query<CountRow[]>(
-      `SELECT COUNT(*) AS count FROM scams ${whereClause}`,
-      params
-    );
-    const totalItems = countRows[0]?.count || 0;
+    const countRows = useD1
+      ? await d1Query<CountRow>(
+          `SELECT COUNT(*) AS count FROM scams ${whereClause}`,
+          params
+        )
+      : (await getDb().query<CountRow[]>(
+          `SELECT COUNT(*) AS count FROM scams ${whereClause}`,
+          params
+        ))[0];
+    const totalItems = Number(countRows[0]?.count || 0);
 
     const totalPages = Math.max(1, Math.ceil(totalItems / limit));
     const safePage = Math.min(page, totalPages);
     const offset = (safePage - 1) * limit;
 
-    const [rows] = await db.query<ScamRow[]>(
-      `
-        SELECT
-          id,
-          type,
-          value,
-          description,
-          report_count AS reportCount,
-          status,
-          risk_level AS riskLevel,
-          external_status AS externalStatus,
-          organization_name AS organizationName,
-          organization_icon AS organizationIcon,
-          source_url AS sourceUrl,
-          external_created_at AS externalCreatedAt,
-          created_at AS createdAt,
-          updated_at AS updatedAt,
-          icon,
-          is_scam AS isScam
-        FROM scams
-        ${whereClause}
-        ORDER BY COALESCE(external_created_at, created_at) DESC, updated_at DESC
-        LIMIT ? OFFSET ?
-      `,
-      [...params, limit, offset]
-    );
+    const rows = useD1
+      ? await d1Query<ScamRow>(
+          `
+            SELECT
+              id,
+              type,
+              value,
+              description,
+              report_count AS reportCount,
+              status,
+              risk_level AS riskLevel,
+              external_status AS externalStatus,
+              organization_name AS organizationName,
+              organization_icon AS organizationIcon,
+              source_url AS sourceUrl,
+              external_created_at AS externalCreatedAt,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              icon,
+              is_scam AS isScam
+            FROM scams
+            ${whereClause}
+            ORDER BY COALESCE(external_created_at, created_at) DESC, updated_at DESC
+            LIMIT ? OFFSET ?
+          `,
+          [...params, limit, offset]
+        )
+      : (await getDb().query<ScamRow[]>(
+          `
+            SELECT
+              id,
+              type,
+              value,
+              description,
+              report_count AS reportCount,
+              status,
+              risk_level AS riskLevel,
+              external_status AS externalStatus,
+              organization_name AS organizationName,
+              organization_icon AS organizationIcon,
+              source_url AS sourceUrl,
+              external_created_at AS externalCreatedAt,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              icon,
+              is_scam AS isScam
+            FROM scams
+            ${whereClause}
+            ORDER BY COALESCE(external_created_at, created_at) DESC, updated_at DESC
+            LIMIT ? OFFSET ?
+          `,
+          [...params, limit, offset]
+        ))[0];
 
     const detailKeys = Array.from(
       new Set(rows.map((row) => buildDetailKeyFromScam(row.type, row.value)).filter(Boolean))
     );
-    const feedbackMap = await fetchFeedbackCounts(detailKeys);
-    const viewMap = await fetchViewCounts(detailKeys);
+    const feedbackMap = useD1
+      ? await fetchFeedbackCountsFromD1(detailKeys)
+      : await fetchFeedbackCounts(detailKeys);
+    const viewMap = useD1
+      ? await fetchViewCountsFromD1(detailKeys)
+      : await fetchViewCounts(detailKeys);
 
     const data = rows.map((row, index) => {
       const detailKey = buildDetailKeyFromScam(row.type, row.value);
@@ -329,7 +549,7 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       source: SOURCE_NAME,
       data,
@@ -340,7 +560,12 @@ export async function GET(request: Request) {
         totalItems,
       },
       sync: syncInfo,
-    });
+    };
+
+    // Cache the response
+    await cacheResponse(cacheParams, responseData);
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('[api/scams] Database-first flow failed:', error);
     return NextResponse.json(

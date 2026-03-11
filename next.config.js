@@ -1,6 +1,38 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Enable Caching
+  httpAgentOptions: {
+    keepAlive: true,
+  },
+  // Production optimizations
+  poweredByHeader: false,
+  compress: true,
+  // Cache configuration for static files only
+  // Note: Dynamic pages are cached via middleware.ts with shorter cache times
+  // IMPORTANT: middleware.ts must have a matcher that includes public routes for caching to work
+  headers: async () => {
+    return [
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/fonts/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
   images: {
     domains: ['localhost', 'ui-avatars.com', 'lh3.googleusercontent.com'],
   },

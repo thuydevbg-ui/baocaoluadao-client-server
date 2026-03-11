@@ -18,7 +18,6 @@ import {
   Eye,
   Flag,
   Copy,
-  BadgeCheck,
   CheckCircle,
   ExternalLink,
   ShieldCheck,
@@ -1262,7 +1261,7 @@ export default function DetailPage() {
   const policySourceTitle = policyMetaSnapshot?.policySourceTitle?.trim() || 'Nguồn công bố chính thức';
   const inlineRiskTag = (() => {
     if (insight.status === 'trusted') {
-      return { label: 'Đã xác minh', tone: 'border-success/40 bg-success/10 text-success' };
+      return null;
     }
     if (data.risk === 'policy') {
       return { label: 'Cảnh báo pháp lý', tone: 'border-warning/40 bg-warning/10 text-warning' };
@@ -1330,9 +1329,8 @@ export default function DetailPage() {
                               <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words flex items-center gap-2 flex-wrap">
                                 <span className="break-words">{data.value}</span>
                                 {insight.isTrustedEntity && (
-                                  <span className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/10 px-2 text-primary border border-primary/20">
-                                    <BadgeCheck className="h-4 w-4" />
-                                    Đã xác minh
+                                  <span className="inline-flex items-center justify-center -ml-1 align-middle self-center">
+                                    <i className="fi fi-ss-badge-check text-primary text-[1.25em] leading-none block relative top-[1px]" />
                                   </span>
                                 )}
                                 {inlineRiskTag && (
@@ -1382,12 +1380,14 @@ export default function DetailPage() {
                       </div>
                     </div>
 
-                    <div className="shrink-0 self-start md:self-auto">
-                      <RiskBadge
-                        risk={insight.status === 'trusted' ? 'safe' : data.risk}
-                        label={insight.statusLabel || t(`risk.${data.risk}`)}
-                      />
-                    </div>
+                    {insight.status !== 'trusted' && (
+                      <div className="shrink-0 self-start md:self-auto">
+                        <RiskBadge
+                          risk={data.risk}
+                          label={insight.statusLabel || t(`risk.${data.risk}`)}
+                        />
+                      </div>
+                    )}
                   </div>
 
                 </div>

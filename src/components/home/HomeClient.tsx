@@ -105,6 +105,8 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
   const { t } = useI18n();
   const [activeFilter, setActiveFilter] = useState('all');
   const [scamData, setScamData] = useState<ScamData[]>(initialScams);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 6;
 
   useEffect(() => {
     if (initialScams.length > 0) return; // đã có dữ liệu server cung cấp, không fetch lại
@@ -146,8 +148,11 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
     });
   }, [filteredAlerts]);
 
-  const alertsToShow = (dedupedAlerts.length ? dedupedAlerts : mockRecentAlerts).slice(0, 6);
-  const showEmptyAlerts = alertsToShow.length === 0;
+  const alertsSource = dedupedAlerts.length ? dedupedAlerts : mockRecentAlerts;
+  const totalPages = Math.max(1, Math.ceil(alertsSource.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const alertsToShow = alertsSource.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const showEmptyAlerts = alertsSource.length === 0;
   const dataset = scamData.length > 0 ? scamData : initialScams.length > 0 ? initialScams : mockRecentAlerts;
   const totalCount = initialStats?.total ?? dataset.length;
   const highCount =
@@ -163,6 +168,16 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
   const viewTotal =
     initialStats?.views ?? dataset.reduce((sum: number, a: any) => sum + Number(a.views || a.viewCount || 0), 0);
   const commentTotal = dataset.reduce((sum: number, a: any) => sum + Number(a.comments || a.commentCount || 0), 0);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    if (page !== safePage) {
+      setPage(safePage);
+    }
+  }, [page, safePage]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f6f8fb] dark:bg-slate-950">
@@ -319,6 +334,32 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
                       </Link>
                     );
                   })}
+                </div>
+              )}
+
+              {!showEmptyAlerts && totalPages > 1 && (
+                <div className="mt-6 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Trang trước
+                  </button>
+
+                  <span className="px-3 py-2 text-sm text-text-secondary">
+                    Trang {safePage}/{totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Trang sau
+                  </button>
                 </div>
               )}
             </div>

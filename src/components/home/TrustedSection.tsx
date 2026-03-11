@@ -1,7 +1,9 @@
 import Link from 'next/link';
+import { createHash } from 'node:crypto';
 import { Building2, BadgeCheck, Globe } from 'lucide-react';
-import { fetchCategoryDirectory, type TinnhiemCategory, type TinnhiemDirectoryItem } from '@/lib/dataSources/tinnhiemmang';
 import SafeImage from '@/components/ui/SafeImage';
+import { d1Query, shouldUseD1Reads } from '@/lib/d1Client';
+import { getDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +26,7 @@ interface TrustedAuthorityItem {
 const CACHE_TTL_MS = 60_000;
 const DISPLAY_LIMIT = 4;
 let cachedTrusted: { items: TrustedAuthorityItem[]; fetchedAt: number } | null = null;
+const SOURCE_NAME = 'tinnhiemmang.vn';
 
 function normalizeRowType(value?: string): TrustedAuthorityType {
   const normalized = (value || '').trim().toLowerCase();
@@ -31,33 +34,21 @@ function normalizeRowType(value?: string): TrustedAuthorityType {
   return 'website';
 }
 
-const CATEGORY_SOURCE: TinnhiemCategory[] = ['websites', 'organizations', 'apps'];
-
-function mapCategoryRisk(status?: string): 'safe' | 'suspicious' | 'scam' {
-  if (!status) return 'safe';
-  const lowered = status.toLowerCase();
-  if (lowered === 'confirmed' || lowered === 'scam') return 'scam';
-  if (lowered === 'suspected' || lowered === 'warning') return 'suspicious';
-  return 'safe';
-}
-
-function parseDateValue(input?: string): number {
-  if (!input) return 0;
-  const trimmed = input.trim();
-  const parts = trimmed.split('/');
-  if (parts.length === 3) {
-    const day = Number.parseInt(parts[0], 10);
-    const month = Number.parseInt(parts[1], 10) - 1;
-    let year = Number.parseInt(parts[2], 10);
-    if (Number.isFinite(year) && year < 100) {
-      year += 2000;
-    }
-    const date = new Date(Date.UTC(year, month, day));
-    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-  }
-  const parsed = Date.parse(trimmed);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
+type TrustedRow = {
+  id: string;
+  type: string;
+  value: string;
+  description: string | null;
+  reportCount: number | string | null;
+  status: string | null;
+  externalStatus: string | null;
+  organizationName: string | null;
+  sourceUrl: string | null;
+  externalCreatedAt: string | null;
+  createdAt: string | null;
+  icon: string | null;
+  organizationIcon: string | null;
+};
 
 function formatLinkText(link?: string, fallback?: string) {
   if (!link) return fallback || '';
@@ -76,55 +67,89 @@ function maskForCompactDisplay(text: string): string {
   return `${clean.slice(0, 6)}***${clean.slice(-8)}`;
 }
 
-function toTrustedItem(item: TinnhiemDirectoryItem, serverTime?: number): TrustedAuthorityItem {
-  const type = item.type === 'organizations' ? 'organization' : 'website';
-  const reports = Number.parseInt(item.count_report || '0', 10) || 0;
-  const organization = item.organization || (type === 'organization' ? item.name : 'TinNhiemMang.vn');
-  const icon = item.organization_icon || item.icon || '';
-  const description = item.description || '';
-  // Use server time if provided, otherwise use item's created_at, never generate new date during render
-  const firstSeen = serverTime 
-    ? new Date(serverTime).toISOString() 
-    : (item.created_at || '');
+function toTrustedItem(row: TrustedRow): TrustedAuthorityItem {
+  const type = normalizeRowType(row.type);
+  const name = row.value;
+  const reports = Number(row.reportCount || 0);
+  const organization = row.organizationName || (type === 'organization' ? name : 'TinNhiemMang.vn');
+  const icon = row.organizationIcon || row.icon || '';
+  const description = row.description || '';
+  const firstSeen = row.externalCreatedAt || row.createdAt || '';
+  const status = (row.externalStatus || row.status || 'trusted').trim().toLowerCase();
+  const id = row.id || createHash('sha1').update(`${type}:${name}`).digest('hex').slice(0, 18);
+  const link = row.sourceUrl || (type === 'website' ? `https://${name}` : undefined);
+
   return {
-    id: item.id || `${type}-${item.name}`.toLowerCase().replace(/\s+/g, '-'),
-    type: normalizeRowType(type),
-    name: item.name,
+    id,
+    type,
+    name,
     organization,
     description,
     reports,
     firstSeen,
-    status: (item.status || '').trim().toLowerCase(),
+    status,
     riskScore: 0,
     icon,
-    link: item.link,
+    link,
   };
 }
 
 async function fetchTrustedAuthorities(): Promise<TrustedAuthorityItem[]> {
   try {
-    // Capture server time once at the start of the request
-    const serverTime = Date.now();
-    
-    const results = await Promise.allSettled(
-      CATEGORY_SOURCE.map((category) => fetchCategoryDirectory(category, 1, ''))
-    );
+    const useD1 = shouldUseD1Reads();
+    const rows: TrustedRow[] = useD1
+      ? await d1Query<TrustedRow>(
+          `
+            SELECT
+              id,
+              type,
+              value,
+              description,
+              report_count AS reportCount,
+              status,
+              external_status AS externalStatus,
+              organization_name AS organizationName,
+              source_url AS sourceUrl,
+              external_created_at AS externalCreatedAt,
+              created_at AS createdAt,
+              icon,
+              organization_icon AS organizationIcon
+            FROM scams
+            WHERE source = ?
+              AND is_scam = 0
+              AND type IN ('website', 'organization', 'application')
+            ORDER BY COALESCE(external_created_at, created_at) DESC
+            LIMIT ?
+          `,
+          [SOURCE_NAME, DISPLAY_LIMIT]
+        )
+      : (await getDb().query<TrustedRow[]>(
+          `
+            SELECT
+              id,
+              type,
+              value,
+              description,
+              report_count AS reportCount,
+              status,
+              external_status AS externalStatus,
+              organization_name AS organizationName,
+              source_url AS sourceUrl,
+              external_created_at AS externalCreatedAt,
+              created_at AS createdAt,
+              icon,
+              organization_icon AS organizationIcon
+            FROM scams
+            WHERE source = ?
+              AND is_scam = 0
+              AND type IN ('website', 'organization', 'application')
+            ORDER BY COALESCE(external_created_at, created_at) DESC
+            LIMIT ?
+          `,
+          [SOURCE_NAME, DISPLAY_LIMIT]
+        ))[0];
 
-    const safeItems: TrustedAuthorityItem[] = [];
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') return;
-      result.value.items.forEach((item) => {
-        if (mapCategoryRisk(item.status) === 'safe') {
-          safeItems.push(toTrustedItem(item, serverTime));
-        }
-      });
-    });
-
-    const sorted = safeItems.sort(
-      (a, b) => parseDateValue(b.firstSeen) - parseDateValue(a.firstSeen)
-    );
-
-    return sorted.slice(0, DISPLAY_LIMIT);
+    return (rows || []).map(toTrustedItem);
   } catch (error) {
     console.error('Trusted authorities fetch failed:', error);
     return [];
