@@ -181,6 +181,10 @@ export default function ProfilePage() {
     bicycle: false,
   });
 
+  // Show loading while checking session
+  // Note: Must check loading status after all hooks are called
+  const isLoading = status === 'loading';
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -188,8 +192,8 @@ export default function ProfilePage() {
     }
   }, [status, router]);
 
-  // Show loading while checking session
-  if (status === 'loading') {
+  // Show loading spinner while session is being checked
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
