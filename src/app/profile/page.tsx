@@ -129,30 +129,8 @@ type FeatureCategory = {
 };
 
 export default function ProfilePage() {
-  return <ProfilePageWithSession />;
-}
-
-function ProfilePageWithSession() {
-  const { status } = useSession();
-  const router = useRouter();
-  
-  // Handle redirect in useEffect to avoid hook order issues
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
-  
-  // Show loading spinner while session is being checked
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-  
-  // Only render the main component when session is authenticated
+  // Middleware handles authentication redirect - this page is protected at the edge
+  // No need for client-side session check here
   return <ProfilePageContent />;
 }
 
