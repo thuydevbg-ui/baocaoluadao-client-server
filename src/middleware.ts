@@ -1,11 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-// Minimal cookie check in middleware (Edge runtime cannot use crypto)
+// ============================================
+// CONSTANTS
+// ============================================
+
 const ADMIN_COOKIE = 'adminAuth';
+
+// ============================================
+// HELPERS
+// ============================================
 
 function normalizeIp(raw: string | null | undefined): string {
   if (!raw) return '';
-  // Take first entry, trim, drop port and brackets
   const first = raw.split(',')[0]?.trim() || '';
   const noBrackets = first.replace(/^\[|\]$/g, '');
   const withoutPort = noBrackets.includes(':') && !noBrackets.includes('::')
@@ -15,7 +22,6 @@ function normalizeIp(raw: string | null | undefined): string {
 }
 
 function getClientIp(req: NextRequest): string {
-  // Prefer common CDN/LB headers
   const candidates = [
     req.headers.get('cf-connecting-ip'),
     req.headers.get('true-client-ip'),
@@ -35,7 +41,7 @@ function getClientIp(req: NextRequest): string {
 
 function isIpAllowed(req: NextRequest): boolean {
   const allowList = process.env.ADMIN_ALLOWED_IPS?.split(',').map((ip) => ip.trim()).filter(Boolean) || [];
-  if (allowList.length === 0) return true; // no restriction configured
+  if (allowList.length === 0) return true;
   const clientIp = getClientIp(req);
   if (!clientIp) return false;
   if (allowList.some((allowed) => allowed.trim() === '*' || allowed.trim().toLowerCase() === 'all')) {
@@ -49,64 +55,114 @@ function hasAdminCookie(req: NextRequest): boolean {
   return Boolean(raw && raw.length > 10);
 }
 
-/**
- * Add caching headers for public static pages
- */
 function addCacheHeaders(response: NextResponse, pathname: string): void {
-  // Don't cache admin routes
   if (pathname.startsWith('/admin') || pathname.startsWith('/api')) {
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     return;
   }
-  
-  // Cache static pages at edge for 15 seconds, stale-while-revalidate for 1 minute
-  // Reduced from 60s to 15s for scam data freshness
   response.headers.set('Cache-Control', 'public, max-age=15, s-maxage=15, stale-while-revalidate=60');
 }
 
-export function middleware(req: NextRequest) {
+// ============================================
+// MAIN MIDDLEWARE
+// ============================================
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Add caching for public pages (not admin/api)
+  console.log('[Middleware] Path:', pathname);
+
   const response = NextResponse.next();
   addCacheHeaders(response, pathname);
 
-  // Only guard /admin routes
-  if (!pathname.startsWith('/admin')) {
+  // ========================================
+  // ADMIN ROUTES (existing logic - uses custom cookie)
+  // ========================================
+  if (pathname.startsWith('/admin')) {
+    const isIpCheckRoute = pathname.startsWith('/admin/ip-check');
+    const ipAllowed = isIpAllowed(req);
+    const authPresent = hasAdminCookie(req);
+    const isLoginRoute = pathname.startsWith('/admin/login');
+
+    if (!ipAllowed && !isIpCheckRoute) {
+      const url = new URL('/admin/ip-check', req.url);
+      return NextResponse.redirect(url);
+    }
+
+    if ((!authPresent || !ipAllowed) && !isLoginRoute && !isIpCheckRoute) {
+      const url = new URL('/admin/login', req.url);
+      return NextResponse.redirect(url);
+    }
+
+    if (authPresent && ipAllowed && isLoginRoute) {
+      const url = new URL('/admin', req.url);
+      return NextResponse.redirect(url);
+    }
+
     return response;
   }
 
-  const isIpCheckRoute = pathname.startsWith('/admin/ip-check');
-  const ipAllowed = isIpAllowed(req);
-  const authPresent = hasAdminCookie(req);
-  const isLoginRoute = pathname.startsWith('/admin/login');
+  // ========================================
+  // USER PROTECTED ROUTES - Use NextAuth JWT
+  // ========================================
+  
+  const protectedUserRoutes = ['/profile', '/dashboard', '/reports', '/watchlist', '/settings'];
+  const isProtectedUserRoute = protectedUserRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
+  
+  if (isProtectedUserRoute) {
+    console.log('[Middleware] Protected route, checking auth for:', pathname);
+    
+    // Use NextAuth's getToken to verify JWT
+    const token = await getToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_COOKIE_SECRET,
+    });
 
-  // If IP not allowed -> send to IP check page (but allow that page to render)
-  if (!ipAllowed && !isIpCheckRoute) {
-    const url = new URL('/admin/ip-check', req.url);
-    return NextResponse.redirect(url);
+    console.log('[Middleware] Token:', token ? 'found' : 'not found');
+
+    if (!token) {
+      console.log('[Middleware] No token, redirecting to login');
+      const loginUrl = new URL('/login', req.url);
+      loginUrl.searchParams.set('callbackUrl', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Add user info to headers for downstream use
+    response.headers.set('x-user-id', token.sub || '');
+    response.headers.set('x-user-email', token.email || '');
+    response.headers.set('x-user-role', token.role as string || 'user');
   }
 
-  // If not authenticated and accessing protected admin routes -> redirect to login
-  // Allow the IP check page to load even when not authenticated or IP is blocked.
-  if ((!authPresent || !ipAllowed) && !isLoginRoute && !isIpCheckRoute) {
-    const url = new URL('/admin/login', req.url);
-    return NextResponse.redirect(url);
-  }
+  // ========================================
+  // API PROTECTED ROUTES
+  // ========================================
+  
+  if (pathname.startsWith('/api/user') || pathname.startsWith('/api/watchlist')) {
+    const token = await getToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_COOKIE_SECRET,
+    });
 
-  // If already authenticated and hits login, send to dashboard
-  if (authPresent && ipAllowed && isLoginRoute) {
-    const url = new URL('/admin', req.url);
-    return NextResponse.redirect(url);
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
   }
 
   return response;
 }
 
 export const config = {
-  // Run middleware on all routes to enable caching for public pages
-  // Admin routes get no-cache, public routes get edge caching
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
+    '/profile/:path*',
+    '/dashboard/:path*',
+    '/reports/:path*',
+    '/watchlist/:path*',
+    '/settings/:path*',
+    '/admin/:path*',
+    '/api/user/:path*',
+    '/api/watchlist/:path*',
   ],
 };

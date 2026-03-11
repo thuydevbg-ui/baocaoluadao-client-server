@@ -122,6 +122,124 @@ export function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
 
+// ============================================
+// AUTH VALIDATION SCHEMAS
+// ============================================
+
+/**
+ * Password validation schema
+ * Requirements: min 8 chars, uppercase, number, special char
+ */
+export const PasswordSchema = z.string()
+  .min(8, 'Mật khẩu phải có ít nhất 8 ký tự')
+  .max(128, 'Mật khẩu không được quá 128 ký tự')
+  .refine(
+    (password) => /[A-Z]/.test(password),
+    'Mật khẩu phải chứa ít nhất một chữ cái in hoa'
+  )
+  .refine(
+    (password) => /[0-9]/.test(password),
+    'Mật khẩu phải chứa ít nhất một số'
+  )
+  .refine(
+    (password) => /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    'Mật khẩu nên chứa ít nhất một ký tự đặc biệt'
+  );
+
+export type Password = z.infer<typeof PasswordSchema>;
+
+/**
+ * Login request schema
+ */
+export const LoginSchema = z.object({
+  email: z.string()
+    .email('Địa chỉ email không hợp lệ')
+    .max(254, 'Email không được quá 254 ký tự'),
+  password: z.string()
+    .min(1, 'Mật khẩu là bắt buộc')
+    .max(128, 'Mật khẩu không được quá 128 ký tự'),
+  rememberMe: z.boolean().optional(),
+});
+
+export type LoginRequest = z.infer<typeof LoginSchema>;
+
+/**
+ * Registration request schema
+ */
+export const RegisterSchema = z.object({
+  name: z.string()
+    .min(2, 'Tên phải có ít nhất 2 ký tự')
+    .max(80, 'Tên không được quá 80 ký tự'),
+  email: z.string()
+    .email('Địa chỉ email không hợp lệ')
+    .max(254, 'Email không được quá 254 ký tự'),
+  password: PasswordSchema,
+  confirmPassword: z.string(),
+}).refine(
+  (data) => data.password === data.confirmPassword,
+  {
+    message: 'Mật khẩu xác nhận không khớp',
+    path: ['confirmPassword'],
+  }
+);
+
+export type RegisterRequest = z.infer<typeof RegisterSchema>;
+
+/**
+ * Validate password strength and return result
+ */
+export function validatePasswordStrength(password: string): {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  if (password.length < 8) {
+    errors.push('Mật khẩu phải có ít nhất 8 ký tự');
+  } else if (password.length < 12) {
+    warnings.push('Mật khẩu nên có ít nhất 12 ký tự để tăng cường bảo mật');
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    errors.push('Mật khẩu phải chứa ít nhất một chữ cái thường');
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Mật khẩu phải chứa ít nhất một chữ cái in hoa');
+  }
+  
+  if (!/[0-9]/.test(password)) {
+    errors.push('Mật khẩu phải chứa ít nhất một số');
+  }
+  
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    warnings.push('Mật khẩu nên chứa ít nhất một ký tự đặc biệt (!@#$%^&*...)');
+  }
+  
+  // Check for common patterns
+  const commonPatterns = [
+    /^[a-zA-Z]+$/,
+    /^[0-9]+$/,
+    /(.)\1{2,}/,
+    /^(password|123456|qwerty)/i,
+  ];
+  
+  for (const pattern of commonPatterns) {
+    if (pattern.test(password)) {
+      warnings.push('Tránh sử dụng các mẫu phổ biến trong mật khẩu');
+      break;
+    }
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
 /**
  * Validate and normalize report target based on type
  */
