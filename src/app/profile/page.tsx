@@ -132,24 +132,6 @@ export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { showToast } = useToast();
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
-
-  // Show loading while checking session
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  // Redirect to login if not authenticated
   const securitySectionRef = useRef<HTMLDivElement | null>(null);
   const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -189,13 +171,31 @@ export default function ProfilePage() {
   const [watchTargetInput, setWatchTargetInput] = useState('');
   const [watchTypeInput, setWatchTypeInput] = useState<'website' | 'phone' | 'bank' | 'crypto'>('website');
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Search Modal State
   const [modalSearchTerm, setModalSearchTerm] = useState('');
   const [modalSearchResults, setModalSearchResults] = useState<any[]>([]);
   const [modalIsSearching, setModalIsSearching] = useState(false);
   const [modalSearched, setModalSearched] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [deviceStates, setDeviceStates] = useState<Record<string, boolean>>({
+    myhome: true,
+    bicycle: false,
+  });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Show loading while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
   
   const SEARCH_CATEGORIES = ['organizations', 'websites', 'devices', 'systems', 'apps'];
   
@@ -361,11 +361,6 @@ export default function ProfilePage() {
       trustScore: security?.securityScore ?? user?.securityScore ?? 72,
     };
   }, [state.reports, state.watchlist.length, state.summary, security?.securityScore, user?.securityScore]);
-
-  const [deviceStates, setDeviceStates] = useState<Record<string, boolean>>({
-    myhome: true,
-    bicycle: false,
-  });
 
   const deviceCards: DeviceCard[] = [
     {
