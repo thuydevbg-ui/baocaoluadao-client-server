@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, SVGProps } from 'react';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession, signOut, signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { Footer, MobileNav } from '@/components/layout';
@@ -41,6 +42,7 @@ import {
   AlertTriangle,
   XCircle,
   CheckCircle,
+  LogOut,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'framer-motion';
@@ -128,7 +130,26 @@ type FeatureCategory = {
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const { showToast } = useToast();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Show loading while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
   const securitySectionRef = useRef<HTMLDivElement | null>(null);
   const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -450,6 +471,14 @@ export default function ProfilePage() {
     showToast('warning', 'Chức năng gửi báo cáo đang được tối ưu hóa.');
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut({ callbackUrl: '/' });
+    } catch (error) {
+      showToast('error', 'Đăng xuất thất bại');
+    }
+  };
+
   const featureCategories: FeatureCategory[] = [
     {
       key: 'reports',
@@ -769,9 +798,19 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="mt-5 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">Hi, {user?.name?.split(' ')?.[0] ?? 'Bạn'}</p>
-                <p className="text-[12px] text-white/80">Bạn đang được bảo vệ</p>
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Hi, {user?.name?.split(' ')?.[0] ?? 'Bạn'}</p>
+                  <p className="text-[12px] text-white/80">Bạn đang được bảo vệ</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/30"
+                  title="Đăng xuất"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Đăng xuất</span>
+                </button>
               </div>
               <div className="text-right">
                 <p className="text-[10px] uppercase tracking-[0.4em] text-white/70">Nhiệt độ</p>
