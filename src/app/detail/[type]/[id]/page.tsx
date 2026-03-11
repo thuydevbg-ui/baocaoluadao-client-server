@@ -814,8 +814,7 @@ export default function DetailPage() {
       setError(null);
 
       try {
-        await new Promise((resolve) => setTimeout(resolve, 220));
-
+        // Fetch data immediately without artificial delay
         const sourceMetaFromQuery = parseDetailSourceMeta(searchParams);
         let sourceMeta = sourceMetaFromQuery;
         const statusFromQuery = normalizeSourceStatus(sourceMetaFromQuery.status || sourceMetaFromQuery.sourceMode);
