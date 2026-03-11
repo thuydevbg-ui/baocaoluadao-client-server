@@ -4,6 +4,7 @@ import { Building2, BadgeCheck, Globe } from 'lucide-react';
 import SafeImage from '@/components/ui/SafeImage';
 import { d1Query, shouldUseD1Reads } from '@/lib/d1Client';
 import { getDb } from '@/lib/db';
+import { RowDataPacket } from 'mysql2/promise';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ function normalizeRowType(value?: string): TrustedAuthorityType {
   return 'website';
 }
 
-type TrustedRow = {
+type TrustedRow = RowDataPacket & {
   id: string;
   type: string;
   value: string;

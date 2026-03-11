@@ -25,12 +25,29 @@ export async function handleDetailViews(
 
     const detailKey = sanitizeInput(body.detailKey, 255);
 
-    // In production, increment view count in database
-    // For now, return success with view count
+    let views = 1;
+    if (env.DB) {
+      const now = Date.now();
+      await env.DB.prepare(
+        `
+          INSERT INTO detail_view_counts (detail_key, views, created_at, updated_at)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(detail_key) DO UPDATE SET
+            views = views + 1,
+            updated_at = excluded.updated_at
+        `
+      ).bind(detailKey, now, now).run();
+
+      const row = await env.DB.prepare(
+        `SELECT views FROM detail_view_counts WHERE detail_key = ?`
+      ).bind(detailKey).first<{ views: number }>();
+      views = row?.views || 1;
+    }
+
     const result = {
       success: true,
       detailKey,
-      views: 1, // Would be incremented in production
+      views,
       timestamp: new Date().toISOString(),
     };
 

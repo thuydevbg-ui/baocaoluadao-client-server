@@ -105,18 +105,32 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
   const { t } = useI18n();
   const [activeFilter, setActiveFilter] = useState('all');
   const [scamData, setScamData] = useState<ScamData[]>(initialScams);
-  const [page, setPage] = useState(1);
   const PAGE_SIZE = 6;
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   useEffect(() => {
     if (initialScams.length > 0) return; // đã có dữ liệu server cung cấp, không fetch lại
     let cancelled = false;
     async function fetchScamData() {
       try {
-        const response = await fetch('/api/scams?page=1&limit=100', { cache: 'force-cache' });
+        const normalizedType =
+          activeFilter === 'all' ? '' : activeFilter === 'web' ? 'website' : activeFilter;
+        const typeParam = normalizedType ? `&type=${encodeURIComponent(normalizedType)}` : '';
+        const response = await fetch(`/api/scams?page=${page}&limit=${PAGE_SIZE}${typeParam}`, {
+          cache: 'no-store',
+        });
         const data = await response.json();
         if (!cancelled && data.success && data.data) {
           setScamData(data.data);
+          if (data.pagination) {
+            setPagination({
+              page: data.pagination.page ?? page,
+              limit: data.pagination.limit ?? PAGE_SIZE,
+              total: data.pagination.total ?? 0,
+              totalPages: data.pagination.totalPages ?? 1,
+            });
+          }
         }
       } catch (error) {
         console.error('Failed to fetch scam data:', error);
@@ -126,12 +140,13 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
     return () => {
       cancelled = true;
     };
-  }, [initialScams.length]);
+  }, [initialScams.length, activeFilter, page]);
 
+  const baseAlerts = scamData.length > 0 ? scamData : mockRecentAlerts;
   const filteredAlerts =
     activeFilter === 'all'
-      ? (scamData.length > 0 ? scamData : mockRecentAlerts)
-      : (scamData.length > 0 ? scamData : mockRecentAlerts).filter((alert: any) => {
+      ? baseAlerts
+      : baseAlerts.filter((alert: any) => {
           const alertType = alert.type === 'web' ? 'website' : alert.type;
           return alertType === activeFilter;
         });
@@ -149,12 +164,12 @@ export default function HomeClient({ trustedSection, initialScams = [], initialS
   }, [filteredAlerts]);
 
   const alertsSource = dedupedAlerts.length ? dedupedAlerts : mockRecentAlerts;
-  const totalPages = Math.max(1, Math.ceil(alertsSource.length / PAGE_SIZE));
+  const totalPages = Math.max(1, pagination.totalPages || 1);
   const safePage = Math.min(page, totalPages);
-  const alertsToShow = alertsSource.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const alertsToShow = alertsSource;
   const showEmptyAlerts = alertsSource.length === 0;
   const dataset = scamData.length > 0 ? scamData : initialScams.length > 0 ? initialScams : mockRecentAlerts;
-  const totalCount = initialStats?.total ?? dataset.length;
+  const totalCount = initialStats?.total ?? (pagination.total || dataset.length);
   const highCount =
     initialStats?.high ??
     dataset.filter((a: any) =>

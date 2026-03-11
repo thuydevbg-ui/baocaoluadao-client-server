@@ -104,6 +104,18 @@ CREATE TABLE IF NOT EXISTS detail_feedback (
 CREATE INDEX IF NOT EXISTS idx_detail_feedback_key ON detail_feedback(detail_key);
 CREATE INDEX IF NOT EXISTS idx_detail_feedback_created ON detail_feedback(created_at);
 
+-- Detail ratings
+CREATE TABLE IF NOT EXISTS detail_ratings (
+  id TEXT PRIMARY KEY,
+  detail_key TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  author_identity_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_detail_ratings_key ON detail_ratings(detail_key);
+CREATE INDEX IF NOT EXISTS idx_detail_ratings_created ON detail_ratings(created_at);
+
 -- Policy violations
 CREATE TABLE IF NOT EXISTS policy_violations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

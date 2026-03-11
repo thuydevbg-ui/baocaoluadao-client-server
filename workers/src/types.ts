@@ -25,7 +25,7 @@ export interface Env {
 
 export interface ScamType {
   id: string;
-  type: 'website' | 'phone' | 'email' | 'bank' | 'social' | 'sms' | 'organization';
+  type: 'website' | 'phone' | 'email' | 'bank' | 'social' | 'sms' | 'organization' | 'device' | 'system' | 'application';
   value: string;
   description: string;
   reportCount: number;

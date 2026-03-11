@@ -28,12 +28,6 @@ export async function handleScan(
       return createErrorResponse('Invalid domain format', 400, origin, corsHeaders);
     }
 
-    // Perform scan - In production, integrate with:
-    // 1. Google Web Risk API
-    // 2. PhishTank
-    // 3. Local database lookup
-    // 4. Custom scanning logic
-
     const scanResult = {
       domain: domain,
       scannedAt: new Date().toISOString(),
@@ -47,6 +41,40 @@ export async function handleScan(
       },
     };
 
+    // Local database lookup (D1)
+    if (env.DB) {
+      try {
+        const row = await env.DB.prepare(
+          `
+            SELECT value, description, risk_level, status, external_status, is_scam
+            FROM scams
+            WHERE value = ?
+            LIMIT 1
+          `
+        ).bind(domain).first<{
+          risk_level: string | null;
+          status: string | null;
+          external_status: string | null;
+          is_scam: number | null;
+        }>();
+
+        if (row) {
+          const isScam = Number(row.is_scam || 0) === 1;
+          scanResult.details.localDb = isScam ? 'scam' : 'trusted';
+          scanResult.threatDetected = isScam;
+          if (isScam) {
+            scanResult.threatTypes.push('LOCAL_DB');
+            const riskLevel = (row.risk_level || '').toLowerCase();
+            scanResult.riskScore = riskLevel === 'high' ? 90 : riskLevel === 'medium' ? 70 : 50;
+          } else {
+            scanResult.riskScore = 10;
+          }
+        }
+      } catch {
+        scanResult.details.localDb = 'error';
+      }
+    }
+
     // Check Google Web Risk if API key is available
     if (env.WEB_RISK_API_KEY) {
       try {
@@ -59,7 +87,7 @@ export async function handleScan(
       }
     }
 
-    // Calculate risk score based on findings
+    // Calculate risk score based on findings (if external threats found)
     if (scanResult.threatTypes.includes('MALWARE')) {
       scanResult.riskScore = 100;
     } else if (scanResult.threatTypes.includes('SOCIAL_ENGINEERING')) {

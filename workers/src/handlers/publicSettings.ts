@@ -32,16 +32,43 @@ export async function handlePublicSettings(
     }
   }
 
-  // Public settings
+  let siteName = 'Báo Cáo Lừa Đảo';
+  let siteDescription = 'Nền tảng báo cáo và tra cứu lừa đảo trực tuyến';
+  let reportsEnabled = true;
+  let aiScanEnabled = true;
+
+  if (env.DB) {
+    try {
+      const rows = await env.DB.prepare(
+        `
+          SELECT key, value
+          FROM site_settings
+          WHERE key IN ('site_name', 'site_description', 'reports_enabled', 'ai_scan_enabled')
+        `
+      ).all<{ key: string; value: string }>();
+      if (rows.success && rows.results) {
+        for (const row of rows.results) {
+          if (row.key === 'site_name' && row.value) siteName = row.value;
+          if (row.key === 'site_description' && row.value) siteDescription = row.value;
+          if (row.key === 'reports_enabled') reportsEnabled = row.value === 'true';
+          if (row.key === 'ai_scan_enabled') aiScanEnabled = row.value === 'true';
+        }
+      }
+    } catch (error) {
+      console.error('D1 settings error:', error);
+    }
+  }
+
   const settings = {
     success: true,
-    siteName: 'Báo Cáo Lừa Đảo',
-    siteDescription: 'Nền tảng báo cáo và tra cứu lừa đảo trực tuyến',
+    siteName,
+    siteDescription,
     contactEmail: 'contact@baocaoluadao.com',
     features: {
-      allowAnonymousReports: true,
+      allowAnonymousReports: reportsEnabled,
       showStatistics: true,
       enableSearch: true,
+      enableAiScan: aiScanEnabled,
     },
     socialLinks: {
       facebook: 'https://facebook.com/baocaoluadao',

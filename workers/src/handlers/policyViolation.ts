@@ -47,13 +47,39 @@ export async function handlePolicyViolationLookup(
       }
     }
 
-    // In production, query database for policy violations
-    // For now, return no violation found
+    let violation: any = null;
+    if (env.DB) {
+      try {
+        const row = await env.DB.prepare(
+          `
+            SELECT
+              domain,
+              violation_summary,
+              source_name,
+              source_url,
+              source_title,
+              source_published_at,
+              first_seen_at,
+              last_seen_at
+            FROM policy_violations
+            WHERE domain = ?
+            ORDER BY last_seen_at DESC
+            LIMIT 1
+          `
+        ).bind(domain).first<Record<string, any>>();
+        if (row) {
+          violation = row;
+        }
+      } catch (error) {
+        console.error('D1 policy lookup error:', error);
+      }
+    }
+
     const result = {
       success: true,
       domain,
-      found: false,
-      violation: null,
+      found: Boolean(violation),
+      violation,
       checkedAt: new Date().toISOString(),
     };
 

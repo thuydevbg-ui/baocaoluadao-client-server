@@ -3,9 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import { createUserWithPassword, findUserByEmail } from '@/lib/userRepository';
 import { getSiteSettings } from '@/lib/siteSettings';
+import { validatePasswordStrength } from '@/lib/validators';
 
-const MIN_PASSWORD_LENGTH = 8;
-const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const POST = withApiObservability(async (request: NextRequest) => {
@@ -31,9 +30,11 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       return NextResponse.json({ error: 'Email không hợp lệ' }, { status: 400 });
     }
 
-    if (password.length < MIN_PASSWORD_LENGTH || !PASSWORD_PATTERN.test(password)) {
+    // Enhanced password validation
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
       return NextResponse.json(
-        { error: 'Mật khẩu cần tối thiểu 8 ký tự, gồm chữ và số' },
+        { error: passwordValidation.errors[0], errors: passwordValidation.errors },
         { status: 400 }
       );
     }

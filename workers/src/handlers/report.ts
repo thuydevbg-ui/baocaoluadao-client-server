@@ -3,7 +3,7 @@
  * POST /api/report
  */
 
-import { createJsonResponse, createErrorResponse, sanitizeInput, isValidUrl, isValidPhone } from '../utils';
+import { createJsonResponse, createErrorResponse, sanitizeInput, isValidUrl, isValidPhone, getClientIP } from '../utils';
 import type { Env } from '../types';
 import type { ReportRequest } from '../types';
 
@@ -54,8 +54,6 @@ export async function handleReport(
     // Sanitize description
     const description = sanitizeInput(body.description, 5000);
 
-    // Create report - In production, this would write to database
-    // For now, we return a success response
     const reportId = crypto.randomUUID();
     const report = {
       id: reportId,
@@ -69,9 +67,30 @@ export async function handleReport(
       createdAt: new Date().toISOString(),
     };
 
-    // TODO: Store in database (via Cloudflare Tunnel or D1)
-    // const db = await getDatabaseConnection(env);
-    // await db.insert('reports').values(report);
+    if (env.DB) {
+      const now = new Date().toISOString();
+      const ip = getClientIP(request);
+      await env.DB.prepare(
+        `
+          INSERT INTO reports (
+            id, type, target, description, risk_level, status, source,
+            ip_address, user_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+      ).bind(
+        report.id,
+        report.type,
+        report.target,
+        report.description,
+        'medium',
+        report.status,
+        report.source,
+        ip,
+        null,
+        now,
+        now
+      ).run();
+    }
 
     return createJsonResponse({
       success: true,

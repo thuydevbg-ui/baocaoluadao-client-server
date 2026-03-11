@@ -56,11 +56,10 @@ function parsePage(value: unknown): number {
 function parseQuery(value: unknown): string {
   if (typeof value !== 'string') return '';
   // Escape SQL LIKE wildcards to prevent pattern injection
-  const escaped = value.trim().slice(0, 120)
-    .replace(/[%_]/g, '\\function parseQuery(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  return value.trim().slice(0, 120);
-}');
+  const escaped = value
+    .trim()
+    .slice(0, 120)
+    .replace(/[%_]/g, '\\$&');
   return escaped;
 }
 

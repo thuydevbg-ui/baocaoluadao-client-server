@@ -72,36 +72,93 @@ export async function handleDetailFeedback(
 }
 
 async function handleRating(detailKey: string, score: number, ip: string, identityType: string, env: Env): Promise<object> {
-  // In production, store in database
-  // For now, return success
+  let stored = false;
+  if (env.DB) {
+    try {
+      await env.DB.prepare(
+        `
+          INSERT INTO detail_ratings (id, detail_key, score, author_identity_key, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `
+      ).bind(
+        crypto.randomUUID(),
+        detailKey,
+        score,
+        `${identityType}:${ip}`,
+        Date.now()
+      ).run();
+      stored = true;
+    } catch (error) {
+      console.warn('Detail rating insert failed:', error);
+    }
+  }
   return {
     action: 'rate',
     detailKey,
     score,
     identityType,
+    stored,
     timestamp: new Date().toISOString(),
   };
 }
 
 async function handleComment(detailKey: string, comment: string, ip: string, identityType: string, env: Env): Promise<object> {
-  // In production, store in database
-  // For now, return success
+  let stored = false;
+  if (env.DB) {
+    try {
+      await env.DB.prepare(
+        `
+          INSERT INTO detail_feedback (
+            id, detail_key, user, avatar, text, author_identity_key, helpful, verified, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+      ).bind(
+        crypto.randomUUID(),
+        detailKey,
+        'Anonymous',
+        '',
+        comment,
+        `${identityType}:${ip}`,
+        0,
+        0,
+        Date.now()
+      ).run();
+      stored = true;
+    } catch (error) {
+      console.warn('Detail feedback insert failed:', error);
+    }
+  }
   return {
     action: 'comment',
     detailKey,
     commentLength: comment.length,
     identityType,
+    stored,
     timestamp: new Date().toISOString(),
   };
 }
 
 async function handleHelpful(detailKey: string, ip: string, identityType: string, env: Env): Promise<object> {
-  // In production, store in database
-  // For now, return success
+  let stored = false;
+  if (env.DB) {
+    try {
+      await env.DB.prepare(
+        `
+          UPDATE detail_feedback
+          SET helpful = helpful + 1
+          WHERE detail_key = ?
+        `
+      ).bind(detailKey).run();
+      stored = true;
+    } catch (error) {
+      console.warn('Detail helpful update failed:', error);
+    }
+  }
   return {
     action: 'helpful',
     detailKey,
     identityType,
+    stored,
     timestamp: new Date().toISOString(),
   };
 }

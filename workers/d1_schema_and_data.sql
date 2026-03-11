@@ -121,6 +121,17 @@ CREATE TABLE IF NOT EXISTS detail_feedback (
 );
 
 -- =============================================================================
+-- TABLE: detail_ratings
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS detail_ratings (
+  id TEXT PRIMARY KEY,
+  detail_key TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  author_identity_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- =============================================================================
 -- TABLE: policy_violations
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS policy_violations (

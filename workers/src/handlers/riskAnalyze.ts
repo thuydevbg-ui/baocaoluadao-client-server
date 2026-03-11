@@ -88,15 +88,43 @@ async function analyzeRisk(type: string, value: string, env: Env): Promise<objec
     }
   }
 
-  const result = {
+  let result = {
     type,
     value,
     riskLevel: 'unknown',
     riskScore: 0,
-    factors: [],
+    factors: [] as string[],
     recommendation: 'Unable to determine risk level',
     analyzedAt: new Date().toISOString(),
   };
+
+  if (env.DB) {
+    try {
+      const row = await env.DB.prepare(
+        `
+          SELECT is_scam, risk_level, status, external_status
+          FROM scams
+          WHERE value = ? AND type = ?
+          LIMIT 1
+        `
+      ).bind(value, type).first<{ is_scam: number; risk_level: string | null; status: string | null; external_status: string | null }>();
+
+      if (row) {
+        const isScam = Number(row.is_scam || 0) === 1;
+        const riskLevel = (row.risk_level || (isScam ? 'high' : 'low')).toLowerCase();
+        const riskScore = riskLevel === 'high' ? 90 : riskLevel === 'medium' ? 60 : 20;
+        result = {
+          ...result,
+          riskLevel,
+          riskScore,
+          factors: ['local_db'],
+          recommendation: isScam ? 'Không nên tương tác. Có dấu hiệu lừa đảo.' : 'Nguồn tin cậy từ cơ sở dữ liệu nội bộ.',
+        };
+      }
+    } catch (error) {
+      console.error('D1 risk lookup error:', error);
+    }
+  }
 
   // Cache the result
   if (env.CACHE) {
