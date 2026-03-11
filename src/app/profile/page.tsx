@@ -181,18 +181,17 @@ export default function ProfilePage() {
     bicycle: false,
   });
 
-  // Show loading while checking session
-  // Note: Must check loading status after all hooks are called
+  // Session status check - must be after ALL hooks
   const isLoading = status === 'loading';
 
-  // Redirect to login if not authenticated
+  // Handle redirect in useEffect to avoid hook order issues
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
   }, [status, router]);
 
-  // Show loading spinner while session is being checked
+  // Early return AFTER all hooks are called - this is critical for React
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
