@@ -129,8 +129,35 @@ type FeatureCategory = {
 };
 
 export default function ProfilePage() {
-  const { data: session, status } = useSession();
+  return <ProfilePageWithSession />;
+}
+
+function ProfilePageWithSession() {
+  const { status } = useSession();
   const router = useRouter();
+  
+  // Handle redirect in useEffect to avoid hook order issues
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+  
+  // Show loading spinner while session is being checked
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  // Only render the main component when session is authenticated
+  return <ProfilePageContent />;
+}
+
+function ProfilePageContent() {
+  const { data: session } = useSession();
   const { showToast } = useToast();
   const securitySectionRef = useRef<HTMLDivElement | null>(null);
   const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
@@ -181,25 +208,6 @@ export default function ProfilePage() {
     bicycle: false,
   });
 
-  // Session status check - must be after ALL hooks
-  const isLoading = status === 'loading';
-
-  // Handle redirect in useEffect to avoid hook order issues
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
-
-  // Early return AFTER all hooks are called - this is critical for React
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-  
   const SEARCH_CATEGORIES = ['organizations', 'websites', 'devices', 'systems', 'apps'];
   
   const handleModalSearch = async (query: string) => {
