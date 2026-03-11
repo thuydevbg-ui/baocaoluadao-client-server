@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest } from 'next/server';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 import { getDb } from '@/lib/db';
+import { d1Query, shouldUseD1Reads } from '@/lib/d1Client';
 import { RowDataPacket } from 'mysql2/promise';
 
 // Valid scam types in database
@@ -53,7 +55,13 @@ function parsePage(value: unknown): number {
 
 function parseQuery(value: unknown): string {
   if (typeof value !== 'string') return '';
+  // Escape SQL LIKE wildcards to prevent pattern injection
+  const escaped = value.trim().slice(0, 120)
+    .replace(/[%_]/g, '\\function parseQuery(value: unknown): string {
+  if (typeof value !== 'string') return '';
   return value.trim().slice(0, 120);
+}');
+  return escaped;
 }
 
 function categoryModeForType(category: ScamType): 'scam' | 'trusted' {
@@ -84,8 +92,195 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     const perPage = Math.min(Math.max(Number(payload?.perPage) || 30, 1), 200);
 
     const mode = categoryModeForType(category);
-    const db = getDb();
     const offset = (page - 1) * perPage;
+    const useD1 = shouldUseD1Reads();
+
+    if (useD1) {
+      // Build query conditions
+      const conditions: string[] = [];
+      const params: (string | number)[] = [];
+
+      conditions.push('source = ?');
+      params.push(SOURCE_NAME);
+
+      conditions.push('type = ?');
+      params.push(category);
+
+      conditions.push('is_scam = ?');
+      params.push(mode === 'scam' ? 1 : 0);
+
+      if (query) {
+        conditions.push('(value LIKE ? OR description LIKE ?)');
+        params.push(`%${query}%`, `%${query}%`);
+      }
+
+      const whereClause = conditions.join(' AND ');
+
+      // Get total count
+      interface CountRow extends RowDataPacket {
+        count: number;
+      }
+      const countRows = await d1Query<CountRow>(
+        `SELECT COUNT(*) as count FROM scams WHERE ${whereClause}`,
+        params
+      );
+      let total = Number(countRows[0]?.count || 0);
+
+      interface ScamRow {
+        id: string;
+        type: string;
+        name: string;
+        description: string;
+        count_report: number;
+        status: string;
+        source_status: string;
+        source: string;
+        created_at: string;
+        icon: string | null;
+        organization_name: string | null;
+        organization_icon: string | null;
+        is_scam: boolean | number;
+      }
+
+      let rows: ScamRow[] = [];
+
+      if (total > 0) {
+        rows = await d1Query<ScamRow>(
+          `SELECT 
+            id,
+            type,
+            value as name,
+            description,
+            report_count as count_report,
+            risk_level as status,
+            status as source_status,
+            source,
+            created_at,
+            icon,
+            organization_name,
+            organization_icon,
+            is_scam
+          FROM scams 
+          WHERE ${whereClause}
+          ORDER BY report_count DESC, created_at DESC
+          LIMIT ? OFFSET ?`,
+          [...params, perPage, offset]
+        );
+      }
+
+      // Fallback for organization category while org feed is being backfilled:
+      // derive organizations from trusted website records.
+      if (category === 'organization' && total === 0) {
+        const orgWhere = [
+          'source = ?',
+          "type = 'website'",
+          'is_scam = 0',
+          "organization_name IS NOT NULL",
+          "TRIM(organization_name) <> ''",
+        ];
+        const orgParams: (string | number)[] = [SOURCE_NAME];
+
+        if (query) {
+          orgWhere.push('organization_name LIKE ?');
+          orgParams.push(`%${query}%`);
+        }
+
+        const orgWhereClause = orgWhere.join(' AND ');
+        const orgCountRows = await d1Query<CountRow>(
+          `SELECT COUNT(DISTINCT LOWER(TRIM(organization_name))) AS count FROM scams WHERE ${orgWhereClause}`,
+          orgParams
+        );
+        total = Number(orgCountRows[0]?.count || 0);
+
+        if (total > 0) {
+          type OrgRow = {
+            org_key: string;
+            name: string;
+            count_report: number | string;
+            created_at: string;
+            organization_icon: string | null;
+          };
+
+          const orgRows = await d1Query<OrgRow>(
+            `
+              SELECT
+                LOWER(TRIM(organization_name)) AS org_key,
+                TRIM(organization_name) AS name,
+                COUNT(*) AS count_report,
+                MAX(COALESCE(external_created_at, created_at)) AS created_at,
+                MAX(NULLIF(organization_icon, '')) AS organization_icon
+              FROM scams
+              WHERE ${orgWhereClause}
+              GROUP BY org_key
+              ORDER BY created_at DESC
+              LIMIT ? OFFSET ?
+            `,
+            [...orgParams, perPage, offset]
+          );
+
+          rows = orgRows.map((row) => {
+            const hash = createHash('sha1').update(row.org_key || row.name).digest('hex').slice(0, 18).toUpperCase();
+            const countReport = Number(row.count_report || 0);
+            return {
+              id: `ORG-${hash}`,
+              type: 'organization',
+              name: row.name,
+              description: `Đối tượng tín nhiệm có ${countReport} website đã kiểm duyệt`,
+              count_report: countReport,
+              status: 'low',
+              source_status: 'trusted',
+              source: SOURCE_NAME,
+              created_at: row.created_at,
+              icon: row.organization_icon,
+              organization_name: row.name,
+              organization_icon: row.organization_icon,
+              is_scam: false,
+            };
+          });
+        }
+      }
+
+      // Map database rows to API response format
+      const items = (rows || []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        description: row.description || '',
+        count_report: String(row.count_report || 0),
+        status: row.is_scam === false || row.is_scam === 0
+          ? 'trusted'
+          : row.source_status === 'blocked'
+            ? 'scam'
+            : row.source_status === 'investigating'
+              ? 'suspected'
+              : row.status === 'high'
+                ? 'scam'
+                : row.status === 'medium'
+                  ? 'suspected'
+                  : 'safe',
+        created_at: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
+        source: row.source || 'database',
+        icon: row.icon,
+        organization: row.organization_name,
+        organization_icon: row.organization_icon,
+      }));
+
+      const maxPage = Math.ceil(total / perPage);
+
+      return createSecureJsonResponse({
+        success: true,
+        source: 'database',
+        category,
+        mode,
+        page,
+        maxPage: maxPage || 1,
+        total,
+        query,
+        items,
+      }, { status: 200 }, rateLimit);
+    }
+
+    const db = getDb();
 
     // Build query conditions
     const conditions: string[] = [];

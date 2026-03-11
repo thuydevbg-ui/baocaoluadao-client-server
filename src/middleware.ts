@@ -49,12 +49,31 @@ function hasAdminCookie(req: NextRequest): boolean {
   return Boolean(raw && raw.length > 10);
 }
 
+/**
+ * Add caching headers for public static pages
+ */
+function addCacheHeaders(response: NextResponse, pathname: string): void {
+  // Don't cache admin routes
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api')) {
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return;
+  }
+  
+  // Cache static pages at edge for 15 seconds, stale-while-revalidate for 1 minute
+  // Reduced from 60s to 15s for scam data freshness
+  response.headers.set('Cache-Control', 'public, max-age=15, s-maxage=15, stale-while-revalidate=60');
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Add caching for public pages (not admin/api)
+  const response = NextResponse.next();
+  addCacheHeaders(response, pathname);
+
   // Only guard /admin routes
   if (!pathname.startsWith('/admin')) {
-    return NextResponse.next();
+    return response;
   }
 
   const isIpCheckRoute = pathname.startsWith('/admin/ip-check');
@@ -81,9 +100,13 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  // Run middleware on all routes to enable caching for public pages
+  // Admin routes get no-cache, public routes get edge caching
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
+  ],
 };
