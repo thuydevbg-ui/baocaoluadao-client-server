@@ -44,3 +44,8 @@ next-env.d.ts
 -e 
 # Backups
 backups/
+-e 
+# Playwright test outputs
+.playwright-cli/*.log
+.playwright-cli/*.png
+.playwright-cli/*.yml

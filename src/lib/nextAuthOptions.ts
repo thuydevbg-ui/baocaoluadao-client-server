@@ -193,6 +193,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           provider: user.provider,
           createdAt: user.createdAt,
+          twofaVerifiedAt: twofaEnabled ? new Date().toISOString() : null,
         };
       },
     }),

@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User, ShieldCheck } from 'lucide-react';
+import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User, ShieldCheck, LogOut } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { useSession } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 
 const navLinks = [
   { label: 'Trang chủ', href: '/', icon: Home },
@@ -26,6 +26,7 @@ export function Navbar() {
   const { data: session } = useSession();
   const adminRoles = ['admin', 'super_admin', 'moderator'];
   const isAdmin = adminRoles.includes(String(session?.user?.role || '').toLowerCase());
+  const isAuthed = Boolean(session?.user?.email);
 
   useEffect(() => {
     setMounted(true);
@@ -96,6 +97,16 @@ export function Navbar() {
             aria-label="Hồ sơ của bạn">
             <User className="h-5 w-5 text-text-secondary" />
           </Link>
+          {isAuthed && (
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="flex items-center gap-2 rounded-full border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4" />
+              Đăng xuất
+            </button>
+          )}
         </nav>
 
         <div className="flex items-center gap-2 md:hidden">
@@ -201,6 +212,19 @@ export function Navbar() {
             <span className="text-sm font-medium text-text-secondary">Giao diện</span>
             <ThemeToggle className="ml-auto" />
           </div>
+          {isAuthed && (
+            <button
+              type="button"
+              onClick={() => {
+                closeMobileMenu();
+                signOut({ callbackUrl: '/' });
+              }}
+              className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50/70 px-4 py-3 text-sm font-semibold text-red-600"
+            >
+              <LogOut className="h-4 w-4" />
+              Đăng xuất
+            </button>
+          )}
           {isAdmin && (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm font-medium text-emerald-800 shadow-inner">
               <div className="flex items-center gap-2">

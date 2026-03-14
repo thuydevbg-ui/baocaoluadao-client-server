@@ -32,14 +32,21 @@ function getDbConfig() {
   // 3. Ensuring env vars are properly loaded in all deployment scenarios
   // For production with static env vars, this has minimal overhead as it's only
   // called once during pool initialization.
+  const poolSize = process.env.NODE_ENV === 'production' ? 20 : 10;
   return {
     host: process.env.DB_HOST || "127.0.0.1",
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
     database: process.env.DB_NAME || "baocaoluadao",
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: poolSize,
     queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    // Connection timeout
+    connectTimeout: 10000,
+    // Query timeout
+    queryTimeout: 30000,
   };
 }
 

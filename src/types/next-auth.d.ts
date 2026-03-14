@@ -7,6 +7,8 @@ declare module 'next-auth' {
       id: string;
       role?: string;
       createdAt?: string | null;
+      twofaEnabled?: boolean;
+      twofaVerifiedAt?: string | null;
     } & DefaultSession['user'];
   }
 
@@ -14,6 +16,7 @@ declare module 'next-auth' {
     id: string;
     role?: string;
     createdAt?: string;
+    twofaVerifiedAt?: string | null;
   }
 }
 
@@ -22,5 +25,7 @@ declare module 'next-auth/jwt' {
     id?: string;
     role?: string;
     createdAt?: string;
+    twofaEnabled?: boolean;
+    twofaVerifiedAt?: string | null;
   }
 }

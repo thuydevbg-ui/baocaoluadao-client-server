@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeCanvas } from 'qrcode.react';
+import { Navbar } from '@/components/layout/Navbar';
 
 // Types
 interface UserProfile {
@@ -1452,13 +1453,69 @@ export default function ProfilePage() {
     }
   };
 
-  const fileToDataUrl = (file: File) =>
+  const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));
       reader.onerror = () => reject(new Error('Không thể đọc tệp'));
       reader.readAsDataURL(file);
     });
+
+  const compressAvatarImage = async (file: File) => {
+    const maxDimension = 512;
+    const quality = 0.82;
+
+    if ('createImageBitmap' in window) {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Không thể xử lý ảnh');
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      return canvas.toDataURL('image/webp', quality);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      const loaded = await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Không thể đọc ảnh'));
+        img.src = objectUrl;
+      });
+      void loaded;
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Không thể xử lý ảnh');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/webp', quality);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+
+  const fileToDataUrl = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Vui lòng chọn đúng định dạng ảnh');
+    }
+
+    const maxBytes = 900 * 1024;
+    if (file.size <= maxBytes) {
+      return readFileAsDataUrl(file);
+    }
+
+    const compressed = await compressAvatarImage(file);
+    if (compressed.length > 1_400_000) {
+      throw new Error('Ảnh quá lớn, vui lòng chọn ảnh nhỏ hơn');
+    }
+    return compressed;
+  };
 
   const handleAvatarChange = async (file: File) => {
     try {
@@ -1673,7 +1730,9 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 p-4 md:p-8">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900">
+      <Navbar />
+      <div className="p-4 md:p-8 pt-24">
       <AnimatePresence>
         {toast && (
           <Toast
@@ -1748,6 +1807,7 @@ export default function ProfilePage() {
             </AnimatePresence>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

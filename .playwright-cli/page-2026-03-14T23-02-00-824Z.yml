@@ -1,0 +1,132 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e247]:
+    - banner [ref=e248]:
+      - generic [ref=e249]:
+        - link "SG ScamGuard" [ref=e250] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e251]: SG
+          - generic [ref=e252]: ScamGuard
+        - navigation [ref=e253]:
+          - link "Trang chủ" [ref=e254] [cursor=pointer]:
+            - /url: /
+            - img [ref=e255]
+            - text: Trang chủ
+          - link "Tra cứu" [ref=e258] [cursor=pointer]:
+            - /url: /search
+            - img [ref=e259]
+            - text: Tra cứu
+          - link "Báo cáo" [ref=e262] [cursor=pointer]:
+            - /url: /report
+            - img [ref=e263]
+            - text: Báo cáo
+          - link "Danh sách lừa đảo" [ref=e266] [cursor=pointer]:
+            - /url: /report-lua-dao
+            - img [ref=e267]
+            - text: Danh sách lừa đảo
+          - link "FAQ" [ref=e269] [cursor=pointer]:
+            - /url: /faq
+            - img [ref=e270]
+            - text: FAQ
+          - button "Chuyển giao diện sáng/tối" [ref=e277] [cursor=pointer]:
+            - generic [ref=e278]:
+              - img [ref=e279]
+              - img [ref=e285]
+          - link "Hồ sơ của bạn" [ref=e287] [cursor=pointer]:
+            - /url: /profile
+            - img [ref=e288]
+          - button "Đăng xuất" [ref=e291] [cursor=pointer]:
+            - img [ref=e292]
+            - text: Đăng xuất
+      - generic:
+        - generic:
+          - generic:
+            - generic: Menu
+            - button:
+              - img
+          - generic:
+            - link:
+              - /url: /
+              - img
+              - text: Trang chủ
+            - link:
+              - /url: /search
+              - img
+              - text: Tra cứu
+            - link:
+              - /url: /report
+              - img
+              - text: Báo cáo
+            - link:
+              - /url: /report-lua-dao
+              - img
+              - text: Danh sách lừa đảo
+          - generic:
+            - link:
+              - /url: /faq
+              - img
+              - text: FAQ
+          - generic:
+            - generic: Giao diện
+            - button:
+              - generic:
+                - img
+                - img
+          - button:
+            - img
+            - text: Đăng xuất
+    - generic [ref=e296]:
+      - generic [ref=e297]:
+        - heading "Cài đặt tài khoản" [level=1] [ref=e298]
+        - paragraph [ref=e299]: Quản lý thông tin và cài đặt tài khoản của bạn
+      - generic [ref=e300]:
+        - generic [ref=e301]:
+          - button "Thông tin cá nhân" [ref=e302] [cursor=pointer]:
+            - img [ref=e303]
+            - generic [ref=e305]: Thông tin cá nhân
+          - button "Giao diện" [ref=e306] [cursor=pointer]:
+            - img [ref=e307]
+            - generic [ref=e309]: Giao diện
+          - button "Thông báo" [ref=e310] [cursor=pointer]:
+            - img [ref=e311]
+            - generic [ref=e313]: Thông báo
+          - button "Bảo mật" [ref=e314] [cursor=pointer]:
+            - img [ref=e315]
+            - generic [ref=e317]: Bảo mật
+          - button "Ngôn ngữ & Múi giờ" [ref=e318] [cursor=pointer]:
+            - img [ref=e319]
+            - generic [ref=e321]: Ngôn ngữ & Múi giờ
+          - button "Thiết bị" [ref=e322] [cursor=pointer]:
+            - img [ref=e323]
+            - generic [ref=e325]: Thiết bị
+          - button "Lịch sử hoạt động" [ref=e326] [cursor=pointer]:
+            - img [ref=e327]
+            - generic [ref=e329]: Lịch sử hoạt động
+        - generic [ref=e332]:
+          - generic [ref=e333]:
+            - heading "Thông tin cá nhân" [level=2] [ref=e334]
+            - button "Chỉnh sửa" [ref=e335] [cursor=pointer]:
+              - img [ref=e336]
+              - generic [ref=e338]: Chỉnh sửa
+          - generic [ref=e339]:
+            - generic [ref=e340]:
+              - generic [ref=e342]: T
+              - button [ref=e343] [cursor=pointer]:
+                - img [ref=e344]
+            - generic [ref=e347]:
+              - heading "Test 2FA" [level=3] [ref=e348]
+              - paragraph [ref=e349]: test2fa@baocaoluadao.com
+              - generic [ref=e350]: user
+          - generic [ref=e352]:
+            - generic [ref=e353]:
+              - generic [ref=e354]: Họ và tên
+              - textbox [disabled] [ref=e355]: Test 2FA
+            - generic [ref=e356]:
+              - generic [ref=e357]: Số điện thoại
+              - textbox [disabled] [ref=e358]
+            - generic [ref=e359]:
+              - generic [ref=e360]: Email
+              - textbox [disabled] [ref=e361]: test2fa@baocaoluadao.com
+            - generic [ref=e362]:
+              - generic [ref=e363]: Ngày tham gia
+              - textbox [disabled] [ref=e364]: 14/3/2026
+  - alert [ref=e78]: ScamGuard - Kiểm tra lừa đảo ngay lập tức

@@ -3,17 +3,20 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { signIn, getProviders, type ClientSafeProvider } from 'next-auth/react';
+import { signIn, getProviders, useSession, type ClientSafeProvider } from 'next-auth/react';
 import { Mail, Lock, ShieldCheck, Loader2, Sparkles, KeyRound, Wand2, ArrowLeft } from 'lucide-react';
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, update } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [otpRequired, setOtpRequired] = useState(false);
+  const [twofaLoading, setTwofaLoading] = useState(false);
+  const [twofaCode, setTwofaCode] = useState('');
   const [googleProvider, setGoogleProvider] = useState<ClientSafeProvider | null>(null);
   const [loginEnabled, setLoginEnabled] = useState(true);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
@@ -22,6 +25,9 @@ export default function LoginClient() {
   const callbackUrl = searchParams.get('callbackUrl') || '/';
   const registered = searchParams.get('registered') === '1';
   const showSessionExpired = searchParams.get('expired') === '1';
+  const sessionTwofaEnabled = Boolean((session?.user as any)?.twofaEnabled);
+  const sessionTwofaVerified = Boolean((session?.user as any)?.twofaVerifiedAt);
+  const needsTwofa = sessionTwofaEnabled && !sessionTwofaVerified;
 
   useEffect(() => {
     getProviders().then((providers) => {
@@ -83,6 +89,31 @@ export default function LoginClient() {
     setError('');
     setIsLoading(true);
     await signIn('google', { callbackUrl });
+  };
+
+  const handleTwofaVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTwofaLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/user/security/twofa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: twofaCode }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.error || 'Mã xác thực không đúng.');
+      }
+      const verifiedAt = data?.verifiedAt || new Date().toISOString();
+      await update({ twofaVerifiedAt: verifiedAt });
+      router.push(callbackUrl);
+    } catch (err: any) {
+      setError(err?.message || 'Mã xác thực không đúng.');
+    } finally {
+      setTwofaLoading(false);
+    }
   };
 
   return (
@@ -194,7 +225,41 @@ export default function LoginClient() {
             </div>
           )}
 
-          <form className='mt-6 space-y-4' onSubmit={handleSubmit}>
+          {needsTwofa ? (
+            <form className='mt-6 space-y-4' onSubmit={handleTwofaVerify}>
+              <div className='rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-amber-100 text-sm'>
+                Tài khoản của bạn đã bật 2FA. Vui lòng nhập OTP hoặc backup code để tiếp tục.
+              </div>
+              <label className='block space-y-2 text-sm'>
+                <span className='text-slate-200'>OTP / Backup code</span>
+                <div className='relative'>
+                  <KeyRound className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
+                  <input
+                    type='text'
+                    value={twofaCode}
+                    onChange={(e) => setTwofaCode(e.target.value)}
+                    className='w-full rounded-xl border border-white/10 bg-white/5 px-11 py-3 text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/40'
+                    placeholder='123456 hoặc backup code'
+                    autoComplete='one-time-code'
+                    required
+                  />
+                </div>
+                <span className='text-xs text-slate-400'>
+                  Backup code sẽ bị vô hiệu sau khi sử dụng.
+                </span>
+              </label>
+
+              <button
+                type='submit'
+                disabled={twofaLoading}
+                className='flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-amber-400 px-4 py-3 text-base font-semibold text-slate-950 shadow-lg shadow-emerald-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70'
+              >
+                {twofaLoading ? <Loader2 className='h-5 w-5 animate-spin' /> : <ShieldCheck className='h-5 w-5' />}
+                {twofaLoading ? 'Verifying...' : 'Verify 2FA'}
+              </button>
+            </form>
+          ) : (
+            <form className='mt-6 space-y-4' onSubmit={handleSubmit}>
             <label className='block space-y-2 text-sm'>
               <span className='text-slate-200'>Email</span>
               <div className='relative'>
@@ -240,7 +305,7 @@ export default function LoginClient() {
               </div>
               <span className='text-xs text-slate-400'>
                 {otpRequired ? 'Please enter your two-factor code to continue.' : 'Only required if you enabled 2FA.'}
-              </span>
+                </span>
             </label>
 
             <button
@@ -252,24 +317,29 @@ export default function LoginClient() {
               {isLoading ? 'Processing...' : 'Sign in'}
             </button>
           </form>
+          )}
 
-          <div className='my-4 flex items-center gap-3'>
-            <div className='h-px flex-1 bg-white/10' />
-            <span className='text-xs uppercase tracking-[0.2em] text-slate-400'>Or</span>
-            <div className='h-px flex-1 bg-white/10' />
-          </div>
+          {!needsTwofa && (
+            <>
+              <div className='my-4 flex items-center gap-3'>
+                <div className='h-px flex-1 bg-white/10' />
+                <span className='text-xs uppercase tracking-[0.2em] text-slate-400'>Or</span>
+                <div className='h-px flex-1 bg-white/10' />
+              </div>
 
-          <div className='mt-6 space-y-3'>
-            {googleProvider && googleEnabled && (
-              <button
-                onClick={handleGoogle}
-                className='flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10'
-              >
-                <img src='https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' alt='Google' className='h-5 w-5' />
-                Continue with Google
-              </button>
-            )}
-          </div>
+              <div className='mt-6 space-y-3'>
+                {googleProvider && googleEnabled && (
+                  <button
+                    onClick={handleGoogle}
+                    className='flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10'
+                  >
+                    <img src='https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' alt='Google' className='h-5 w-5' />
+                    Continue with Google
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

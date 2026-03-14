@@ -138,6 +138,13 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
+    if (token.twofaEnabled && !token.twofaVerifiedAt) {
+      const loginUrl = new URL('/login', req.url);
+      loginUrl.searchParams.set('twofa', '1');
+      loginUrl.searchParams.set('callbackUrl', `${req.nextUrl.pathname}${req.nextUrl.search}`);
+      return NextResponse.redirect(loginUrl);
+    }
+
     // Add user info to headers for downstream use
     response.headers.set('x-user-id', token.sub || '');
     response.headers.set('x-user-email', token.email || '');
