@@ -525,6 +525,7 @@ function SecurityTab({
   onTwoFactorConfirm,
   onTwoFactorDisable,
   onTwoFactorBackup,
+  onTwoFactorRegenerate,
   onLoginAlertsChange,
   onChangePassword,
 }: {
@@ -533,6 +534,7 @@ function SecurityTab({
   onTwoFactorConfirm: (code: string, password: string) => Promise<void>;
   onTwoFactorDisable: (password: string) => Promise<void>;
   onTwoFactorBackup: (password: string) => Promise<string[]>;
+  onTwoFactorRegenerate: (password: string) => Promise<string[]>;
   onLoginAlertsChange: (enabled: boolean) => Promise<void>;
   onChangePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<void>;
 }) {
@@ -545,15 +547,16 @@ function SecurityTab({
   const [twofaData, setTwofaData] = useState<{ otpauthUrl: string; backupCodes: string[] } | null>(null);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [backupNotice, setBackupNotice] = useState<'regen' | null>(null);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [passwordModalAction, setPasswordModalAction] = useState<'setup' | 'disable' | 'backup' | null>(null);
+  const [passwordModalAction, setPasswordModalAction] = useState<'setup' | 'disable' | 'backup' | 'regen' | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
 
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
 
-  const openPasswordModal = (action: 'setup' | 'disable' | 'backup') => {
+  const openPasswordModal = (action: 'setup' | 'disable' | 'backup' | 'regen') => {
     setPasswordModalAction(action);
     setPasswordInput('');
     setPasswordModalOpen(true);
@@ -564,7 +567,7 @@ function SecurityTab({
     setPasswordModalAction(null);
   };
 
-  const runTwoFactorAction = async (action: 'setup' | 'disable' | 'backup', password: string) => {
+  const runTwoFactorAction = async (action: 'setup' | 'disable' | 'backup' | 'regen', password: string) => {
     if (action === 'setup') {
       const data = await onTwoFactorSetup(password);
       setTwofaPassword(password);
@@ -577,7 +580,15 @@ function SecurityTab({
       await onTwoFactorDisable(password);
       return;
     }
+    if (action === 'regen') {
+      const codes = await onTwoFactorRegenerate(password);
+      setBackupNotice('regen');
+      setBackupCodes(codes);
+      setBackupModalOpen(true);
+      return;
+    }
     const codes = await onTwoFactorBackup(password);
+    setBackupNotice(null);
     setBackupCodes(codes);
     setBackupModalOpen(true);
   };
@@ -633,6 +644,21 @@ function SecurityTab({
     setSaving('twofa');
     try {
       await runTwoFactorAction('backup', '');
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const startRegenerateBackupCodes = async () => {
+    if (settings.passwordSet) {
+      openPasswordModal('regen');
+      return;
+    }
+    setSaving('twofa');
+    try {
+      await runTwoFactorAction('regen', '');
     } catch {
       // errors handled by toast in parent
     } finally {
@@ -701,6 +727,8 @@ function SecurityTab({
       ? 'Xác nhận tắt 2FA'
       : passwordModalAction === 'backup'
       ? 'Xác nhận xem backup codes'
+      : passwordModalAction === 'regen'
+      ? 'Tạo lại backup codes'
       : 'Xác nhận bật 2FA';
 
   const passwordModalDescription =
@@ -708,6 +736,8 @@ function SecurityTab({
       ? 'Nhập mật khẩu để tắt xác thực 2FA.'
       : passwordModalAction === 'backup'
       ? 'Nhập mật khẩu để xem backup codes.'
+      : passwordModalAction === 'regen'
+      ? 'Nhập mật khẩu để tạo lại backup codes. Các mã cũ sẽ không còn hiệu lực.'
       : 'Nhập mật khẩu để tạo mã QR 2FA.';
 
   return (
@@ -761,13 +791,22 @@ function SecurityTab({
                   <p className="text-sm text-slate-500">Dùng để đăng nhập khi mất OTP</p>
                 </div>
               </div>
-              <button
-                onClick={startShowBackupCodes}
-                className="px-3 py-1 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
-                disabled={saving === 'twofa'}
-              >
-                Xem backup codes
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={startShowBackupCodes}
+                  className="px-3 py-1 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+                  disabled={saving === 'twofa'}
+                >
+                  Xem backup codes
+                </button>
+                <button
+                  onClick={startRegenerateBackupCodes}
+                  className="px-3 py-1 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-60"
+                  disabled={saving === 'twofa'}
+                >
+                  Tạo lại
+                </button>
+              </div>
             </div>
           )}
 
@@ -958,6 +997,11 @@ function SecurityTab({
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4">
+                {backupNotice === 'regen' && (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    Các mã cũ đã bị vô hiệu. Hãy lưu lại bộ mã mới này.
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium">Sao lưu các mã này để dùng khi mất OTP.</span>
                   <button
@@ -1503,6 +1547,20 @@ export default function ProfilePage() {
     }
   };
 
+  const handleTwoFactorRegenerate = async (password: string) => {
+    try {
+      const res = await apiFetch<any>('/api/user/security/twofa/backup/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      showToast('Đã tạo lại backup codes', 'success');
+      return res?.backupCodes || [];
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể tạo lại backup codes', 'error');
+      throw error;
+    }
+  };
+
   const handleLoginAlertsChange = async (enabled: boolean) => {
     const updated = { ...notificationSettings, securityAlerts: enabled };
     await handleNotificationsSave(updated);
@@ -1667,6 +1725,7 @@ export default function ProfilePage() {
                     onTwoFactorConfirm={handleTwoFactorConfirm}
                     onTwoFactorDisable={handleTwoFactorDisable}
                     onTwoFactorBackup={handleTwoFactorBackup}
+                    onTwoFactorRegenerate={handleTwoFactorRegenerate}
                     onLoginAlertsChange={handleLoginAlertsChange}
                     onChangePassword={handleChangePassword}
                   />

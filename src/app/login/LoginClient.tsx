@@ -10,8 +10,10 @@ export default function LoginClient() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [otpRequired, setOtpRequired] = useState(false);
   const [googleProvider, setGoogleProvider] = useState<ClientSafeProvider | null>(null);
   const [loginEnabled, setLoginEnabled] = useState(true);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
@@ -46,16 +48,26 @@ export default function LoginClient() {
     }
     setIsLoading(true);
     setError('');
+    setOtpRequired(false);
 
     const result = await signIn('credentials', {
       email,
       password,
+      otp,
       redirect: false,
       callbackUrl,
     });
 
     if (result?.error) {
-      setError('Email or password is incorrect.');
+      if (result.error === 'TWO_FACTOR_REQUIRED') {
+        setError('Two-factor code is required.');
+        setOtpRequired(true);
+      } else if (result.error === 'TWO_FACTOR_INVALID') {
+        setError('Invalid OTP or backup code.');
+        setOtpRequired(true);
+      } else {
+        setError('Email or password is incorrect.');
+      }
       setIsLoading(false);
       return;
     }
@@ -211,6 +223,24 @@ export default function LoginClient() {
                   placeholder='••••••••'
                 />
               </div>
+            </label>
+
+            <label className='block space-y-2 text-sm'>
+              <span className='text-slate-200'>OTP / Backup code</span>
+              <div className='relative'>
+                <KeyRound className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
+                <input
+                  type='text'
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  className='w-full rounded-xl border border-white/10 bg-white/5 px-11 py-3 text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/40'
+                  placeholder='123456 hoặc backup code'
+                  autoComplete='one-time-code'
+                />
+              </div>
+              <span className='text-xs text-slate-400'>
+                {otpRequired ? 'Please enter your two-factor code to continue.' : 'Only required if you enabled 2FA.'}
+              </span>
             </label>
 
             <button

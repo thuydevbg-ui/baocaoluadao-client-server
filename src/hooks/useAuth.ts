@@ -102,13 +102,15 @@ export function useAuth(): UseAuthReturn {
   const login = useCallback(async (
     email: string, 
     password: string, 
-    rememberMe: boolean = false
+    rememberMe: boolean = false,
+    otp?: string
   ) => {
     const result = await signIn('credentials', {
       redirect: false,
       email,
       password,
       rememberMe,
+      otp,
     });
 
     if (result?.error) {
