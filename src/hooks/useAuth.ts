@@ -14,6 +14,7 @@ interface SessionUser {
   name?: string | null;
   image?: string | null;
   role?: string;
+  createdAt?: string | null;
 }
 
 /**
@@ -29,6 +30,10 @@ export interface UseAuthReturn {
   role: UserRole | null;
   isAdmin: boolean;
   isModerator: boolean;
+  
+  // Account age check
+  createdAt: string | null;
+  accountAge24h: boolean; // True if user has been registered for at least 24 hours
   
   // Actions
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
@@ -61,6 +66,20 @@ export function useAuth(): UseAuthReturn {
   const isAuthenticated = useMemo(() => {
     return status === 'authenticated' && !!session?.user;
   }, [status, session]);
+
+  // Get user's account creation date
+  const createdAt = useMemo(() => {
+    return user?.createdAt || null;
+  }, [user]);
+
+  // Check if user has been registered for at least 24 hours
+  const accountAge24h = useMemo(() => {
+    if (!createdAt) return false;
+    const accountCreated = new Date(createdAt);
+    const now = new Date();
+    const hoursSinceCreation = (now.getTime() - accountCreated.getTime()) / (1000 * 60 * 60);
+    return hoursSinceCreation >= 24;
+  }, [createdAt]);
 
   // Get role
   const role = useMemo((): UserRole | null => {
@@ -145,6 +164,10 @@ export function useAuth(): UseAuthReturn {
     role,
     isAdmin: isAdminUser,
     isModerator: isModeratorUser,
+    
+    // Account age check
+    createdAt,
+    accountAge24h,
     
     // Actions
     login,

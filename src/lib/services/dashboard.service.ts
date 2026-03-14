@@ -40,7 +40,7 @@ export interface CategoryBreakdown {
 }
 
 // Cache TTL in seconds (configurable via env)
-const CACHE_TTL = parseInt(process.env.DASHBOARD_CACHE_TTL || '60', 10);
+const CACHE_TTL = parseInt(process.env.DASHBOARD_CACHE_TTL || '300', 10);
 const CACHE_KEY = 'dashboard:stats';
 
 // Performance monitoring
@@ -123,39 +123,54 @@ async function getPendingReportCounts(): Promise<Map<string, number>> {
 
 /**
  * Get total counts from database
+ * Optimized: Uses single query with subqueries instead of multiple COUNT queries
  */
 async function getDatabaseStats(): Promise<DashboardStats> {
   const db = getDb();
   const startTime = Date.now();
 
   try {
-    // Get total counts using optimized queries
-    const [scamCountResult] = await db.query<CountResult[]>(
-      `SELECT COUNT(*) as count FROM scams WHERE status IN ('active', 'investigating')`
-    );
-    const [reportCountResult] = await db.query<CountResult[]>(
-      `SELECT COUNT(*) as count FROM reports WHERE status = 'pending'`
-    );
-    const [verifiedScamCountResult] = await db.query<CountResult[]>(
-      `SELECT COUNT(*) as count FROM scams WHERE status = 'active'`
+    // Single optimized query with subqueries for total counts
+    const [statsResult] = await db.query<(RowDataPacket & {
+      totalScams: number;
+      pendingReports: number;
+      verifiedScams: number;
+    })[]>(
+      `SELECT 
+        (SELECT COUNT(*) FROM scams WHERE status IN ('active', 'investigating')) as totalScams,
+        (SELECT COUNT(*) FROM reports WHERE status = 'pending') as pendingReports,
+        (SELECT COUNT(*) FROM scams WHERE status = 'active') as verifiedScams`
     );
 
-    // Get counts by type for scams
-    const scamCounts = await getScamCounts();
-    const reportCounts = await getPendingReportCounts();
+    // Get counts by type for scams and reports - MariaDB compatible approach
+    const [typeCounts] = await db.query<(RowDataPacket & { type: string; scamCount: number; reportCount: number })[]>(
+      `SELECT type, SUM(scamCount) as scamCount, SUM(reportCount) as reportCount FROM (
+        SELECT type, COUNT(*) as scamCount, 0 as reportCount
+        FROM scams WHERE status IN ('active', 'investigating') GROUP BY type
+        UNION ALL
+        SELECT type, 0 as scamCount, COUNT(*) as reportCount
+        FROM reports WHERE status IN ('pending', 'processing') GROUP BY type
+      ) combined
+      GROUP BY type`
+    );
+
+    const typeCountMap = new Map<string, { scamCount: number; reportCount: number }>();
+    typeCounts.forEach(row => {
+      typeCountMap.set(row.type, { scamCount: row.scamCount, reportCount: row.reportCount });
+    });
 
     const stats: DashboardStats = {
-      website: (scamCounts.get('website') || 0) + (reportCounts.get('website') || 0),
+      website: (typeCountMap.get('website')?.scamCount || 0) + (typeCountMap.get('website')?.reportCount || 0),
       organization: 0, // Will be populated from categories if available
-      device: (scamCounts.get('device') || 0) + (reportCounts.get('device') || 0),
-      system: (scamCounts.get('system') || 0) + (reportCounts.get('system') || 0),
-      application: (scamCounts.get('application') || 0) + (reportCounts.get('application') || 0),
-      phone: (scamCounts.get('phone') || 0) + (reportCounts.get('phone') || 0),
-      email: (scamCounts.get('email') || 0) + (reportCounts.get('email') || 0),
-      social: (scamCounts.get('social') || 0) + (reportCounts.get('social') || 0),
-      sms: (scamCounts.get('sms') || 0) + (reportCounts.get('sms') || 0),
-      bank: (scamCounts.get('bank') || 0) + (reportCounts.get('bank') || 0),
-      total: (scamCountResult[0]?.count || 0) + (reportCountResult[0]?.count || 0),
+      device: (typeCountMap.get('device')?.scamCount || 0) + (typeCountMap.get('device')?.reportCount || 0),
+      system: (typeCountMap.get('system')?.scamCount || 0) + (typeCountMap.get('system')?.reportCount || 0),
+      application: (typeCountMap.get('application')?.scamCount || 0) + (typeCountMap.get('application')?.reportCount || 0),
+      phone: (typeCountMap.get('phone')?.scamCount || 0) + (typeCountMap.get('phone')?.reportCount || 0),
+      email: (typeCountMap.get('email')?.scamCount || 0) + (typeCountMap.get('email')?.reportCount || 0),
+      social: (typeCountMap.get('social')?.scamCount || 0) + (typeCountMap.get('social')?.reportCount || 0),
+      sms: (typeCountMap.get('sms')?.scamCount || 0) + (typeCountMap.get('sms')?.reportCount || 0),
+      bank: (typeCountMap.get('bank')?.scamCount || 0) + (typeCountMap.get('bank')?.reportCount || 0),
+      total: (statsResult[0]?.totalScams || 0) + (statsResult[0]?.pendingReports || 0),
       lastUpdated: new Date().toISOString(),
       source: 'database',
     };
@@ -170,6 +185,7 @@ async function getDatabaseStats(): Promise<DashboardStats> {
 
 /**
  * Get category breakdown for frontend display
+ * Optimized: Uses single query instead of multiple calls
  */
 async function getCategoryBreakdown(): Promise<CategoryBreakdown> {
   const db = getDb();
@@ -184,18 +200,30 @@ async function getCategoryBreakdown(): Promise<CategoryBreakdown> {
        ORDER BY display_order`
     );
 
-    // Get scam counts by type
-    const scamCounts = await getScamCounts();
-    const reportCounts = await getPendingReportCounts();
+    // Get combined type counts - MariaDB compatible approach
+    const [typeCounts] = await db.query<(RowDataPacket & { type: string; scamCount: number; reportCount: number })[]>(
+      `SELECT type, SUM(scamCount) as scamCount, SUM(reportCount) as reportCount FROM (
+        SELECT type, COUNT(*) as scamCount, 0 as reportCount
+        FROM scams WHERE status IN ('active', 'investigating') GROUP BY type
+        UNION ALL
+        SELECT type, 0 as scamCount, COUNT(*) as reportCount
+        FROM reports WHERE status IN ('pending', 'processing') GROUP BY type
+      ) combined
+      GROUP BY type`
+    );
+
+    const typeCountMap = new Map<string, { scamCount: number; reportCount: number }>();
+    typeCounts.forEach(row => {
+      typeCountMap.set(row.type, { scamCount: row.scamCount, reportCount: row.reportCount });
+    });
 
     const categories: CategoryCount[] = categoryRows.map((cat) => {
-      const scamCount = scamCounts.get(cat.type) || 0;
-      const reportCount = reportCounts.get(cat.type) || 0;
+      const counts = typeCountMap.get(cat.type) || { scamCount: 0, reportCount: 0 };
 
       return {
         name: cat.name,
         slug: cat.slug,
-        count: scamCount + reportCount,
+        count: counts.scamCount + counts.reportCount,
         icon: cat.icon || 'shield',
         description: cat.description || `Danh mục ${cat.name}`,
       };

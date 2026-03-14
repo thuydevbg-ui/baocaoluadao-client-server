@@ -34,26 +34,26 @@ type ReportsResponse = {
 const PAGE_SIZE = 12;
 
 const statusOptions = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'processing', label: 'Processing' },
-  { value: 'verified', label: 'Verified' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'completed', label: 'Completed' },
+  { value: 'all', label: 'Tất cả trạng thái' },
+  { value: 'pending', label: 'Chờ duyệt' },
+  { value: 'processing', label: 'Đang xử lý' },
+  { value: 'verified', label: 'Đã xác minh' },
+  { value: 'rejected', label: 'Bị từ chối' },
+  { value: 'completed', label: 'Hoàn thành' },
 ];
 
 const typeOptions = [
-  { value: 'all', label: 'All types' },
+  { value: 'all', label: 'Tất cả loại' },
   { value: 'website', label: 'Website' },
-  { value: 'phone', label: 'Phone' },
+  { value: 'phone', label: 'Điện thoại' },
   { value: 'email', label: 'Email' },
-  { value: 'social', label: 'Social' },
+  { value: 'social', label: 'Mạng xã hội' },
   { value: 'sms', label: 'SMS' },
-  { value: 'bank', label: 'Bank' },
-  { value: 'device', label: 'Device' },
-  { value: 'system', label: 'System' },
-  { value: 'application', label: 'Application' },
-  { value: 'organization', label: 'Organization' },
+  { value: 'bank', label: 'Ngân hàng' },
+  { value: 'device', label: 'Thiết bị' },
+  { value: 'system', label: 'Hệ thống' },
+  { value: 'application', label: 'Ứng dụng' },
+  { value: 'organization', label: 'Tổ chức' },
 ];
 
 function parseStatusFilter(value: string): 'all' | ReportStatus {
@@ -205,33 +205,33 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
     () => [
       {
         id: 'pending',
-        title: 'Pending Reports',
+        title: 'Báo cáo chờ duyệt',
         value: summary.pending || 0,
-        subtitle: 'Needs moderator decision',
+        subtitle: 'Cần quyết định của điều hành viên',
         icon: AlertTriangle,
         tone: 'amber',
       },
       {
         id: 'verified',
-        title: 'Verified Entities',
+        title: 'Đã xác minh',
         value: summary.verified || 0,
-        subtitle: 'Validated or confirmed reports',
+        subtitle: 'Đã xác nhận hoặc báo cáo hợp lệ',
         icon: CheckCircle2,
         tone: 'emerald',
       },
       {
         id: 'rejected',
-        title: 'Rejected Reports',
+        title: 'Bị từ chối',
         value: summary.rejected || 0,
-        subtitle: 'Closed with no violation',
+        subtitle: 'Đóng vì không có vi phạm',
         icon: FileX2,
         tone: 'rose',
       },
       {
         id: 'total',
-        title: 'Total Records',
+        title: 'Tổng cộng',
         value: total,
-        subtitle: 'Reports matching current filters',
+        subtitle: 'Báo cáo phù hợp với bộ lọc hiện tại',
         icon: Files,
         tone: 'sky',
       },
@@ -360,9 +360,9 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Report Moderation Table</h2>
+            <h2 className="text-base font-semibold text-slate-900">Bảng điều hành báo cáo</h2>
             <p className="text-xs text-slate-500">
-              Showing {rangeStart}-{rangeEnd} of {total} reports
+              Hiển thị {rangeStart}-{rangeEnd} của {total} báo cáo
             </p>
           </div>
           <button
@@ -370,7 +370,7 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
             onClick={loadReports}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Refresh
+            Làm mới
           </button>
         </div>
 
@@ -405,7 +405,7 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
-            {selectedIndex >= 0 ? `Selected report #${selectedIndex + 1}` : 'Select a report row to inspect full details'}
+            {selectedIndex >= 0 ? `Đã chọn báo cáo #${selectedIndex + 1}` : 'Chọn một hàng báo cáo để xem chi tiết'}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -414,10 +414,10 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Previous
+              Trước
             </button>
             <span className="text-xs font-semibold text-slate-600">
-              Page {page} / {totalPages}
+              Trang {page} / {totalPages}
             </span>
             <button
               type="button"
@@ -425,7 +425,7 @@ export default function ReportsClient({ initialStatus = 'all', initialType = 'al
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Next
+              Sau
             </button>
           </div>
         </div>

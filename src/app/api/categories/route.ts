@@ -135,6 +135,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
         source_status: string;
         source: string;
         created_at: string;
+        domain_registered_at: string | null;
         icon: string | null;
         organization_name: string | null;
         organization_icon: string | null;
@@ -155,6 +156,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
             status as source_status,
             source,
             created_at,
+            domain_registered_at,
             icon,
             organization_name,
             organization_icon,
@@ -230,6 +232,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
               source_status: 'trusted',
               source: SOURCE_NAME,
               created_at: row.created_at,
+              domain_registered_at: null,
               icon: row.organization_icon,
               organization_name: row.name,
               organization_icon: row.organization_icon,
@@ -258,6 +261,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
                   ? 'suspected'
                   : 'safe',
         created_at: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
+        domain_registered_at: row.domain_registered_at ? new Date(row.domain_registered_at).toISOString() : undefined,
         source: row.source || 'database',
         icon: row.icon,
         organization: row.organization_name,
@@ -322,6 +326,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       source_status: string;
       source: string;
       created_at: Date;
+      domain_registered_at: Date | null;
       icon: string | null;
       organization_name: string | null;
       organization_icon: string | null;
@@ -342,6 +347,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
           status as source_status,
           source,
           created_at,
+          domain_registered_at,
           icon,
           organization_name,
           organization_icon,
@@ -386,6 +392,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
               'trusted' AS source_status,
               source,
               MAX(COALESCE(external_created_at, created_at)) AS created_at,
+              NULL AS domain_registered_at,
               MAX(NULLIF(organization_icon, '')) AS icon,
               TRIM(organization_name) AS organization_name,
               MAX(NULLIF(organization_icon, '')) AS organization_icon,
@@ -421,6 +428,7 @@ export const POST = withApiObservability(async (request: NextRequest) => {
                 ? 'suspected'
                 : 'safe',
       created_at: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
+      domain_registered_at: row.domain_registered_at ? new Date(row.domain_registered_at).toISOString() : undefined,
       source: row.source || 'database',
       icon: row.icon,
       organization: row.organization_name,

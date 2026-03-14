@@ -73,6 +73,8 @@ export const PUT = withApiObservability(async (request: NextRequest) => {
       smtpPasswordEnc,
       smtpFromName: body.smtpFromName,
       smtpFromEmail: body.smtpFromEmail,
+      footerContacts: body.footerContacts,
+      footerLinks: body.footerLinks,
       allowedDocsIps: body.allowedDocsIps,
     });
 

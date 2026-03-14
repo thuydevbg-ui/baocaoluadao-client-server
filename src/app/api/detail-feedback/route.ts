@@ -5,6 +5,7 @@ import { parseSignedCookie } from '@/lib/auth';
 import { applySecurityHeaders, createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 import { getDb } from '@/lib/db';
 import { RowDataPacket } from 'mysql2/promise';
+import { findUserByEmail } from '@/lib/userRepository';
 
 // Database-based feedback with in-memory fallback
 // PRODUCTION: Uses MySQL for persistent storage
@@ -50,6 +51,7 @@ interface IdentityInfo {
   type: IdentityType;
   visitorId?: string;
   setVisitorCookie: boolean;
+  createdAt?: number; // Account creation timestamp for age verification
 }
 
 // Database row interfaces
@@ -314,6 +316,21 @@ function parseUserFromCookie(request: NextRequest): { identity: string; name: st
     // Invalid cookie format - return null
   }
   return null;
+}
+
+/**
+ * Get user account creation timestamp from database
+ */
+async function getUserCreatedAt(email: string): Promise<number | undefined> {
+  try {
+    const user = await findUserByEmail(email);
+    if (user && user.createdAt) {
+      return new Date(user.createdAt).getTime();
+    }
+  } catch (e) {
+    console.warn('[DetailFeedback] Could not fetch user createdAt:', e);
+  }
+  return undefined;
 }
 
 function getClientIP(request: NextRequest): string {
@@ -781,6 +798,46 @@ export const POST = withApiObservability(async (request: NextRequest) => {
   }
 
   const identity = resolveIdentity(request);
+
+  // Verify logged-in user for comment and rate actions
+  // Comments and ratings require authenticated users with minimum account age of 24 hours
+  if ((action === 'comment' || action === 'rate') && identity.type !== 'user') {
+    return createSecureJsonResponse(
+      {
+        success: false,
+        error: 'Vui lòng đăng nhập để bình luận hoặc đánh giá.',
+        requireAuth: true
+      },
+      { status: 403 },
+      rateLimit
+    );
+  }
+
+  // Check account age for logged-in users (minimum 24 hours)
+  if (identity.type === 'user') {
+    const cookieUser = parseUserFromCookie(request);
+    if (cookieUser) {
+      const email = cookieUser.identity.replace('user:', '');
+      const createdAt = await getUserCreatedAt(email);
+      if (createdAt) {
+        const accountAge = Date.now() - createdAt;
+        const MIN_ACCOUNT_AGE = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        if (accountAge < MIN_ACCOUNT_AGE) {
+          const hoursLeft = Math.ceil((MIN_ACCOUNT_AGE - accountAge) / (60 * 60 * 1000));
+          return createSecureJsonResponse(
+            {
+              success: false,
+              error: `Tài khoản cần hoạt động tối thiểu 24 giờ để bình luận. Vui lòng đợi ${hoursLeft} giờ nữa.`,
+              requireAuth: true,
+              accountAgeHours: Math.floor(accountAge / (60 * 60 * 1000))
+            },
+            { status: 403 },
+            rateLimit
+          );
+        }
+      }
+    }
+  }
 
   // Try database operations first
   if (isDbAvailable()) {

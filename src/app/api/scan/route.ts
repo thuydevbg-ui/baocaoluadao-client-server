@@ -1,9 +1,10 @@
 import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest } from 'next/server';
 import { normalizeDomainInput } from '@/lib/dataSources/tinnhiemmang';
-import { ensureTinnhiemScamsSynced, findWebsiteScamInLocalDb } from '@/lib/services/tinnhiemSync.service';
+import { ensureTinnhiemScamsSynced, findWebsiteScamInLocalDb, getTinnhiemSyncSnapshot } from '@/lib/services/tinnhiemSync.service';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 import { findPolicyViolationInLocalDb } from '@/lib/services/policyViolation.service';
+import { getRedisJson, setRedisJson } from '@/lib/jsonCache';
 
 const WEB_RISK_URI_SEARCH_ENDPOINT = 'https://webrisk.googleapis.com/v1/uris:search';
 const WEB_RISK_THREAT_TYPES = ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'] as const;
@@ -44,6 +45,10 @@ function isValidScanDomain(domain: string): boolean {
 function getWebRiskApiKey(): string {
   return (process.env.WEB_RISK_API_KEY || process.env.GOOGLE_WEB_RISK_API_KEY || '').trim();
 }
+
+const CACHE_KEY_PREFIX = 'api:scan';
+const CACHE_TTL_SECONDS = Number.parseInt(process.env.SCAN_CACHE_TTL_SECONDS || '3600', 10) || 3600;
+const CACHE_ERROR_TTL_SECONDS = Number.parseInt(process.env.SCAN_CACHE_ERROR_TTL_SECONDS || '60', 10) || 60;
 
 async function queryWebRisk(domain: string): Promise<{
   threatDetected: boolean;
@@ -318,7 +323,28 @@ export const POST = withApiObservability(async (request: NextRequest) => {
     }
 
     try {
-      await ensureTinnhiemScamsSynced();
+      const staticMode = process.env.STATIC_DATA_MODE === '1';
+      const cacheKey = `${CACHE_KEY_PREFIX}:${domain}`;
+      const cached = await getRedisJson<unknown>(cacheKey);
+      if (cached) {
+        return createSecureJsonResponse(cached, { status: 200 }, rateLimit);
+      }
+
+      if (staticMode) {
+        const syncSnapshot = await getTinnhiemSyncSnapshot().catch(() => null);
+        if (syncSnapshot && syncSnapshot.totalRecords === 0) {
+          const payload = {
+            ...toUnknownResponse(domain),
+            description: 'CSDL noi bo chua co du lieu. Hay chay dong bo truoc (internal sync) de kich hoat che do du lieu tinh.',
+            source: 'local_db:empty',
+          };
+          await setRedisJson(cacheKey, CACHE_ERROR_TTL_SECONDS, payload);
+          return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
+        }
+      } else {
+        await ensureTinnhiemScamsSynced();
+      }
+
       const matched = await findWebsiteScamInLocalDb(domain);
 
       // Cost-saving ordering:
@@ -326,23 +352,48 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       // 2) Check policy violation list (legal warning).
       // 3) Only call Google Web Risk if not found in local DB.
       if (matched) {
-        return createSecureJsonResponse(toScamResponse(domain, matched), { status: 200 }, rateLimit);
+        const payload = toScamResponse(domain, matched);
+        await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+        return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
       }
 
       const policyHit = await findPolicyViolationInLocalDb(domain).catch(() => null);
       if (policyHit) {
-        return createSecureJsonResponse(toPolicyViolationResponse(domain, policyHit), { status: 200 }, rateLimit);
+        const payload = toPolicyViolationResponse(domain, policyHit);
+        await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+        return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
+      }
+
+      if (staticMode) {
+        const payload = toSafeResponse(domain);
+        await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+        return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
+      }
+
+      // WebRisk is optional. If no API key configured, fall back to local-only verdicts.
+      const apiKey = getWebRiskApiKey();
+      if (!apiKey) {
+        const payload = toSafeResponse(domain);
+        await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+        return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
       }
 
       const webRisk = await queryWebRisk(domain);
       if (webRisk.threatDetected) {
-        return createSecureJsonResponse(toWebRiskThreatResponse(domain, webRisk.threatTypes), { status: 200 }, rateLimit);
+        const payload = toWebRiskThreatResponse(domain, webRisk.threatTypes);
+        await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+        return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
       }
 
-      return createSecureJsonResponse(toCrossCheckedSafeResponse(domain), { status: 200 }, rateLimit);
+      const payload = toCrossCheckedSafeResponse(domain);
+      await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+      return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
     } catch (lookupError) {
       console.error('scan cross-check error:', lookupError);
-      return createSecureJsonResponse(toUnknownResponse(domain), { status: 200 }, rateLimit);
+      const cacheKey = `${CACHE_KEY_PREFIX}:${domain}`;
+      const payload = toUnknownResponse(domain);
+      await setRedisJson(cacheKey, CACHE_ERROR_TTL_SECONDS, payload);
+      return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
     }
   } catch (error) {
     console.error('Scan error:', error);

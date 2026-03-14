@@ -25,6 +25,7 @@ export interface ScamDetail extends SearchResult {
   time?: string;
   name?: string;
   image?: string;
+  domainRegisteredAt?: string;
 }
 
 export interface Comment {

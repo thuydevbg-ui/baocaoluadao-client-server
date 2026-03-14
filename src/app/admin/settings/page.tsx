@@ -1,8 +1,24 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Bell, KeyRound, Lock, Mail, Save, Settings, ShieldCheck, UserCog } from 'lucide-react';
+import {
+  Bell,
+  Globe,
+  KeyRound,
+  Lock,
+  Mail,
+  Save,
+  Settings,
+  ShieldCheck,
+  UserCog,
+} from 'lucide-react';
 import { EmailSmtpSettingsPanel } from '@/components/admin/settings/EmailSmtpSettingsPanel';
+import {
+  FooterContactEntry,
+  FooterNavLink,
+  defaultFooterContacts,
+  defaultFooterLinks,
+} from '@/lib/footerConfig';
 
 type SettingsPayload = {
   success: boolean;
@@ -23,19 +39,22 @@ type SettingsPayload = {
     googleClientSecretSet: boolean;
     allowedDocsIps?: string | null;
     updatedAt: string;
+    footerContacts: FooterContactEntry[];
+    footerLinks: FooterNavLink[];
   };
   error?: string;
 };
 
-type TabKey = 'general' | 'security' | 'auth' | 'notifications' | 'email' | 'api';
+type TabKey = 'general' | 'security' | 'auth' | 'notifications' | 'api' | 'email' | 'footer';
 
 const tabs: Array<{ id: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: 'general', label: 'General', icon: Settings },
-  { id: 'security', label: 'Security', icon: ShieldCheck },
-  { id: 'auth', label: 'Authentication', icon: UserCog },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'general', label: 'Chung', icon: Settings },
+  { id: 'security', label: 'Bảo mật', icon: ShieldCheck },
+  { id: 'auth', label: 'Xác thực', icon: UserCog },
+  { id: 'notifications', label: 'Thông báo', icon: Bell },
   { id: 'email', label: 'Email / SMTP', icon: Mail },
   { id: 'api', label: 'API', icon: KeyRound },
+  { id: 'footer', label: 'Chân trang', icon: Globe },
 ];
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
@@ -77,6 +96,11 @@ export default function SettingsPage() {
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleClientSecret, setGoogleClientSecret] = useState('');
   const [allowedDocsIps, setAllowedDocsIps] = useState('');
+  const [footerContacts, setFooterContacts] = useState<FooterContactEntry[]>(defaultFooterContacts);
+  const [footerLinks, setFooterLinks] = useState<FooterNavLink[]>(defaultFooterLinks);
+
+  const cloneContacts = (items: FooterContactEntry[]) => items.map((entry) => ({ ...entry }));
+  const cloneLinks = (items: FooterNavLink[]) => items.map((entry) => ({ ...entry }));
 
   useEffect(() => {
     let active = true;
@@ -114,6 +138,12 @@ export default function SettingsPage() {
         setGoogleClientId(data.googleClientIdSet ? '••••••••••••' : '');
         setGoogleClientSecret(data.googleClientSecretSet ? '••••••••••••' : '');
         setAllowedDocsIps(data.allowedDocsIps || '');
+        setFooterContacts(
+          cloneContacts((data.footerContacts && data.footerContacts.length ? data.footerContacts : defaultFooterContacts))
+        );
+        setFooterLinks(
+          cloneLinks((data.footerLinks && data.footerLinks.length ? data.footerLinks : defaultFooterLinks))
+        );
       } catch (loadError) {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : 'Unable to load settings');
@@ -192,12 +222,44 @@ export default function SettingsPage() {
       allowedDocsIps,
     });
 
+  const updateFooterContact = (index: number, field: keyof FooterContactEntry, value: string) => {
+    setFooterContacts((prev) => prev.map((entry, idx) => (idx === index ? { ...entry, [field]: value } : entry)));
+  };
+
+  const removeFooterContact = (index: number) => {
+    setFooterContacts((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const addFooterContact = () => {
+    if (footerContacts.length >= 6) return;
+    setFooterContacts((prev) => [...prev, { label: '', value: '', icon: 'shield' }]);
+  };
+
+  const updateFooterLink = (index: number, field: keyof FooterNavLink, value: string) => {
+    setFooterLinks((prev) => prev.map((entry, idx) => (idx === index ? { ...entry, [field]: value } : entry)));
+  };
+
+  const removeFooterLink = (index: number) => {
+    setFooterLinks((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const addFooterLink = () => {
+    if (footerLinks.length >= 8) return;
+    setFooterLinks((prev) => [...prev, { label: '', href: '', icon: 'link' }]);
+  };
+
+  const saveFooter = () =>
+    saveSettings({
+      footerContacts,
+      footerLinks,
+    });
+
   return (
     <div className="space-y-5">
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-900">System Settings</h2>
-          <p className="text-xs text-slate-500">Tune moderation behavior without changing backend logic.</p>
+          <h2 className="text-base font-semibold text-slate-900">Cài đặt hệ thống</h2>
+          <p className="text-xs text-slate-500">Điều chỉnh hành vi điều hành mà không thay đổi logic backend.</p>
         </div>
 
         <div className="flex flex-col gap-0 lg:flex-row">
@@ -227,7 +289,7 @@ export default function SettingsPage() {
           </aside>
 
           <div className="flex-1 p-5">
-            {loading && <p className="text-sm text-slate-500">Loading settings...</p>}
+            {loading && <p className="text-sm text-slate-500">Đang tải cài đặt...</p>}
 
             {!loading && (
               <>
@@ -243,7 +305,7 @@ export default function SettingsPage() {
                 {activeTab === 'general' && (
                   <div className="space-y-4">
                     <label className="block">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Site Name</span>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tên trang web</span>
                       <input
                         value={siteName}
                         onChange={(event) => setSiteName(event.target.value)}
@@ -253,7 +315,7 @@ export default function SettingsPage() {
 
                     <label className="block">
                       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Site Description
+                        Mô tả trang web
                       </span>
                       <textarea
                         value={siteDescription}
@@ -264,7 +326,7 @@ export default function SettingsPage() {
                     </label>
 
                     <label className="block">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Email</span>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email liên hệ</span>
                       <input
                         type="email"
                         value={contactEmail}
@@ -296,7 +358,7 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
-                      Save General Settings
+                      Lưu cài đặt chung
                     </button>
                   </div>
                 )}
@@ -305,8 +367,8 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Rate Limiting</p>
-                        <p className="text-xs text-slate-500">Prevent abuse on sign-in and reports</p>
+                        <p className="text-sm font-medium text-slate-800">Giới hạn tốc độ</p>
+                        <p className="text-xs text-slate-500">Ngăn chặn lạm dụng khi đăng nhập và báo cáo</p>
                       </div>
                       <Toggle checked={rateLimitEnabled} onChange={setRateLimitEnabled} />
                     </div>
@@ -325,8 +387,8 @@ export default function SettingsPage() {
 
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Auto Moderation</p>
-                        <p className="text-xs text-slate-500">Enable automatic triage rules</p>
+                        <p className="text-sm font-medium text-slate-800">Tự động điều hành</p>
+                        <p className="text-xs text-slate-500">Bật quy tắc phân loại tự động</p>
                       </div>
                       <Toggle checked={autoModeration} onChange={setAutoModeration} />
                     </div>
@@ -338,7 +400,7 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
-                      Save Security Settings
+                      Lưu cài đặt bảo mật
                     </button>
                   </div>
                 )}
@@ -347,16 +409,16 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Allow Registration</p>
-                        <p className="text-xs text-slate-500">Enable new user sign-up</p>
+                        <p className="text-sm font-medium text-slate-800">Cho phép đăng ký</p>
+                        <p className="text-xs text-slate-500">Bật đăng ký người dùng mới</p>
                       </div>
                       <Toggle checked={registrationEnabled} onChange={setRegistrationEnabled} />
                     </div>
 
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Allow Login</p>
-                        <p className="text-xs text-slate-500">Disable to lock all sign-ins</p>
+                        <p className="text-sm font-medium text-slate-800">Cho phép đăng nhập</p>
+                        <p className="text-xs text-slate-500">Tắt để khóa tất cả đăng nhập</p>
                       </div>
                       <Toggle checked={loginEnabled} onChange={setLoginEnabled} />
                     </div>
@@ -399,7 +461,7 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
-                      Save Authentication Settings
+                      Lưu cài đặt xác thực
                     </button>
                   </div>
                 )}
@@ -408,16 +470,16 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Email Notifications</p>
-                        <p className="text-xs text-slate-500">Notify admins on critical events</p>
+                        <p className="text-sm font-medium text-slate-800">Thông báo qua email</p>
+                        <p className="text-xs text-slate-500">Thông báo cho quản trị viên khi có sự kiện quan trọng</p>
                       </div>
                       <Toggle checked={emailNotifications} onChange={setEmailNotifications} />
                     </div>
 
                     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-slate-800">Auto Moderation Alerts</p>
-                        <p className="text-xs text-slate-500">Send internal warning signals</p>
+                        <p className="text-sm font-medium text-slate-800">Cảnh báo tự động điều hành</p>
+                        <p className="text-xs text-slate-500">Gửi tín hiệu cảnh báo nội bộ</p>
                       </div>
                       <Toggle checked={autoModeration} onChange={setAutoModeration} />
                     </div>
@@ -429,7 +491,7 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
-                      Save Notification Settings
+                      Lưu cài đặt thông báo
                     </button>
                   </div>
                 )}
@@ -437,8 +499,8 @@ export default function SettingsPage() {
                 {activeTab === 'api' && (
                   <div className="space-y-4">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-sm font-medium text-slate-800">API Docs Access IPs</p>
-                      <p className="text-xs text-slate-500">Comma or newline separated allow-list</p>
+                      <p className="text-sm font-medium text-slate-800">IP truy cập tài liệu API</p>
+                      <p className="text-xs text-slate-500">Danh sách cho phép ngăn cách bằng dấu phẩy hoặc dòng mới</p>
 
                       <textarea
                         value={allowedDocsIps}
@@ -456,7 +518,154 @@ export default function SettingsPage() {
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
-                      Save API Settings
+                      Lưu cài đặt API
+                    </button>
+                  </div>
+                )}
+
+                {activeTab === 'footer' && (
+                  <div className="space-y-5">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Liên hệ chân trang</p>
+                          <p className="text-xs text-slate-500">
+                            Định nghĩa biểu tượng, nhãn, giá trị và liên kết tùy chọn cho mỗi badge liên hệ.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={footerContacts.length >= 6}
+                          onClick={addFooterContact}
+                          className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          Thêm liên hệ
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {footerContacts.map((contact, index) => (
+                          <div
+                            key={`contact-${index}`}
+                            className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:grid-cols-5"
+                          >
+                            <label className="text-xs font-semibold text-slate-500">
+                              Nhãn
+                              <input
+                                value={contact.label}
+                                onChange={(event) => updateFooterContact(index, 'label', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="Hotline"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">
+                              Giá trị
+                              <input
+                                value={contact.value}
+                                onChange={(event) => updateFooterContact(index, 'value', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="1900-xxxx"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">
+                              Biểu tượng
+                              <input
+                                value={contact.icon}
+                                onChange={(event) => updateFooterContact(index, 'icon', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="phone"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">
+                              Link
+                              <input
+                                value={contact.href || ''}
+                                onChange={(event) => updateFooterContact(index, 'href', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="tel:1900xxxx"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => removeFooterContact(index)}
+                              className="self-end text-xs font-semibold text-rose-600 hover:text-rose-400"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Footer Navigation</p>
+                          <p className="text-xs text-slate-500">
+                            Control the quick links that appear next to the brand.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={footerLinks.length >= 8}
+                          onClick={addFooterLink}
+                          className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          Add Link
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {footerLinks.map((link, index) => (
+                          <div
+                            key={`link-${index}`}
+                            className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:grid-cols-4"
+                          >
+                            <label className="text-xs font-semibold text-slate-500">
+                              Label
+                              <input
+                                value={link.label}
+                                onChange={(event) => updateFooterLink(index, 'label', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="Tra cứu"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">
+                              URL
+                              <input
+                                value={link.href}
+                                onChange={(event) => updateFooterLink(index, 'href', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="/search"
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">
+                              Icon
+                              <input
+                                value={link.icon || ''}
+                                onChange={(event) => updateFooterLink(index, 'icon', event.target.value)}
+                                className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none"
+                                placeholder="link"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => removeFooterLink(index)}
+                              className="self-end text-xs font-semibold text-rose-600 hover:text-rose-400"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={saveFooter}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      Lưu cài đặt chân trang
                     </button>
                   </div>
                 )}

@@ -6,6 +6,8 @@ import { getToken } from 'next-auth/jwt';
 // ============================================
 
 const ADMIN_COOKIE = 'adminAuth';
+const DEVICE_CHECK_HEADER = 'x-device-check';
+const DEVICE_COOKIE = 'device_id';
 
 // ============================================
 // HELPERS
@@ -56,11 +58,19 @@ function hasAdminCookie(req: NextRequest): boolean {
 }
 
 function addCacheHeaders(response: NextResponse, pathname: string): void {
-  if (pathname.startsWith('/admin') || pathname.startsWith('/api')) {
+  // Profile pages should always be dynamic - no cache
+  if (pathname.startsWith('/profile') || pathname.startsWith('/admin') || pathname.startsWith('/api')) {
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     return;
   }
   response.headers.set('Cache-Control', 'public, max-age=15, s-maxage=15, stale-while-revalidate=60');
+}
+
+function clearAuthCookies(response: NextResponse) {
+  const cookieNames = ['next-auth.session-token', 'auth_token', 'auth_refresh_token', DEVICE_COOKIE];
+  cookieNames.forEach((name) => {
+    response.cookies.set(name, '', { maxAge: 0, path: '/' });
+  });
 }
 
 // ============================================
@@ -69,6 +79,7 @@ function addCacheHeaders(response: NextResponse, pathname: string): void {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const isDeviceCheckRequest = req.headers.get(DEVICE_CHECK_HEADER) === '1';
 
   console.log('[Middleware] Path:', pathname);
 
@@ -131,6 +142,31 @@ export async function middleware(req: NextRequest) {
     response.headers.set('x-user-id', token.sub || '');
     response.headers.set('x-user-email', token.email || '');
     response.headers.set('x-user-role', token.role as string || 'user');
+
+    if (!isDeviceCheckRequest) {
+      const deviceId = req.cookies.get(DEVICE_COOKIE)?.value;
+      if (deviceId) {
+        try {
+          const checkUrl = new URL('/api/user/devices/check', req.url);
+          const checkRes = await fetch(checkUrl, {
+            method: 'GET',
+            headers: {
+              cookie: req.headers.get('cookie') || '',
+              [DEVICE_CHECK_HEADER]: '1',
+            },
+            cache: 'no-store',
+          });
+          if (!checkRes.ok) {
+            const loginUrl = new URL('/login', req.url);
+            const redirect = NextResponse.redirect(loginUrl);
+            clearAuthCookies(redirect);
+            return redirect;
+          }
+        } catch (error) {
+          console.error('[Middleware] Device check failed:', error);
+        }
+      }
+    }
   }
 
   // ========================================

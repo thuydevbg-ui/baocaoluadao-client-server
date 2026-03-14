@@ -1,0 +1,313 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e165]:
+    - banner [ref=e166]:
+      - generic [ref=e167]:
+        - link "SG ScamGuard" [ref=e168] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e169]: SG
+          - generic [ref=e170]: ScamGuard
+        - navigation [ref=e171]:
+          - link "Trang chủ" [ref=e172] [cursor=pointer]:
+            - /url: /
+            - img [ref=e173]
+            - text: Trang chủ
+          - link "Tra cứu" [ref=e176] [cursor=pointer]:
+            - /url: /search
+            - img [ref=e177]
+            - text: Tra cứu
+          - link "Báo cáo" [ref=e180] [cursor=pointer]:
+            - /url: /report
+            - img [ref=e181]
+            - text: Báo cáo
+          - link "Danh sách lừa đảo" [ref=e184] [cursor=pointer]:
+            - /url: /report-lua-dao
+            - img [ref=e185]
+            - text: Danh sách lừa đảo
+          - link "FAQ" [ref=e187] [cursor=pointer]:
+            - /url: /faq
+            - img [ref=e188]
+            - text: FAQ
+          - button "Chuyển giao diện sáng/tối" [ref=e195] [cursor=pointer]:
+            - generic [ref=e196]:
+              - img [ref=e197]
+              - img [ref=e203]
+          - link "Hồ sơ của bạn" [ref=e205] [cursor=pointer]:
+            - /url: /profile
+            - img [ref=e206]
+      - generic:
+        - generic:
+          - generic:
+            - generic: Menu
+            - button:
+              - img
+          - generic:
+            - link:
+              - /url: /
+              - img
+              - text: Trang chủ
+            - link:
+              - /url: /search
+              - img
+              - text: Tra cứu
+            - link:
+              - /url: /report
+              - img
+              - text: Báo cáo
+            - link:
+              - /url: /report-lua-dao
+              - img
+              - text: Danh sách lừa đảo
+          - generic:
+            - link:
+              - /url: /faq
+              - img
+              - text: FAQ
+          - generic:
+            - generic: Giao diện
+            - button:
+              - generic:
+                - img
+                - img
+    - main [ref=e209]:
+      - generic [ref=e211]:
+        - generic [ref=e212]:
+          - generic [ref=e213]:
+            - generic [ref=e214]:
+              - generic [ref=e215]: 
+              - generic [ref=e216]: "!"
+            - heading "youtubercash.com NGHI NGỜ" [level=1] [ref=e217]:
+              - text: youtubercash.com
+              - generic [ref=e218]: NGHI NGỜ
+          - generic [ref=e219]:
+            - generic [ref=e220]:
+              - generic [ref=e221]: 
+              - text: 10 lượt xem
+            - generic [ref=e222]:
+              - generic [ref=e223]: 
+              - text: 1 bình luận
+            - generic [ref=e224]:
+              - generic [ref=e225]: 
+              - text: 04:08:43 13/3/2026
+        - generic [ref=e226]:
+          - generic [ref=e227]:
+            - generic [ref=e228]: ﮵
+            - text: "Độ tin cậy: 44%"
+          - generic [ref=e229]:
+            - generic [ref=e230]: 
+            - text: Website giả mạo/phishing
+          - generic [ref=e231]:
+            - generic [ref=e232]: 
+            - text: 0 báo cáo
+          - generic [ref=e233]:
+            - generic [ref=e234]: 
+            - text: "Tuổi domain: 704 ngày"
+        - generic [ref=e235]:
+          - generic [ref=e236]:
+            - generic [ref=e238]: ﷫
+            - generic [ref=e239]:
+              - strong [ref=e240]: Cảnh báo lừa đảo!
+              - generic [ref=e241]: Đang xử lý
+          - generic "Thiệt hại ước tính (không phải số liệu chính thức)" [ref=e242]:
+            - text: 11.000.000
+            - generic [ref=e243]: VND
+            - generic [ref=e244]: Ước tính
+        - generic [ref=e247]:
+          - generic [ref=e249]: 
+          - generic [ref=e250]: Giả mạo Chưa xác định
+        - generic "Tín hiệu rủi ro" [ref=e251]:
+          - generic [ref=e252]:
+            - generic [ref=e253]: ﷫
+            - text: Domain gần giống thương hiệu
+          - generic [ref=e254]:
+            - generic [ref=e255]: ﷫
+            - text: Nội dung “giảm sốc/ưu đãi lớn”
+          - generic [ref=e256]:
+            - generic [ref=e257]: ﷫
+            - text: Yêu cầu nhập thông tin nhạy cảm
+          - generic [ref=e258]:
+            - generic [ref=e259]: ﷫
+            - text: Lịch sử báo cáo tiêu cực
+        - generic "Kênh liên quan" [ref=e260]:
+          - generic [ref=e261]: ﮯ
+          - generic [ref=e262]:
+            - generic [ref=e263]: 
+            - text: Website
+          - generic [ref=e264]:
+            - generic [ref=e265]: 
+            - text: Quảng cáo mạng xã hội
+          - generic [ref=e266]:
+            - generic [ref=e267]: 
+            - text: Link rút gọn
+        - generic "Phân tích thông minh AI" [ref=e268]:
+          - generic [ref=e269]:
+            - generic [ref=e271]: 
+            - generic [ref=e272]:
+              - generic [ref=e273]: Phân tích thông minh AI
+              - generic [ref=e274]:
+                - generic [ref=e275]: 擄
+                - text: Deep Learning · Real-time
+          - generic [ref=e276]:
+            - generic [ref=e277]:
+              - generic [ref=e279]: ﮵
+              - generic [ref=e280]: ĐỘ TIN CẬY AI
+              - generic [ref=e281]: 44%
+            - generic [ref=e282]:
+              - generic [ref=e284]: 
+              - generic [ref=e285]: ĐỘ TƯƠNG ĐỒNG
+              - generic [ref=e286]: 46%
+            - generic [ref=e287]:
+              - generic [ref=e289]: 
+              - generic [ref=e290]: TUỔI DOMAIN
+              - generic [ref=e291]: "704"
+              - generic [ref=e292]: ngày
+            - generic [ref=e293]:
+              - generic [ref=e295]: 
+              - generic [ref=e296]: RỦI RO
+              - generic [ref=e297]: 56%
+          - generic [ref=e298]:
+            - generic [ref=e299]:
+              - generic [ref=e301]: ﮘ
+              - generic [ref=e302]:
+                - strong [ref=e303]: "Phát hiện:"
+                - text: Domain gần giống thương hiệu
+            - generic [ref=e304]:
+              - generic [ref=e306]: ﮸
+              - generic [ref=e307]:
+                - strong [ref=e308]: "Hành vi:"
+                - text: Nội dung “giảm sốc/ưu đãi lớn”
+            - generic [ref=e309]:
+              - generic [ref=e311]: 
+              - generic [ref=e312]:
+                - strong [ref=e313]: "Domain:"
+                - text: Lâu năm
+            - generic "Độ tin cậy (ước tính)" [ref=e314]:
+              - generic [ref=e315]: Confidence
+              - generic [ref=e318]: 44%
+        - generic "Timeline" [ref=e319]:
+          - generic [ref=e320]:
+            - generic [ref=e321]: 
+            - generic [ref=e322]:
+              - generic [ref=e323]: Phát hiện lần đầu
+              - generic [ref=e324]: 18/2/2025
+          - generic [ref=e325]:
+            - generic [ref=e326]: ﬒
+            - generic [ref=e327]:
+              - generic [ref=e328]: Cập nhật gần nhất
+              - generic [ref=e329]: 18/2/2025
+          - generic [ref=e330]:
+            - generic [ref=e331]: 
+            - generic [ref=e332]:
+              - generic [ref=e333]: Cập nhật hệ thống
+              - generic [ref=e334]: 04:08:43 13/3/2026
+        - heading "Khuyến nghị" [level=3] [ref=e335]:
+          - generic [ref=e336]: 
+          - text: Khuyến nghị
+        - generic [ref=e337]:
+          - generic [ref=e338]:
+            - generic [ref=e339]: "1"
+            - generic [ref=e340]: Kiểm tra domain chính xác từng ký tự trước khi đăng nhập.
+          - generic [ref=e341]:
+            - generic [ref=e342]: "2"
+            - generic [ref=e343]: Không nhập thông tin ngân hàng trên website lạ.
+          - generic [ref=e344]:
+            - generic [ref=e345]: "3"
+            - generic [ref=e346]: Chụp màn hình và báo cáo đường link cho cộng đồng.
+        - generic [ref=e348]:
+          - generic [ref=e349]: 
+          - text: "Nguồn:"
+          - strong [ref=e350]: database • website
+        - generic "Hành động" [ref=e351]:
+          - button "Báo cáo" [ref=e352] [cursor=pointer]:
+            - generic [ref=e353]: 
+            - text: Báo cáo
+          - button "Tra cứu liên quan" [ref=e354] [cursor=pointer]:
+            - generic [ref=e355]: ﮘ
+            - text: Tra cứu liên quan
+          - button "Chia sẻ" [ref=e356] [cursor=pointer]:
+            - generic [ref=e357]: ﮯ
+            - text: Chia sẻ
+          - button "Sao chép" [ref=e358] [cursor=pointer]:
+            - generic [ref=e359]: 
+            - text: Sao chép
+        - generic "Bình luận" [ref=e360]:
+          - heading "Comments (1)" [level=3] [ref=e361]:
+            - generic [ref=e362]: 
+            - text: Comments (1)
+          - generic "Đánh giá" [ref=e363]:
+            - button "Đánh giá 1 sao" [ref=e364] [cursor=pointer]:
+              - generic [ref=e365]: ﳁ
+            - button "Đánh giá 2 sao" [ref=e366] [cursor=pointer]:
+              - generic [ref=e367]: ﳩ
+            - button "Đánh giá 3 sao" [ref=e368] [cursor=pointer]:
+              - generic [ref=e369]: ﳩ
+            - button "Đánh giá 4 sao" [ref=e370] [cursor=pointer]:
+              - generic [ref=e371]: ﳩ
+            - button "Đánh giá 5 sao" [ref=e372] [cursor=pointer]:
+              - generic [ref=e373]: ﳩ
+            - generic [ref=e374]: 1.0 / 5 (1 đánh giá)
+          - generic [ref=e375]:
+            - button "Mới nhất" [ref=e376] [cursor=pointer]:
+              - generic [ref=e377]: 
+              - text: Mới nhất
+            - button "Hữu ích nhất" [ref=e378] [cursor=pointer]:
+              - generic [ref=e379]: ﵬ
+              - text: Hữu ích nhất
+          - generic [ref=e380]:
+            - textbox "Write your comment..." [ref=e381]
+            - button "Gửi" [disabled] [ref=e382] [cursor=pointer]:
+              - generic [ref=e383]: 罹
+              - text: Gửi
+          - generic "Danh sách bình luận" [ref=e384]:
+            - generic [ref=e385]:
+              - generic [ref=e386]: "N"
+              - generic [ref=e387]:
+                - generic [ref=e388]:
+                  - generic [ref=e389]:
+                    - strong [ref=e390]: Người dùng
+                    - generic "Đánh giá 1 sao" [ref=e391]:
+                      - generic [ref=e392]: ﳁ
+                  - generic [ref=e393]: 3 ngày trước
+                - generic [ref=e394]: scam
+                - generic [ref=e395]:
+                  - button "0 Helpful" [ref=e396] [cursor=pointer]:
+                    - generic [ref=e397]: ﵬ
+                    - text: 0 Helpful
+                  - generic [ref=e398]:
+                    - generic [ref=e399]: ﯂
+                    - text: Chưa xác minh
+        - generic [ref=e400]:
+          - generic [ref=e401]: ﬒
+          - generic [ref=e402]: Cập nhật liên tục 24/7
+    - contentinfo [ref=e403]:
+      - generic [ref=e405]:
+        - link "ScamGuard" [ref=e406] [cursor=pointer]:
+          - /url: /
+          - img [ref=e408]
+          - generic [ref=e410]: ScamGuard
+        - generic [ref=e411]: "|"
+        - generic [ref=e412]:
+          - link "Trang chủ" [ref=e413] [cursor=pointer]:
+            - /url: /
+          - link "Tra cứu" [ref=e414] [cursor=pointer]:
+            - /url: /search
+          - link "Báo cáo" [ref=e415] [cursor=pointer]:
+            - /url: /report
+          - link "FAQ" [ref=e416] [cursor=pointer]:
+            - /url: /faq
+          - link "Bảo mật" [ref=e417] [cursor=pointer]:
+            - /url: /privacy
+        - generic [ref=e418]: "|"
+        - link "1900-xxxx" [ref=e419] [cursor=pointer]:
+          - /url: tel:1900xxxx
+          - img [ref=e420]
+          - text: 1900-xxxx
+        - link "support@scamguard.vn" [ref=e422] [cursor=pointer]:
+          - /url: mailto:support@scamguard.vn
+          - img [ref=e423]
+          - text: support@scamguard.vn
+        - generic [ref=e426]:
+          - img [ref=e427]
+          - text: Hà Nội, Việt Nam
+        - generic [ref=e430]: "|"
+        - paragraph [ref=e431]: © 2025 ScamGuard.
+  - alert [ref=e4]

@@ -3,6 +3,11 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { normalizeDomainInput } from '@/lib/dataSources/tinnhiemmang';
 import { createSecureJsonResponse, isRequestFromSameOrigin, rateLimitRequest } from '@/lib/apiSecurity';
 import { findPolicyViolationInLocalDb } from '@/lib/services/policyViolation.service';
+import { getRedisJson, setRedisJson } from '@/lib/jsonCache';
+
+const CACHE_KEY_PREFIX = 'api:policy-violations:lookup';
+const CACHE_TTL_SECONDS =
+  Number.parseInt(process.env.POLICY_VIOLATION_LOOKUP_CACHE_TTL_SECONDS || '86400', 10) || 86400;
 
 function isValidDomain(domain: string): boolean {
   const normalized = domain.trim().toLowerCase();
@@ -36,16 +41,26 @@ export const POST = withApiObservability(async (request: NextRequest) => {
       return createSecureJsonResponse({ success: false, error: 'Invalid domain format' }, { status: 400 }, rateLimit);
     }
 
-    const hit = await findPolicyViolationInLocalDb(domain);
-    if (!hit) {
-      return createSecureJsonResponse({ success: true, found: false, domain }, { status: 200 }, rateLimit);
+    const cacheKey = `${CACHE_KEY_PREFIX}:${domain}`;
+    const cached = await getRedisJson<unknown>(cacheKey);
+    if (cached) {
+      return createSecureJsonResponse(cached, { status: 200 }, rateLimit);
     }
 
-    return createSecureJsonResponse({
+    const hit = await findPolicyViolationInLocalDb(domain);
+    if (!hit) {
+      const payload = { success: true, found: false, domain };
+      await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+      return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
+    }
+
+    const payload = {
       success: true,
       found: true,
       item: hit,
-    }, { status: 200 }, rateLimit);
+    };
+    await setRedisJson(cacheKey, CACHE_TTL_SECONDS, payload);
+    return createSecureJsonResponse(payload, { status: 200 }, rateLimit);
   } catch (error) {
     console.error('policy lookup error:', error);
     return createSecureJsonResponse({ success: false, error: 'Lookup failed' }, { status: 500 }, rateLimit);
@@ -72,4 +87,3 @@ export const GET = withApiObservability(async (request: NextRequest) => {
     example: { url: 'https://example.com' },
   }, { status: 200 }, rateLimit);
 });
-

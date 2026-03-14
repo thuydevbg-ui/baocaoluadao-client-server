@@ -1,0 +1,77 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "SG ScamGuard" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e7]: SG
+        - generic [ref=e8]: ScamGuard
+      - navigation [ref=e9]:
+        - link "Trang chủ" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - img [ref=e11]
+          - text: Trang chủ
+        - link "Tra cứu" [ref=e14] [cursor=pointer]:
+          - /url: /search
+          - img [ref=e15]
+          - text: Tra cứu
+        - link "Báo cáo" [ref=e18] [cursor=pointer]:
+          - /url: /report
+          - img [ref=e19]
+          - text: Báo cáo
+        - link "Danh sách lừa đảo" [ref=e22] [cursor=pointer]:
+          - /url: /report-lua-dao
+          - img [ref=e23]
+          - text: Danh sách lừa đảo
+        - link "FAQ" [ref=e25] [cursor=pointer]:
+          - /url: /faq
+          - img [ref=e26]
+          - text: FAQ
+        - button "Chuyển giao diện sáng/tối" [disabled] [ref=e33]:
+          - generic [ref=e34]:
+            - img [ref=e35]
+            - img [ref=e41]
+        - link "Hồ sơ của bạn" [ref=e43] [cursor=pointer]:
+          - /url: /profile
+          - img [ref=e44]
+    - generic:
+      - generic:
+        - generic:
+          - generic: Menu
+          - button:
+            - img
+        - generic:
+          - link:
+            - /url: /
+            - img
+            - text: Trang chủ
+          - link:
+            - /url: /search
+            - img
+            - text: Tra cứu
+          - link:
+            - /url: /report
+            - img
+            - text: Báo cáo
+          - link:
+            - /url: /report-lua-dao
+            - img
+            - text: Danh sách lừa đảo
+        - generic:
+          - link:
+            - /url: /faq
+            - img
+            - text: FAQ
+        - generic:
+          - generic: Giao diện
+          - button [disabled]:
+            - generic:
+              - img
+              - img
+  - main [ref=e47]
+  - contentinfo [ref=e63]:
+    - generic [ref=e65]:
+      - link "ScamGuard" [ref=e66] [cursor=pointer]:
+        - /url: /
+        - img [ref=e68]
+        - generic [ref=e70]: ScamGuard
+      - paragraph [ref=e71]: © 2025 ScamGuard.

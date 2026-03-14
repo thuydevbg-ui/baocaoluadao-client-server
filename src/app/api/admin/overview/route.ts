@@ -2,7 +2,12 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getAdminAuthValidated } from '@/lib/adminApiAuth';
+import { getRedisClientSafe } from '@/lib/redis';
 import { RowDataPacket } from 'mysql2/promise';
+
+// Cache configuration
+const CACHE_KEY = 'admin:overview';
+const CACHE_TTL = 300; // 5 minutes
 
 interface OverviewStats extends RowDataPacket {
   total_reports: number;
@@ -47,6 +52,21 @@ export const GET = withApiObservability(async (request: NextRequest) => {
   }
 
   try {
+    // Try Redis cache first
+    const redis = await getRedisClientSafe();
+    if (redis) {
+      const cached = await redis.get(CACHE_KEY);
+      if (cached) {
+        console.log('[Admin Overview] Returning cached data');
+        const parsed = JSON.parse(cached);
+        parsed.source = 'cache';
+        return NextResponse.json({
+          ...parsed,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+    
     const db = getDb();
 
     // Get overview stats
@@ -78,7 +98,7 @@ export const GET = withApiObservability(async (request: NextRequest) => {
        GROUP BY type`
     );
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       data: {
         reports: {
@@ -95,8 +115,20 @@ export const GET = withApiObservability(async (request: NextRequest) => {
         recentReports: recentReports,
         reportTypes: typeCounts,
       },
+      source: 'database',
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    // Cache to Redis (after getting response data)
+    if (redis) {
+      const cacheData = JSON.stringify(responseData);
+      await redis.set(CACHE_KEY, cacheData, 'EX', CACHE_TTL).catch(err => {
+        console.warn('[Admin Overview] Redis cache error:', err);
+      });
+      console.log(`[Admin Overview] Cached for ${CACHE_TTL}s`);
+    }
+    
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('[Admin Overview] Error:', error);
 

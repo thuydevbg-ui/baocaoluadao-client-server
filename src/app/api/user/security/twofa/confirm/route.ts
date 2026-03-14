@@ -6,7 +6,8 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import { assertActiveDevice } from '@/lib/deviceSession';
+import { logUserActivity } from '@/lib/userActivity';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +27,11 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     [session.user.email]
   );
   const record = rows?.[0];
+  if (!record?.id) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
   if (!record?.twofa_secret) return NextResponse.json({ success: false, error: 'Chưa khởi tạo 2FA' }, { status: 400 });
   if (record.twofa_enabled) return NextResponse.json({ success: false, error: '2FA đã bật' }, { status: 400 });
+  const deviceCheck = await assertActiveDevice(req, record.id);
+  if (!deviceCheck.allowed) return deviceCheck.response!;
 
   if (record?.password_hash) {
     const ok = await bcrypt.compare(body.password || '', record.password_hash);
@@ -42,14 +46,7 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     [session.user.email]
   );
 
-  if (record?.id) {
-    await db
-      .query(
-        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
-        [crypto.randomUUID(), record.id, 'Bật 2FA']
-      )
-      .catch(() => {});
-  }
+  await logUserActivity(record.id, 'security', 'Bật 2FA', req).catch(() => {});
 
   return NextResponse.json({ success: true });
 });

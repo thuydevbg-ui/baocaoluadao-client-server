@@ -5,10 +5,11 @@ import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
 import { ensureProfileSummary, getProfileSummary } from '@/lib/userSummary';
+import { assertActiveDevice } from '@/lib/deviceSession';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = withApiObservability(async () => {
+export const GET = withApiObservability(async (req) => {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
@@ -23,6 +24,8 @@ export const GET = withApiObservability(async () => {
   );
   const row = rows?.[0];
   if (!row) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  const deviceCheck = await assertActiveDevice(req, row.id);
+  if (!deviceCheck.allowed) return deviceCheck.response!;
   await ensureProfileSummary(row.id);
   const summary = await getProfileSummary(row.id);
   const rawOauthProvider = String(row?.oauthProvider || '').toLowerCase();

@@ -216,33 +216,33 @@ export default function DashboardPage() {
     () => [
       {
         id: 'pending-reports',
-        title: 'Pending Reports',
+        title: 'Báo cáo chờ duyệt',
         value: overview.reports.pending,
-        subtitle: 'Awaiting moderator review',
+        subtitle: 'Đang chờ quản trị viên xem xét',
         icon: AlertTriangle,
         tone: 'amber',
       },
       {
         id: 'verified-entities',
-        title: 'Verified Entities',
+        title: 'Đã xác minh',
         value: overview.reports.verified,
-        subtitle: 'Validated as trustworthy or resolved',
+        subtitle: 'Đã được xác thực là đáng tin cậy',
         icon: CheckCircle2,
         tone: 'emerald',
       },
       {
         id: 'rejected-reports',
-        title: 'Rejected Reports',
+        title: 'Báo cáo bị từ chối',
         value: overview.reports.rejected,
-        subtitle: 'Closed as invalid or duplicate',
+        subtitle: 'Bị đóng là không hợp lệ hoặc trùng lặp',
         icon: FileWarning,
         tone: 'rose',
       },
       {
         id: 'total-records',
-        title: 'Total Records',
+        title: 'Tổng số bản ghi',
         value: overview.reports.total,
-        subtitle: 'All incoming moderation records',
+        subtitle: 'Tất cả các báo cáo trong hệ thống',
         icon: Database,
         tone: 'sky',
       },
@@ -270,7 +270,7 @@ export default function DashboardPage() {
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={`h-4 w-4 ${iconResyncing ? 'animate-spin' : ''}`} />
-              {iconResyncing ? 'Resyncing Icons...' : 'Resync Icon Only'}
+              {iconResyncing ? 'Đang cập nhật icon...' : 'Cập nhật icon'}
             </button>
             <button
               type="button"
@@ -279,7 +279,7 @@ export default function DashboardPage() {
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync Now'}
+              {syncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay'}
             </button>
           </div>
         </div>
@@ -307,26 +307,26 @@ export default function DashboardPage() {
         {syncSummary && (
           <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-3">
             <div className="rounded-lg bg-slate-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Pages:</span> {syncSummary.pagesSynced}
+              <span className="font-semibold text-slate-800">Trang:</span> {syncSummary.pagesSynced}
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Records:</span> {syncSummary.recordsSynced}
+              <span className="font-semibold text-slate-800">Bản ghi:</span> {syncSummary.recordsSynced}
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Completed:</span> {formatDate(syncSummary.completedAt)}
+              <span className="font-semibold text-slate-800">Hoàn thành:</span> {formatDate(syncSummary.completedAt)}
             </div>
           </div>
         )}
         {iconBackfillSummary && (
           <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-3">
             <div className="rounded-lg bg-indigo-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Icon updated rows:</span> {iconBackfillSummary.updatedRows}
+              <span className="font-semibold text-slate-800">Đã cập nhật icon:</span> {iconBackfillSummary.updatedRows}
             </div>
             <div className="rounded-lg bg-indigo-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Resolved targets:</span> {iconBackfillSummary.resolvedTargets}/{iconBackfillSummary.totalTargets}
+              <span className="font-semibold text-slate-800">Đã xử lý:</span> {iconBackfillSummary.resolvedTargets}/{iconBackfillSummary.totalTargets}
             </div>
             <div className="rounded-lg bg-indigo-50 px-3 py-2">
-              <span className="font-semibold text-slate-800">Completed:</span> {formatDate(iconBackfillSummary.completedAt)}
+              <span className="font-semibold text-slate-800">Hoàn thành:</span> {formatDate(iconBackfillSummary.completedAt)}
             </div>
           </div>
         )}
@@ -343,14 +343,14 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <section className="xl:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
           <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-slate-900">Latest Reports</h2>
-            <p className="text-xs text-slate-500">Newest incoming moderation submissions</p>
+            <h2 className="text-sm font-semibold text-slate-900">Báo cáo mới nhất</h2>
+            <p className="text-xs text-slate-500">Các báo cáo mới nhất từ người dùng</p>
           </div>
 
           <div className="divide-y divide-slate-100">
-            {loading && <p className="px-5 py-6 text-sm text-slate-500">Loading latest reports...</p>}
+            {loading && <p className="px-5 py-6 text-sm text-slate-500">Đang tải báo cáo mới nhất...</p>}
             {!loading && overview.recentReports.length === 0 && (
-              <p className="px-5 py-6 text-sm text-slate-500">No reports available.</p>
+              <p className="px-5 py-6 text-sm text-slate-500">Không có báo cáo nào.</p>
             )}
             {!loading &&
               overview.recentReports.map((report) => (
@@ -377,13 +377,13 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-          <h2 className="text-sm font-semibold text-slate-900">Report Type Distribution</h2>
-          <p className="text-xs text-slate-500">Current moderation queue split</p>
+          <h2 className="text-sm font-semibold text-slate-900">Phân bố loại báo cáo</h2>
+          <p className="text-xs text-slate-500">Các loại báo cáo trong hệ thống</p>
 
           <div className="mt-4 space-y-3">
-            {loading && <p className="text-sm text-slate-500">Loading distribution...</p>}
+            {loading && <p className="text-sm text-slate-500">Đang tải phân bố...</p>}
             {!loading && overview.reportTypes.length === 0 && (
-              <p className="text-sm text-slate-500">No type distribution yet.</p>
+              <p className="text-sm text-slate-500">Chưa có dữ liệu phân bố.</p>
             )}
             {!loading &&
               overview.reportTypes.map((entry) => {

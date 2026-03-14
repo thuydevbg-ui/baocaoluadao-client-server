@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS scams (
   source_url TEXT,
   external_hash TEXT,
   external_category TEXT,
+  domain_registered_at TEXT,
+  domain_registered_checked_at TEXT,
+  domain_expires_at TEXT,
+  domain_expires_checked_at TEXT,
   icon TEXT,
   organization_icon TEXT,
   is_scam INTEGER DEFAULT 1

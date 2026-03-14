@@ -1,4 +1,17 @@
 ﻿import { getDb } from './db';
+import { ensureRedisReady, getRedisClientSafe } from './redis';
+import {
+  defaultFooterContacts,
+  defaultFooterLinks,
+  FooterContactEntry,
+  FooterNavLink,
+} from './footerConfig';
+
+// Extend globalThis for cache
+declare global {
+  var __scamGuardSiteSettingsCache: SiteSettings | undefined;
+  var __scamGuardSiteSettingsCacheLoadedAt: number | undefined;
+}
 
 export interface SiteSettings {
   siteName: string;
@@ -33,6 +46,8 @@ export interface SiteSettings {
   smtpFromName: string | null;
   smtpFromEmail: string | null;
   allowedDocsIps: string | null; // comma or newline separated
+  footerContactsJson: string | null;
+  footerLinksJson: string | null;
   updatedAt: string;
 }
 
@@ -46,7 +61,7 @@ export interface PublicSiteSettings
     | 'twitterClientId'
     | 'twitterClientSecret'
     | 'telegramBotToken'
-    | 'smtpPasswordEnc'
+  | 'smtpPasswordEnc'
   > {
   googleClientIdSet: boolean;
   googleClientSecretSet: boolean;
@@ -64,7 +79,16 @@ export interface PublicSiteSettings
   twitterClientSecret?: never;
   telegramBotToken?: never;
   smtpPasswordEnc?: never;
+  footerContacts: FooterContactEntry[];
+  footerLinks: FooterNavLink[];
 }
+
+type FooterSettingsPartial = {
+  footerContacts?: FooterContactEntry[];
+  footerLinks?: FooterNavLink[];
+  footerContactsJson?: string;
+  footerLinksJson?: string;
+};
 
 const defaultSettings: SiteSettings = {
   siteName: 'ScamGuard - Cảnh báo lừa đảo',
@@ -99,6 +123,8 @@ const defaultSettings: SiteSettings = {
   smtpFromName: 'ScamGuard',
   smtpFromEmail: null,
   allowedDocsIps: null,
+  footerContactsJson: JSON.stringify(defaultFooterContacts),
+  footerLinksJson: JSON.stringify(defaultFooterLinks),
   updatedAt: new Date().toISOString(),
 };
 
@@ -107,11 +133,35 @@ declare global {
   var __scamGuardSiteSettingsCache: SiteSettings | undefined;
   // eslint-disable-next-line no-var
   var __scamGuardSiteSettingsLoaded: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __scamGuardSiteSettingsCacheLoadedAt: number | undefined;
 }
 
-let cache = globalThis.__scamGuardSiteSettingsCache;
+let cache: SiteSettings | undefined = global.__scamGuardSiteSettingsCache;
+let cacheLoadedAt = global.__scamGuardSiteSettingsCacheLoadedAt || 0;
+let tableChecked = false; // Cache for ensureTable check
+
+// Redis cache key for site settings
+const SITE_SETTINGS_REDIS_KEY = 'site:settings';
+
+// Cache TTL in milliseconds (default 5 minutes)
+// Can be configured via PUBLIC_SETTINGS_CACHE_TTL_SECONDS env var
+const SITE_SETTINGS_CACHE_TTL_MS = Number.parseInt(
+  process.env.PUBLIC_SETTINGS_CACHE_TTL_SECONDS || '300',
+  10
+) * 1000;
+
+function isCacheValid(): boolean {
+  if (!cache) return false;
+  return Date.now() - cacheLoadedAt < SITE_SETTINGS_CACHE_TTL_MS;
+}
 
 async function ensureTable() {
+  // Skip if already checked (cached)
+  if (tableChecked) {
+    return;
+  }
+  
   const db = getDb();
   await db.query(`
     CREATE TABLE IF NOT EXISTS site_settings (
@@ -206,43 +256,105 @@ async function ensureTable() {
     `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS smtpFromEmail VARCHAR(191) NULL AFTER smtpFromName`
   ).catch(() => {});
   await db.query(
-    `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, smtpHost, smtpPort, smtpSecure, smtpRequireTLS, smtpAuthEnabled, smtpUser, smtpPasswordEnc, smtpFromName, smtpFromEmail, allowedDocsIps, updatedAt)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-    [
-      defaultSettings.siteName,
-      defaultSettings.siteDescription,
-      defaultSettings.contactEmail,
-      defaultSettings.maintenanceMode,
-      defaultSettings.registrationEnabled,
-      defaultSettings.loginEnabled,
-      defaultSettings.emailNotifications,
-      defaultSettings.analyticsEnabled,
-      defaultSettings.rateLimitEnabled,
-      defaultSettings.maxReportsPerDay,
-      defaultSettings.autoModeration,
-      defaultSettings.googleAuthEnabled,
-      defaultSettings.googleClientId,
-      defaultSettings.googleClientSecret,
-      defaultSettings.facebookAuthEnabled,
-      defaultSettings.facebookClientId,
-      defaultSettings.facebookClientSecret,
-      defaultSettings.twitterAuthEnabled,
-      defaultSettings.twitterClientId,
-      defaultSettings.twitterClientSecret,
-      defaultSettings.telegramAuthEnabled,
-      defaultSettings.telegramBotToken,
-      defaultSettings.smtpHost,
-      defaultSettings.smtpPort,
-      defaultSettings.smtpSecure,
-      defaultSettings.smtpRequireTLS,
-      defaultSettings.smtpAuthEnabled,
-      defaultSettings.smtpUser,
-      defaultSettings.smtpPasswordEnc,
-      defaultSettings.smtpFromName,
-      defaultSettings.smtpFromEmail,
-      defaultSettings.allowedDocsIps,
-    ]
-  );
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS footerContactsJson TEXT NULL AFTER allowedDocsIps`
+  ).catch(() => {});
+  await db
+    .query(
+      `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS footerLinksJson TEXT NULL AFTER footerContactsJson`
+    )
+    .catch(() => {});
+  
+  // Try INSERT with footer columns first (for new installations)
+  // If it fails, try without footer columns (for existing installations)
+  try {
+    await db.query(
+      `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, smtpHost, smtpPort, smtpSecure, smtpRequireTLS, smtpAuthEnabled, smtpUser, smtpPasswordEnc, smtpFromName, smtpFromEmail, allowedDocsIps, footerContactsJson, footerLinksJson, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        1,
+        defaultSettings.siteName,
+        defaultSettings.siteDescription,
+        defaultSettings.contactEmail,
+        Boolean(defaultSettings.maintenanceMode),
+        Boolean(defaultSettings.registrationEnabled),
+        Boolean(defaultSettings.loginEnabled),
+        Boolean(defaultSettings.emailNotifications),
+        Boolean(defaultSettings.analyticsEnabled),
+        Boolean(defaultSettings.rateLimitEnabled),
+        defaultSettings.maxReportsPerDay,
+        Boolean(defaultSettings.autoModeration),
+        Boolean(defaultSettings.googleAuthEnabled),
+        defaultSettings.googleClientId,
+        defaultSettings.googleClientSecret,
+        Boolean(defaultSettings.facebookAuthEnabled),
+        defaultSettings.facebookClientId,
+        defaultSettings.facebookClientSecret,
+        Boolean(defaultSettings.twitterAuthEnabled),
+        defaultSettings.twitterClientId,
+        defaultSettings.twitterClientSecret,
+        Boolean(defaultSettings.telegramAuthEnabled),
+        defaultSettings.telegramBotToken,
+        defaultSettings.smtpHost,
+        defaultSettings.smtpPort,
+        Boolean(defaultSettings.smtpSecure),
+        Boolean(defaultSettings.smtpRequireTLS),
+        Boolean(defaultSettings.smtpAuthEnabled),
+        defaultSettings.smtpUser,
+        defaultSettings.smtpPasswordEnc,
+        defaultSettings.smtpFromName,
+        defaultSettings.smtpFromEmail,
+        defaultSettings.allowedDocsIps,
+        defaultSettings.footerContactsJson,
+        defaultSettings.footerLinksJson,
+        new Date().toISOString(),
+      ]
+    );
+  } catch (insertError) {
+    // Fallback: Insert without footer columns if they don't exist
+    console.warn('[siteSettings] Insert with footer columns failed, trying without:', insertError);
+    await db.query(
+      `INSERT IGNORE INTO site_settings (id, siteName, siteDescription, contactEmail, maintenanceMode, registrationEnabled, loginEnabled, emailNotifications, analyticsEnabled, rateLimitEnabled, maxReportsPerDay, autoModeration, googleAuthEnabled, googleClientId, googleClientSecret, facebookAuthEnabled, facebookClientId, facebookClientSecret, twitterAuthEnabled, twitterClientId, twitterClientSecret, telegramAuthEnabled, telegramBotToken, smtpHost, smtpPort, smtpSecure, smtpRequireTLS, smtpAuthEnabled, smtpUser, smtpPasswordEnc, smtpFromName, smtpFromEmail, allowedDocsIps, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        1,
+        defaultSettings.siteName,
+        defaultSettings.siteDescription,
+        defaultSettings.contactEmail,
+        Boolean(defaultSettings.maintenanceMode),
+        Boolean(defaultSettings.registrationEnabled),
+        Boolean(defaultSettings.loginEnabled),
+        Boolean(defaultSettings.emailNotifications),
+        Boolean(defaultSettings.analyticsEnabled),
+        Boolean(defaultSettings.rateLimitEnabled),
+        defaultSettings.maxReportsPerDay,
+        Boolean(defaultSettings.autoModeration),
+        Boolean(defaultSettings.googleAuthEnabled),
+        defaultSettings.googleClientId,
+        defaultSettings.googleClientSecret,
+        Boolean(defaultSettings.facebookAuthEnabled),
+        defaultSettings.facebookClientId,
+        defaultSettings.facebookClientSecret,
+        Boolean(defaultSettings.twitterAuthEnabled),
+        defaultSettings.twitterClientId,
+        defaultSettings.twitterClientSecret,
+        Boolean(defaultSettings.telegramAuthEnabled),
+        defaultSettings.telegramBotToken,
+        defaultSettings.smtpHost,
+        defaultSettings.smtpPort,
+        Boolean(defaultSettings.smtpSecure),
+        Boolean(defaultSettings.smtpRequireTLS),
+        Boolean(defaultSettings.smtpAuthEnabled),
+        defaultSettings.smtpUser,
+        defaultSettings.smtpPasswordEnc,
+        defaultSettings.smtpFromName,
+        defaultSettings.smtpFromEmail,
+        defaultSettings.allowedDocsIps,
+      ]
+    );
+  }
+  
+  // Mark table as checked to avoid redundant ALTER TABLE checks
+  tableChecked = true;
 }
 
 function mapRowToSettings(row: any): SiteSettings {
@@ -279,31 +391,73 @@ function mapRowToSettings(row: any): SiteSettings {
     smtpFromName: row.smtpFromName ?? defaultSettings.smtpFromName,
     smtpFromEmail: row.smtpFromEmail ?? null,
     allowedDocsIps: row.allowedDocsIps ?? null,
+    footerContactsJson: row.footerContactsJson ?? defaultSettings.footerContactsJson,
+    footerLinksJson: row.footerLinksJson ?? defaultSettings.footerLinksJson,
     updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : defaultSettings.updatedAt,
   };
 }
 
 export async function getSiteSettings(): Promise<SiteSettings> {
   try {
-    if (cache && globalThis.__scamGuardSiteSettingsLoaded) return cache;
+    // Use TTL-based cache validity check
+    if (cache && globalThis.__scamGuardSiteSettingsLoaded && isCacheValid()) {
+      return cache;
+    }
+    
+    // Try Redis cache first
+    try {
+      const redis = await getRedisClientSafe();
+      if (redis) {
+        const cached = await redis.get(SITE_SETTINGS_REDIS_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached) as SiteSettings;
+          cache = parsed;
+          globalThis.__scamGuardSiteSettingsCache = parsed;
+          globalThis.__scamGuardSiteSettingsLoaded = true;
+          cacheLoadedAt = Date.now();
+          globalThis.__scamGuardSiteSettingsCacheLoadedAt = cacheLoadedAt;
+          return parsed;
+        }
+      }
+    } catch (redisError) {
+      console.warn('[siteSettings] Redis cache read error:', redisError);
+    }
+    
     const db = getDb();
     await ensureTable();
     const [rows] = await db.query<any[]>('SELECT * FROM site_settings WHERE id = 1 LIMIT 1');
     cache = rows && rows.length ? mapRowToSettings(rows[0]) : defaultSettings;
     globalThis.__scamGuardSiteSettingsCache = cache;
     globalThis.__scamGuardSiteSettingsLoaded = true;
+    cacheLoadedAt = Date.now();
+    globalThis.__scamGuardSiteSettingsCacheLoadedAt = cacheLoadedAt;
+    
+    // Cache to Redis
+    try {
+      const redis = await getRedisClientSafe();
+      if (redis) {
+        await redis.set(SITE_SETTINGS_REDIS_KEY, JSON.stringify(cache), 'EX', 300);
+      }
+    } catch (redisError) {
+      console.warn('[siteSettings] Redis cache write error:', redisError);
+    }
+    
     return cache;
   } catch (error) {
     console.error('getSiteSettings fallback:', error);
     cache = defaultSettings;
     globalThis.__scamGuardSiteSettingsCache = cache;
     globalThis.__scamGuardSiteSettingsLoaded = true;
+    cacheLoadedAt = Date.now();
+    globalThis.__scamGuardSiteSettingsCacheLoadedAt = cacheLoadedAt;
     return cache;
   }
 }
 
 export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
   const settings = await getSiteSettings();
+  const footerContacts = normalizeFooterContacts(settings.footerContactsJson);
+  const footerLinks = normalizeFooterLinks(settings.footerLinksJson);
   return {
     ...settings,
     googleClientIdSet: Boolean(settings.googleClientId),
@@ -322,11 +476,13 @@ export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
     twitterClientSecret: undefined as never,
     telegramBotToken: undefined as never,
     smtpPasswordEnc: undefined as never,
+    footerContacts,
+    footerLinks,
   };
 }
 
 export async function updateSiteSettings(
-  partial: Partial<SiteSettings>
+  partial: Partial<SiteSettings> & FooterSettingsPartial
 ): Promise<SiteSettings> {
   const current = await getSiteSettings();
 
@@ -449,6 +605,8 @@ export async function updateSiteSettings(
       typeof partial.smtpFromEmail === 'string'
         ? sanitizeString(partial.smtpFromEmail, 191) || null
         : current.smtpFromEmail,
+    footerContactsJson: dedupeFooterContactsJson(partial, current),
+    footerLinksJson: dedupeFooterLinksJson(partial, current),
     updatedAt: new Date().toISOString(),
   };
 
@@ -467,7 +625,7 @@ export async function updateSiteSettings(
         telegramAuthEnabled=?, telegramBotToken=?,
         smtpHost=?, smtpPort=?, smtpSecure=?, smtpRequireTLS=?, smtpAuthEnabled=?,
         smtpUser=?, smtpPasswordEnc=?, smtpFromName=?, smtpFromEmail=?,
-        allowedDocsIps=?, updatedAt=NOW()
+        allowedDocsIps=?, footerContactsJson=?, footerLinksJson=?, updatedAt=NOW()
        WHERE id=1`,
       [
         next.siteName,
@@ -502,6 +660,8 @@ export async function updateSiteSettings(
         next.smtpFromName,
         next.smtpFromEmail,
         next.allowedDocsIps,
+        next.footerContactsJson,
+        next.footerLinksJson,
       ]
     );
   } catch (error) {
@@ -511,10 +671,139 @@ export async function updateSiteSettings(
   cache = next;
   globalThis.__scamGuardSiteSettingsCache = next;
   globalThis.__scamGuardSiteSettingsLoaded = true;
+  
+  // Invalidate Redis cache
+  await invalidateSiteSettingsCache();
+  
   return next;
+}
+
+/**
+ * Invalidate site settings cache (call after updates)
+ */
+export async function invalidateSiteSettingsCache(): Promise<void> {
+  try {
+    const redis = await getRedisClientSafe();
+    if (redis) {
+      await redis.del(SITE_SETTINGS_REDIS_KEY);
+      console.log('[Cache] Site settings Redis cache invalidated');
+    }
+  } catch (error) {
+    console.warn('[Cache] Failed to invalidate site settings cache:', error);
+  }
 }
 
 function sanitizeString(input: string | undefined, maxLength: number): string {
   if (!input) return '';
   return input.trim().slice(0, maxLength);
+}
+
+const MAX_FOOTER_CONTACTS = 6;
+const MAX_FOOTER_LINKS = 8;
+const ICON_REGEX = /^[a-z0-9-]+$/i;
+
+function parseJsonArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // ignore
+    }
+  }
+  return [];
+}
+
+function sanitizeFooterIcon(raw?: unknown): string {
+  const text = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (text && ICON_REGEX.test(text)) return text;
+  return 'shield';
+}
+
+function sanitizeFooterHref(raw?: unknown): string {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return '';
+  if (/^(javascript|data):/i.test(text)) return '';
+  if (/^(\/|https?:\/\/|mailto:|tel:|#)/i.test(text)) {
+    return text;
+  }
+  return `https://${text}`;
+}
+
+function normalizeFooterContact(entry: unknown): FooterContactEntry | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const label = sanitizeString(String((entry as any).label || ''), 60);
+  const value = sanitizeString(String((entry as any).value || ''), 160);
+  if (!label || !value) return null;
+  const href = sanitizeFooterHref((entry as any).href);
+  return {
+    label,
+    value,
+    icon: sanitizeFooterIcon((entry as any).icon),
+    href: href || undefined,
+  };
+}
+
+function normalizeFooterLink(entry: unknown): FooterNavLink | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const label = sanitizeString(String((entry as any).label || ''), 60);
+  const href = sanitizeFooterHref((entry as any).href);
+  if (!label || !href) return null;
+  const icon = sanitizeFooterIcon((entry as any).icon);
+  return { label, href, icon: icon || undefined };
+}
+
+function normalizeFooterContacts(raw: unknown): FooterContactEntry[] {
+  const normalized = parseJsonArray(raw)
+    .map(normalizeFooterContact)
+    .filter((item): item is FooterContactEntry => Boolean(item));
+  if (normalized.length === 0) {
+    return defaultFooterContacts;
+  }
+  return normalized.slice(0, MAX_FOOTER_CONTACTS);
+}
+
+function normalizeFooterLinks(raw: unknown): FooterNavLink[] {
+  const normalized = parseJsonArray(raw)
+    .map(normalizeFooterLink)
+    .filter((item): item is FooterNavLink => Boolean(item));
+  if (normalized.length === 0) {
+    return defaultFooterLinks;
+  }
+  return normalized.slice(0, MAX_FOOTER_LINKS);
+}
+
+function serializeFooterContacts(raw: unknown): string {
+  return JSON.stringify(normalizeFooterContacts(raw));
+}
+
+function serializeFooterLinks(raw: unknown): string {
+  return JSON.stringify(normalizeFooterLinks(raw));
+}
+
+function dedupeFooterContactsJson(
+  partial: Partial<SiteSettings> & FooterSettingsPartial,
+  current: SiteSettings
+): string {
+  if (typeof partial.footerContactsJson === 'string') {
+    return serializeFooterContacts(partial.footerContactsJson);
+  }
+  if (Array.isArray(partial.footerContacts)) {
+    return serializeFooterContacts(partial.footerContacts);
+  }
+  return current.footerContactsJson || JSON.stringify(defaultFooterContacts);
+}
+
+function dedupeFooterLinksJson(
+  partial: Partial<SiteSettings> & FooterSettingsPartial,
+  current: SiteSettings
+): string {
+  if (typeof partial.footerLinksJson === 'string') {
+    return serializeFooterLinks(partial.footerLinksJson);
+  }
+  if (Array.isArray(partial.footerLinks)) {
+    return serializeFooterLinks(partial.footerLinks);
+  }
+  return current.footerLinksJson || JSON.stringify(defaultFooterLinks);
 }

@@ -49,4 +49,4 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Add index for faster session lookups
-ALTER TABLE auth_sessions ADD INDEX idx_sessions_user_refresh (user_id, refresh_token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_refresh ON auth_sessions (user_id, refresh_token_hash);

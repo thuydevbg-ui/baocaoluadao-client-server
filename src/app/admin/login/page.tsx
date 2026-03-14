@@ -77,7 +77,10 @@ function LoginForm() {
       }
 
       setSuccess(true);
-      setTimeout(() => router.push('/admin'), 800);
+      // Use window.location for more reliable redirect
+      setTimeout(() => {
+        window.location.href = '/admin';
+      }, 800);
     } catch (err) {
       setError('Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {

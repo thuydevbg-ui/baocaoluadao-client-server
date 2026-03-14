@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User, ShieldCheck } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -22,9 +22,14 @@ const secondaryLinks = navLinks.slice(4);
 export function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { data: session } = useSession();
   const adminRoles = ['admin', 'super_admin', 'moderator'];
   const isAdmin = adminRoles.includes(String(session?.user?.role || '').toLowerCase());
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const navItems = useMemo(
     () =>

@@ -5,7 +5,8 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import { assertActiveDevice } from '@/lib/deviceSession';
+import { logUserActivity } from '@/lib/userActivity';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,8 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const [rows] = await db.query<any[]>(`SELECT id, password_hash FROM users WHERE email = ? LIMIT 1`, [session.user.email]);
   const user = rows?.[0];
   if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  const deviceCheck = await assertActiveDevice(req, user.id);
+  if (!deviceCheck.allowed) return deviceCheck.response!;
 
   if (user.password_hash) {
     const match = await bcrypt.compare(currentPassword, user.password_hash);
@@ -34,12 +37,7 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.query(`UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?`, [hashed, user.id]);
 
-  await db
-    .query(
-      `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
-      [crypto.randomUUID(), user.id, 'Đổi mật khẩu']
-    )
-    .catch(() => {});
+  await logUserActivity(user.id, 'security', 'Đổi mật khẩu', req).catch(() => {});
 
   return NextResponse.json({ success: true, message: 'Đổi mật khẩu thành công' });
 });

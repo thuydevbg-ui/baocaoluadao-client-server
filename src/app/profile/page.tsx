@@ -1,1792 +1,1695 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentType, SVGProps } from 'react';
-import Link from 'next/link';
-import { useSession, signOut, signIn } from 'next-auth/react';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
-import { useToast } from '@/components/ui/Toast';
-import { Footer, MobileNav } from '@/components/layout';
-import { Button, Card, Skeleton, Modal, Input, Badge } from '@/components/ui';
-import type { NotificationPrefs } from '@/components/dashboard/NotificationSettings';
-import { RecentActivity } from '@/components/dashboard/RecentActivity';
-import { UserReportsTable } from '@/components/dashboard/UserReportsTable';
-import { WatchlistCard } from '@/components/dashboard/WatchlistCard';
-import type { ActivityItem } from '@/components/dashboard/RecentActivity';
-import type { UserReportRow } from '@/components/dashboard/UserReportsTable';
-import type { WatchItem } from '@/components/dashboard/WatchlistCard';
-import type { SecurityCheck } from '@/components/dashboard/SecurityStatusCard';
-import type { TrustMetric } from '@/components/dashboard/TrustScoreCard';
-import {
-  FileText,
-  Sparkles,
-  Copy,
-  Chrome,
-  Facebook,
-  Twitter,
-  Send,
-  Home,
-  ShieldCheck,
-  UserCircle,
-  Plus,
-  ZoomIn,
-  Bike,
-  Search,
-  SlidersHorizontal,
-  Briefcase,
-  Building,
-  Clock3,
-  Globe,
-  Bookmark,
-  AlertTriangle,
-  XCircle,
-  CheckCircle,
-  LogOut,
-} from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { QRCodeCanvas } from 'qrcode.react';
 
-interface ProfileUser {
+// Types
+interface UserProfile {
   id: string;
-  email: string;
   name: string;
+  email: string;
+  phone: string;
+  avatar?: string;
   role: string;
   createdAt: string;
-  avatar?: string | null;
-  securityScore?: number;
+  lastActive?: string | null;
 }
 
-type SummaryCounts = {
-  reports: number;
-  watchlist: number;
-  alerts: number;
-};
+interface NotificationSettings {
+  email: boolean;
+  push: boolean;
+  sms: boolean;
+  reportUpdates: boolean;
+  weeklyDigest: boolean;
+  securityAlerts: boolean;
+}
 
-interface SecurityStatus {
-  passwordSet: boolean;
-  emailVerified: boolean;
+interface SecuritySettings {
   twoFactorEnabled: boolean;
-  oauthConnected: boolean;
-  oauthProvider?: string | null;
-  recentLogin: string | null;
-  securityScore?: number;
-  summary?: {
-    reportsCount: number;
-    watchlistCount: number;
-    alertCount: number;
-  };
+  loginAlerts: boolean;
+  trustedDevices: number;
+  passwordSet?: boolean;
 }
 
-interface ApiState {
-  user?: ProfileUser;
-  security?: SecurityStatus;
-  activity: ActivityItem[];
-  reports: UserReportRow[];
-  watchlist: WatchItem[];
-  notifications: NotificationPrefs;
-  summary: SummaryCounts;
-}
-
-const defaultPrefs: NotificationPrefs = { emailAlerts: true, pushAlerts: false, weeklySummary: true };
-const defaultSummary: SummaryCounts = { reports: 0, watchlist: 0, alerts: 0 };
-type TwofaInfo = { enabled: boolean; secret?: string; otpauthUrl?: string; backupCodes?: string[] };
-
-type BottomNavKey = 'trangchu' | 'baocao' | 'antoan' | 'hoso';
-
-type BottomNavItem = {
-  key: BottomNavKey;
-  label: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  action: () => void;
-};
-
-type QuickAction = {
-  label: string;
-  subLabel: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  accent: string;
-};
-
-type DeviceCard = {
-  key: string;
-  title: string;
-  subtitle: string;
-  status: string;
-  active: boolean;
-  accent: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  metadata: string[];
-};
-
-type FeatureCategory = {
-  key: string;
-  label: string;
+interface Activity {
+  id: string;
+  type: 'login' | 'report' | 'search' | 'update' | 'security' | string;
   description: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  accent: string;
-  action: () => void;
-};
-
-export default function ProfilePage() {
-  // Middleware handles authentication redirect - this page is protected at the edge
-  // No need for client-side session check here
-  return <ProfilePageContent />;
+  timestamp: string;
+  device?: string;
+  ip?: string;
 }
 
-function ProfilePageContent() {
-  const { data: session } = useSession();
-  const { showToast } = useToast();
-  const securitySectionRef = useRef<HTMLDivElement | null>(null);
-  const watchlistSectionRef = useRef<HTMLDivElement | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [state, setState] = useState<ApiState>({
-    activity: [],
-    reports: [],
-    watchlist: [],
-    notifications: defaultPrefs,
-    summary: defaultSummary,
+interface Device {
+  id: string;
+  name: string;
+  type: 'desktop' | 'mobile' | 'tablet';
+  browser: string;
+  lastActive: string;
+  current: boolean;
+}
+
+interface UserPreferences {
+  language: string;
+  timezone: string;
+  theme: string;
+}
+
+interface ApiError extends Error {
+  status?: number;
+}
+
+const DEFAULT_PREFERENCES: UserPreferences = {
+  language: 'vi',
+  timezone: 'Asia/Ho_Chi_Minh',
+  theme: 'system',
+};
+
+function formatRelativeTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  const diff = Date.now() - date.getTime();
+  if (diff < 60_000) return 'Vừa xong';
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes} phút trước`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ngày trước`;
+  return date.toLocaleDateString('vi-VN');
+}
+
+async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
   });
-  const [reloadKey, setReloadKey] = useState(0);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [twofaModalOpen, setTwofaModalOpen] = useState(false);
-  const [oauthModalOpen, setOauthModalOpen] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<'google' | 'facebook' | 'twitter' | 'telegram'>('google');
-  const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
-  const [twofaPassword, setTwofaPassword] = useState('');
-  const [twofaCode, setTwofaCode] = useState('');
-  const [twofaInfo, setTwofaInfo] = useState<TwofaInfo | null>(null);
-  const [twofaStep, setTwofaStep] = useState<'loading' | 'overview' | 'verify' | 'enabled'>('overview');
-  const [copyMessage, setCopyMessage] = useState('');
-  const [oauthPassword, setOauthPassword] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [emailDevCode, setEmailDevCode] = useState<string | null>(null);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [verifyingCode, setVerifyingCode] = useState(false);
-  const [emailCooldown, setEmailCooldown] = useState(0);
-  const [bottomAction, setBottomAction] = useState<BottomNavKey>('trangchu');
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', avatar: '' });
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string>('');
-  const [avatarUploading, setAvatarUploading] = useState(false);
-  const [watchTargetInput, setWatchTargetInput] = useState('');
-  const [watchTypeInput, setWatchTypeInput] = useState<'website' | 'phone' | 'bank' | 'crypto'>('website');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [modalSearchTerm, setModalSearchTerm] = useState('');
-  const [modalSearchResults, setModalSearchResults] = useState<any[]>([]);
-  const [modalIsSearching, setModalIsSearching] = useState(false);
-  const [modalSearched, setModalSearched] = useState(false);
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
-  const [deviceStates, setDeviceStates] = useState<Record<string, boolean>>({
-    myhome: true,
-    bicycle: false,
-  });
 
-  const SEARCH_CATEGORIES = ['organizations', 'websites', 'devices', 'systems', 'apps'];
-  
-  const handleModalSearch = async (query: string) => {
-    if (!query || query.trim().length < 2) {
-      setModalSearchResults([]);
-      setModalSearched(false);
-      return;
-    }
-    
-    setModalIsSearching(true);
-    setModalSearched(true);
-    
-    try {
-      const settled = await Promise.allSettled(
-        SEARCH_CATEGORIES.map(async (categoryKey) => {
-          const response = await fetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category: categoryKey, page: 1, query: query.trim(), perPage: 20 }),
-          });
-          return response.ok ? response.json() : null;
-        })
-      );
-      
-      const allResults: any[] = [];
-      const seenIds = new Set<string>();
-      settled.forEach((entry) => {
-        if (entry.status === 'fulfilled' && entry.value?.items) {
-          entry.value.items.forEach((item: any) => {
-            if (item.id && !seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              allResults.push({ ...item, category: entry.value.category, mode: entry.value.mode });
-            } else if (!item.id) {
-              allResults.push({ ...item, category: entry.value.category, mode: entry.value.mode });
-            }
-          });
-        }
-      });
-      
-      setModalSearchResults(allResults.slice(0, 20));
-    } catch (error) {
-      console.error('Search error:', error);
-      setModalSearchResults([]);
-    } finally {
-      setModalIsSearching(false);
-    }
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    const err = new Error('Unauthorized') as ApiError;
+    err.status = 401;
+    throw err;
+  }
+  if (!res.ok || data?.success === false) {
+    const err = new Error(data?.error || 'Request failed') as ApiError;
+    err.status = res.status;
+    throw err;
+  }
+  return data as T;
+}
+
+function normalizeNotificationSettings(raw: any): NotificationSettings {
+  return {
+    email: Boolean(raw?.email ?? raw?.emailAlerts ?? false),
+    push: Boolean(raw?.push ?? raw?.pushAlerts ?? false),
+    sms: Boolean(raw?.sms ?? false),
+    reportUpdates: Boolean(raw?.reportUpdates ?? false),
+    weeklyDigest: Boolean(raw?.weeklyDigest ?? raw?.weeklySummary ?? false),
+    securityAlerts: Boolean(raw?.securityAlerts ?? false),
   };
+}
 
+// Icons as components
+const Icons = {
+  User: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  ),
+  Settings: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  Palette: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+    </svg>
+  ),
+  Bell: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  ),
+  Shield: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  ),
+  Globe: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+    </svg>
+  ),
+  Device: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    </svg>
+  ),
+  Clock: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  Check: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+  ),
+  X: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  Edit: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
+  Trash: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  ),
+  Logout: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+    </svg>
+  ),
+};
+
+// Toast component
+function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) {
   useEffect(() => {
-    if (!editModalOpen) return;
-    setEditForm({
-      name: state.user?.name || '',
-      avatar: state.user?.avatar || '',
-    });
-    setAvatarPreview(state.user?.avatar || '');
-    setAvatarFile(null);
-  }, [editModalOpen, state.user?.avatar, state.user?.name]);
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
-  const loadPrimary = async () => {
-    const [profileRes, securityRes] = await Promise.all([
-      fetch('/api/user/profile', { cache: 'no-store' }),
-      fetch('/api/user/security-status', { cache: 'no-store' }),
-    ]);
-    const [profile, securityPayload] = await Promise.all([profileRes.json(), securityRes.json()]);
-    if (!profileRes.ok) throw new Error(profile.error || 'Tải hồ sơ thất bại');
-    if (!securityRes.ok) throw new Error(securityPayload.error || 'Tải bảo mật thất bại');
-    const securityData = securityPayload.security;
-    const summaryPayload = securityData?.summary;
-    const summaryData = {
-      reports: summaryPayload?.reportsCount ?? 0,
-      watchlist: summaryPayload?.watchlistCount ?? 0,
-      alerts: summaryPayload?.alertCount ?? summaryPayload?.watchlistCount ?? 0,
-    };
-    setState((prev) => ({
-      ...prev,
-      user: profile.user,
-      security: securityData,
-      summary: summaryData,
-    }));
+  const bgColors = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    info: 'bg-blue-500',
   };
-
-  const loadSecondary = async () => {
-    const [activityRes, reportsRes, watchlistRes, notifRes] = await Promise.all([
-      fetch('/api/user/activity', { cache: 'no-store' }),
-      fetch('/api/user/reports', { cache: 'no-store' }),
-      fetch('/api/user/watchlist', { cache: 'no-store' }),
-      fetch('/api/user/notifications', { cache: 'no-store' }),
-    ]);
-    const [activity, reports, watchlist, notifications] = await Promise.all([
-      activityRes.json(),
-      reportsRes.json(),
-      watchlistRes.json(),
-      notifRes.json(),
-    ]);
-    if (!activityRes.ok) throw new Error(activity.error || 'Tải hoạt động thất bại');
-    if (!reportsRes.ok) throw new Error(reports.error || 'Tải báo cáo thất bại');
-    if (!watchlistRes.ok) throw new Error(watchlist.error || 'Tải watchlist thất bại');
-    if (!notifRes.ok) throw new Error(notifications.error || 'Tải thông báo thất bại');
-    setState((prev) => ({
-      ...prev,
-      activity: activity.items || [],
-      reports: reports.items || [],
-      watchlist: watchlist.items || [],
-      notifications: notifications.settings || defaultPrefs,
-    }));
-  };
-
-  useEffect(() => {
-    if (status !== 'authenticated') return;
-    setLoading(true);
-    setError('');
-    loadPrimary()
-      .then(() => {
-        setLoading(false);
-        loadSecondary().catch((err: any) => {
-          showToast('error', err?.message || 'Không thể tải dữ liệu phụ');
-        });
-      })
-      .catch((err: any) => {
-        setLoading(false);
-        setError(err?.message || 'Không thể tải dữ liệu');
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, reloadKey]);
-
-  const user = state.user;
-  const security = state.security;
-  const oauthLabelMap: Record<string, string> = {
-    google: 'Google',
-    facebook: 'Facebook',
-    twitter: 'X (Twitter)',
-    telegram: 'Telegram',
-  };
-  const linkedOauthProviderKey = (security?.oauthProvider || '').toLowerCase();
-  const linkedOauthLabel = oauthLabelMap[linkedOauthProviderKey] || 'OAuth';
-  const selectedOauthLabel = oauthLabelMap[oauthProvider] || 'OAuth';
-  const selectedOauthIcon =
-    oauthProvider === 'facebook'
-      ? <Facebook className="h-4 w-4" />
-      : oauthProvider === 'twitter'
-        ? <Twitter className="h-4 w-4" />
-        : oauthProvider === 'telegram'
-          ? <Send className="h-4 w-4" />
-          : <Chrome className="h-4 w-4" />;
-
-  useEffect(() => {
-    if (!oauthModalOpen) return;
-    const key = (security?.oauthProvider || '').toLowerCase();
-    if (key === 'google' || key === 'facebook' || key === 'twitter' || key === 'telegram') {
-      setOauthProvider(key);
-    }
-  }, [oauthModalOpen, security?.oauthProvider]);
-
-  const stats = useMemo(() => {
-    const summary = state.summary || defaultSummary;
-    const reportCount = summary.reports ?? state.reports.length;
-    const alertsCount = summary.alerts ?? summary.watchlist ?? state.watchlist.length;
-    return {
-      reportsSubmitted: reportCount,
-      reportsResolved: state.reports.filter((r) => r.status === 'completed').length,
-      activeAlerts: alertsCount,
-      trustScore: security?.securityScore ?? user?.securityScore ?? 72,
-    };
-  }, [state.reports, state.watchlist.length, state.summary, security?.securityScore, user?.securityScore]);
-
-  const deviceCards: DeviceCard[] = [
-    {
-      key: 'myhome',
-      title: 'My Home',
-      subtitle: '32 thiết bị đang hoạt động',
-      status: 'ON',
-      active: deviceStates.myhome,
-      accent: 'from-cyan-500/80 to-sky-400/70',
-      icon: Home,
-      metadata: ['32 Active devices'],
-    },
-    {
-      key: 'bicycle',
-      title: 'Bicycleev',
-      subtitle: '36% pin • 25km',
-      status: 'OFF',
-      active: deviceStates.bicycle,
-      accent: 'from-orange-400/80 to-amber-300/70',
-      icon: Bike,
-      metadata: ['36% battery', '25km range'],
-    },
-  ];
-
-  const quickActions: QuickAction[] = [
-    { label: 'Security', subLabel: 'Kiểm tra bảo mật', icon: ShieldCheck, accent: 'from-sky-400/80 to-sky-200/60' },
-    { label: 'Báo cáo', subLabel: 'Gửi scam nhanh', icon: FileText, accent: 'from-amber-400/80 to-orange-200/60' },
-    { label: '2FA', subLabel: 'Bảo vệ 2 lớp', icon: Sparkles, accent: 'from-emerald-400/80 to-lime-200/60' },
-    { label: 'Watchlist', subLabel: 'Theo dõi cảnh báo', icon: ZoomIn, accent: 'from-blue-400/80 to-cyan-200/60' },
-  ];
-
-  const checks: { key: string; label: string; detail: string; actionLabel: string; onAction: () => void; disabled?: boolean }[] = [
-    {
-      key: 'password',
-      label: 'Mật khẩu',
-      detail: security?.passwordSet ? 'Đã thiết lập' : 'Chưa thiết lập',
-      actionLabel: security?.passwordSet ? 'Đổi mật khẩu' : 'Thiết lập',
-      onAction: () => setPasswordModalOpen(true),
-      disabled: actionLoading === 'password',
-    },
-    {
-      key: 'twofa',
-      label: 'Xác thực 2 lớp',
-      detail: security?.twoFactorEnabled ? 'Đã bật' : 'Chưa bật',
-      actionLabel: security?.twoFactorEnabled ? 'Quản lý' : 'Bật 2FA',
-      onAction: () => setTwofaModalOpen(true),
-      disabled: actionLoading === 'twofaSetup' || actionLoading === 'twofaConfirm' || actionLoading === 'twofaDisable',
-    },
-    {
-      key: 'oauth',
-      label: 'Liên kết OAuth',
-      detail: security?.oauthConnected ? `Đã liên kết ${linkedOauthLabel}` : 'Chưa liên kết',
-      actionLabel: 'Quản lý',
-      onAction: () => setOauthModalOpen(true),
-    },
-    {
-      key: 'email',
-      label: 'Email xác minh',
-      detail: security?.emailVerified ? 'Đã xác minh' : 'Chưa xác minh',
-      actionLabel: 'Xác minh',
-      onAction: () => setEmailModalOpen(true),
-      disabled: security?.emailVerified,
-    },
-  ];
-
-  const metricHighlights = [
-    { label: 'Cảnh báo', value: stats.activeAlerts, icon: 'fi fi-rr-bell', gradient: 'from-white to-[#eef8ff]' },
-    { label: 'Điểm tin cậy', value: `${stats.trustScore}%`, icon: 'fi fi-rr-shield-check', gradient: 'from-white to-[#f0fff5]' },
-    { label: 'Điểm bảo mật', value: security?.securityScore ?? stats.trustScore, icon: 'fi fi-rr-badge-check', gradient: 'from-white to-[#f8fbff]' },
-    { label: 'Danh sách theo dõi', value: state.watchlist.length, icon: 'fi fi-rr-eye', gradient: 'from-white to-[#fdf6ff]' },
-  ];
-
-  const handleScrollToSecurity = () => {
-    securitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const handleScrollToTop = () => {
-    if (typeof window === 'undefined') return;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const bottomNavItems: BottomNavItem[] = [
-    { key: 'trangchu', label: 'Trang chủ', icon: Home, action: handleScrollToTop },
-    { key: 'baocao', label: 'Báo cáo', icon: FileText, action: () => handleCreateReport() },
-    { key: 'antoan', label: 'Bảo mật', icon: ShieldCheck, action: handleScrollToSecurity },
-    { key: 'hoso', label: 'Hồ sơ', icon: UserCircle, action: () => setEditModalOpen(true) },
-  ];
-
-  const quickActionNavMap: Record<string, BottomNavKey> = {
-    Security: 'antoan',
-    'Báo cáo': 'baocao',
-    '2FA': 'antoan',
-    Watchlist: 'trangchu',
-  };
-
-  const notificationItems: { key: keyof NotificationPrefs; label: string; desc: string }[] = [
-    { key: 'emailAlerts', label: 'Email alerts', desc: 'Nhận cảnh báo qua email' },
-    { key: 'pushAlerts', label: 'Push notifications', desc: 'Bật thông báo trình duyệt' },
-    { key: 'weeklySummary', label: 'Weekly summary', desc: 'Tổng hợp báo cáo hàng tuần' },
-  ];
-
-  const handleCreateReport = async () => {
-    showToast('warning', 'Chức năng gửi báo cáo đang được tối ưu hóa.');
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut({ callbackUrl: '/' });
-    } catch (error) {
-      showToast('error', 'Đăng xuất thất bại');
-    }
-  };
-
-  const featureCategories: FeatureCategory[] = [
-    {
-      key: 'reports',
-      label: 'Báo cáo',
-      description: `${state.reports.length} báo cáo`,
-      icon: FileText,
-      accent: 'from-sky-400/70 to-cyan-400/70',
-      action: () => {
-        setBottomAction('baocao');
-        handleCreateReport();
-      },
-    },
-    {
-      key: 'watchlist',
-      label: 'Theo dõi',
-      description: `${state.watchlist.length} mục`,
-      icon: ZoomIn,
-      accent: 'from-emerald-500/70 to-lime-400/70',
-      action: () => {
-        setBottomAction('trangchu');
-        watchlistSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      },
-    },
-    {
-      key: 'alerts',
-      label: 'Cảnh báo',
-      description: `${stats.activeAlerts} mới`,
-      icon: Sparkles,
-      accent: 'from-amber-400/70 to-orange-400/70',
-      action: () => {
-        setBottomAction('antoan');
-        handleScrollToSecurity();
-      },
-    },
-    {
-      key: 'security',
-      label: 'Bảo mật',
-      description: `${security?.securityScore ?? stats.trustScore}% điểm`,
-      icon: ShieldCheck,
-      accent: 'from-indigo-500/70 to-sky-400/70',
-      action: () => {
-        setBottomAction('antoan');
-        handleScrollToSecurity();
-      },
-    },
-  ];
-
-  const filteredReports = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
-    const sorted = [...state.reports].sort((a, b) => {
-      const aDate = new Date(a.createdAt).getTime();
-      const bDate = new Date(b.createdAt).getTime();
-      return bDate - aDate;
-    });
-    if (!normalized) return sorted.slice(0, 5);
-    return sorted
-      .filter(
-        (report) =>
-          report.target.toLowerCase().includes(normalized) ||
-          report.type.toLowerCase().includes(normalized) ||
-          report.status.toLowerCase().includes(normalized)
-      )
-      .slice(0, 5);
-  }, [searchTerm, state.reports]);
-
-  const handleDeleteReport = async (id: string) => {
-    setState((s) => ({ ...s, reports: s.reports.filter((report) => report.id !== id) }));
-    showToast('success', 'Đã xóa báo cáo.');
-  };
-
-  const handleAddWatch = (target: string, type: string) => {
-    const newItem: WatchItem = {
-      id: crypto.randomUUID?.() ?? `${Date.now()}`,
-      target,
-      type,
-      createdAt: new Date().toISOString(),
-    };
-    setState((s) => ({ ...s, watchlist: [newItem, ...s.watchlist] }));
-    showToast('success', 'Đã thêm mục theo dõi.');
-  };
-
-  const handleRemoveWatch = (id: string) => {
-    setState((s) => ({ ...s, watchlist: s.watchlist.filter((item) => item.id !== id) }));
-    showToast('success', 'Đã gỡ mục theo dõi.');
-  };
-
-  const handleNotifications = (prefs: NotificationPrefs) => {
-    setState((s) => ({ ...s, notifications: prefs }));
-    showToast('success', 'Cập nhật cài đặt thông báo.');
-  };
-
-  const handleUpdateProfile = async () => {
-    const name = editForm.name.trim();
-    const avatar = editForm.avatar.trim();
-
-    if (!name) {
-      showToast('error', 'Tên không được để trống');
-      return;
-    }
-
-    try {
-      setActionLoading('profile');
-      const res = await fetch('/api/user/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, avatar: avatar || null }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không thể cập nhật hồ sơ');
-      showToast('success', 'Đã cập nhật hồ sơ');
-      setState((s) => ({ ...s, user: data.user }));
-      setEditModalOpen(false);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể cập nhật hồ sơ');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-  const handleSubmitPassword = async () => {
-    if (!passwordForm.next || passwordForm.next.length < 8) {
-      showToast('error', 'Mật khẩu mới tối thiểu 8 ký tự');
-      return;
-    }
-    if (passwordForm.next !== passwordForm.confirm) {
-      showToast('error', 'Mật khẩu xác nhận không khớp');
-      return;
-    }
-    try {
-      setActionLoading('password');
-      const res = await fetch('/api/user/security/password', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword: passwordForm.current, newPassword: passwordForm.next }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Đổi mật khẩu thất bại');
-      showToast('success', 'Đổi mật khẩu thành công');
-      setPasswordModalOpen(false);
-      setPasswordForm({ current: '', next: '', confirm: '' });
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không đổi được mật khẩu');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleStartTwofaSetup = async () => {
-    try {
-      setActionLoading('twofaSetup');
-      const res = await fetch('/api/user/security/twofa/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không thể khởi tạo 2FA');
-      setTwofaInfo((prev) => ({ ...prev, secret: data.secret, otpauthUrl: data.otpauthUrl, backupCodes: data.backupCodes, enabled: false }));
-      setTwofaStep('verify');
-      showToast('success', 'Đã tạo mã QR. Quét và nhập mã xác thực.');
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không tạo được 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleConfirmTwofa = async () => {
-    try {
-      setActionLoading('twofaConfirm');
-      const res = await fetch('/api/user/security/twofa/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: twofaCode, password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không xác thực được 2FA');
-      showToast('success', 'Đã bật 2FA.');
-      setTwofaStep('enabled');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không xác thực được 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDisableTwofa = async () => {
-    try {
-      setActionLoading('twofaDisable');
-      const res = await fetch('/api/user/security/twofa/disable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: twofaPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không tắt được 2FA');
-      showToast('success', 'Đã tắt 2FA.');
-      setTwofaStep('overview');
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không tắt được 2FA');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSendEmailCode = async () => {
-    try {
-      setSendingCode(true);
-      const res = await fetch('/api/user/security/email/send', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.retryAfter) {
-          setEmailCooldown(data.retryAfter);
-        }
-        throw new Error(data.error || 'Không gửi được mã');
-      }
-      showToast('success', data.message || 'Đã gửi mã xác minh');
-      setEmailCooldown(60);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không gửi được mã');
-    } finally {
-      setSendingCode(false);
-    }
-  };
-
-  const handleVerifyEmailCode = async () => {
-    try {
-      setVerifyingCode(true);
-      const res = await fetch('/api/user/security/email/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: emailCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không xác minh được');
-      showToast('success', 'Xác minh email thành công');
-      setEmailModalOpen(false);
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không xác minh được');
-    } finally {
-      setVerifyingCode(false);
-    }
-  };
-
-  const handleSubmitOAuth = async (connect: boolean) => {
-    try {
-      setActionLoading(connect ? 'oauthConnect' : 'oauthDisconnect');
-      const res = await fetch('/api/user/security/oauth', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connected: connect, password: oauthPassword, provider: oauthProvider }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không thể cập nhật OAuth');
-      showToast('success', connect ? 'Đã liên kết OAuth' : 'Đã hủy liên kết OAuth');
-      setOauthModalOpen(false);
-      setReloadKey((k) => k + 1);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không thể cập nhật OAuth');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const loadTwofaStatus = async () => {
-    if (!twofaModalOpen) return;
-    try {
-      setTwofaStep('loading');
-      const res = await fetch('/api/user/security/twofa/status', { cache: 'no-store' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Không tải được trạng thái 2FA');
-      const info = data.data as TwofaInfo;
-      setTwofaInfo(info || null);
-      if (info?.enabled) setTwofaStep('enabled');
-      else if (info?.secret) setTwofaStep('verify');
-      else setTwofaStep('overview');
-    } catch (err: any) {
-      showToast('error', err?.message || 'Không tải được trạng thái 2FA');
-      setTwofaStep('overview');
-    }
-  };
-
-  useEffect(() => {
-    if (twofaModalOpen) {
-      setTwofaPassword('');
-      setTwofaCode('');
-      setCopyMessage('');
-      loadTwofaStatus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [twofaModalOpen]);
-
-  useEffect(() => {
-    if (emailCooldown <= 0) return;
-    const id = window.setInterval(() => {
-      setEmailCooldown((s) => (s > 0 ? s - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [emailCooldown]);
 
   return (
-    <div className="min-h-screen bg-[#dff5ef]">
-      <main className="flex justify-center pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
-        <div className="w-full max-w-[420px] space-y-4 px-4 pt-8 pb-10">
-          <div className="rounded-[36px] bg-gradient-to-r from-emerald-500/90 to-cyan-500 p-5 text-white shadow-[0_45px_90px_rgba(16,185,129,0.45)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.4em] text-white/70">Profile</p>
-                <h1 className="text-2xl font-semibold">ScamGuard</h1>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" className="rounded-full bg-white/20 px-3 text-white shadow-lg">☀️</Button>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-600">9+</span>
-              </div>
-            </div>
-            <div className="mt-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div>
-                  <p className="text-sm font-semibold">Hi, {user?.name?.split(' ')?.[0] ?? 'Bạn'}</p>
-                  <p className="text-[12px] text-white/80">Bạn đang được bảo vệ</p>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/30"
-                  title="Đăng xuất"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  <span>Đăng xuất</span>
-                </button>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-[0.4em] text-white/70">Nhiệt độ</p>
-                <p className="text-lg font-semibold">26°C</p>
-                <p className="text-[11px] text-white/70">Austin</p>
-              </div>
-            </div>
-          </div>
+    <motion.div
+      initial={{ opacity: 0, y: -50 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -50 }}
+      className={`fixed top-4 right-4 ${bgColors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3`}
+    >
+      <Icons.Check />
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-2 hover:opacity-80">
+        <Icons.X />
+      </button>
+    </motion.div>
+  );
+}
 
-          <section className="rounded-[32px] bg-white px-4 py-4 shadow-[0_15px_45px_rgba(15,23,42,0.08)]">
-            <div className="flex items-center gap-3 rounded-[24px] border border-slate-200 bg-[#f8faff] px-4 py-2 shadow-inner">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Bạn muốn kiểm tra tên miền hoặc báo cáo nào?"
-                className="flex-1 border-0 bg-transparent text-sm font-semibold text-slate-600 outline-none placeholder:text-slate-400"
-              />
-              <button onClick={() => setSearchModalOpen(true)} className="rounded-full bg-blue-500 p-1.5 text-white hover:bg-blue-600">
-                <Search className="h-3 w-3" />
-              </button>
-              <SlidersHorizontal className="h-4 w-4 text-blue-500" />
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
-              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
-                <p className="text-xl font-bold text-slate-900">{stats.reportsSubmitted}</p>
-                <span className="text-[10px] tracking-[0.35em] text-slate-400">BÁO CÁO</span>
-              </div>
-              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
-                <p className="text-xl font-bold text-slate-900">{stats.activeAlerts}</p>
-                <span className="text-[10px] tracking-[0.35em] text-slate-400">CẢNH BÁO</span>
-              </div>
-              <div className="flex flex-col items-center justify-center gap-1 whitespace-nowrap">
-                <p className="text-xl font-bold text-slate-900">{Math.round(stats.trustScore)}</p>
-                <span className="text-[10px] tracking-[0.35em] text-slate-400">TRUST SCORE</span>
-              </div>
-            </div>
-          </section>
+// Tab Navigation
+function TabNav({ tabs, activeTab, onTabChange }: { tabs: { id: string; label: string; icon: ReactNode }[]; activeTab: string; onTabChange: (id: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1 w-64 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all ${
+            activeTab === tab.id
+              ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'
+          }`}
+        >
+          {tab.icon}
+          <span className="font-medium">{tab.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
-          <section className="rounded-[32px] bg-gradient-to-r from-emerald-500 to-cyan-500 p-5 text-white shadow-[0_20px_45px_rgba(16,185,129,0.35)]">
-            <p className="text-[12px] uppercase tracking-[0.5em] text-white/80">Stay protected</p>
-            <h2 className="mt-2 text-2xl font-semibold">Cập nhật tình trạng an toàn của bạn</h2>
-            <p className="mt-2 text-sm text-white/80">
-              {state.watchlist.length} mục theo dõi, {state.reports.length} báo cáo và {stats.activeAlerts} cảnh báo đang được quét mỗi ngày.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button
-                size="sm"
-                className="flex items-center gap-2 whitespace-nowrap rounded-[22px] bg-white px-5 py-2 text-sm font-semibold text-emerald-600 shadow-lg transition hover:-translate-y-0.5"
-                onClick={handleCreateReport}
-              >
-                <FileText className="h-4 w-4 text-emerald-600" />
-                Gửi báo cáo mới
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="flex flex-row items-center justify-center gap-2 whitespace-nowrap rounded-[22px] border border-white/70 bg-white/20 px-6 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(255,255,255,0.3)] transition hover:bg-white/40"
-                onClick={handleScrollToSecurity}
-              >
-                <ShieldCheck className="h-4 w-4 text-white" />
-                <span className="leading-none">Xem kết quả bảo mật</span>
-              </Button>
-            </div>
-          </section>
+// Personal Info Tab
+function PersonalInfoTab({
+  user,
+  onSave,
+  onAvatarChange,
+}: {
+  user: UserProfile;
+  onSave: (data: { name: string; phone: string }) => Promise<void>;
+  onAvatarChange: (file: File) => Promise<void>;
+}) {
+  const [formData, setFormData] = useState({ name: user.name, phone: user.phone });
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_25px_60px_rgba(0,0,0,0.08)]">
-            <h3 className="mb-3 text-lg font-semibold text-slate-700">Browse By Category</h3>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {featureCategories.map((category) => (
-                <button
-                  key={category.key}
-                  type="button"
-                  onClick={category.action}
-                  className="group flex flex-col items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white p-3 text-center shadow-[0_12px_25px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_15px_35px_rgba(15,23,42,0.15)]"
-                >
-                  <span className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${category.accent} text-white shadow-lg`}>
-                    <category.icon className="h-6 w-6" />
-                  </span>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{category.label}</p>
-                  <p className="text-[11px] font-semibold text-slate-400">{category.description}</p>
-                </button>
-              ))}
-            </div>
-          </section>
+  useEffect(() => {
+    setFormData({ name: user.name, phone: user.phone });
+  }, [user.name, user.phone]);
 
-          <section className="rounded-[32px] bg-white px-4 py-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-700">Báo cáo nổi bật</h3>
-              <Button size="sm" variant="ghost" className="text-xs font-semibold text-slate-500">
-                Xem tất cả
-              </Button>
-            </div>
-            <div className="mt-4 space-y-3">
-              {filteredReports.length === 0 && (
-                <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                  Chưa có báo cáo phù hợp với từ khoá.
-                </div>
-              )}
-              {filteredReports.map((report) => {
-                const statusVariant = report.status === 'completed' ? 'success' : report.status === 'pending' ? 'warning' : 'primary';
-                const createdDate = new Date(report.createdAt).toLocaleDateString('vi-VN');
-                return (
-                  <div key={report.id} className="flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-[#f6fbff] px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 break-all">{report.target}</p>
-                      <p className="text-xs text-slate-500">
-                        {report.type} • {createdDate}
-                      </p>
-                      <p className="text-[11px] text-slate-500">Rủi ro: {report.riskScore}</p>
-                    </div>
-                    <Badge variant={statusVariant}>{report.status}</Badge>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await onSave(formData);
+      setIsEditing(false);
+    } catch {
+      // errors are surfaced via toast
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-          <section className="rounded-[34px] bg-white px-5 py-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 overflow-hidden rounded-full border-2 border-emerald-500 bg-slate-50">
-                <img src={user?.avatar || '/favicon.ico'} alt={user?.name} className="h-full w-full object-cover" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <p className="text-lg font-semibold text-slate-900">{user?.name}</p>
-                <p className="text-xs text-slate-400">{user?.email}</p>
-                <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{user?.role}</span>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-600">{security?.recentLogin ? 'Hoạt động' : 'Mới'}</span>
-                </div>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => setEditModalOpen(true)}>✎</Button>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-center text-sm font-semibold text-slate-600">
-              <div className="rounded-[24px] bg-[#f0f7ff] px-4 py-4 shadow-[0_15px_35px_rgba(59,130,246,0.18)]">
-                <p className="text-[10px] uppercase tracking-[0.4em] text-slate-400">Đã gửi</p>
-                <p className="text-2xl text-slate-900">{stats.reportsSubmitted}</p>
-              </div>
-              <div className="rounded-[24px] bg-[#f0f7ff] px-4 py-4 shadow-[0_15px_35px_rgba(59,130,246,0.18)]">
-                <p className="text-[10px] uppercase tracking-[0.4em] text-slate-400">Đã xử lý</p>
-                <p className="text-2xl text-slate-900">{stats.reportsResolved}</p>
-              </div>
-            </div>
-          </section>
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
 
-          <section className="rounded-[34px] bg-white px-4 py-5 shadow-[0_20px_40px_rgba(15,23,42,0.12)]">
-            <div className="grid grid-cols-2 gap-3">
-              {deviceCards.map((card) => (
-                <div key={card.key} className="relative rounded-[26px] border border-white/70 bg-gradient-to-b from-white to-[#f3f7ff] p-4 shadow-[0_12px_35px_rgba(15,23,42,0.15)]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Smart</p>
-                      <h3 className="text-lg font-semibold text-slate-900">{card.title}</h3>
-                      <p className="text-[11px] text-slate-500">{card.subtitle}</p>
-                    </div>
-                    <span className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${card.accent} text-white shadow-[0_10px_25px_rgba(15,23,42,0.25)]`}>
-                      <card.icon className="h-5 w-5" />
-                    </span>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between text-sm font-semibold text-slate-600">
-                    <span>{card.active ? 'ON' : 'OFF'}</span>
-                    <label className="relative inline-flex cursor-pointer items-center">
-                      <input
-                        type="checkbox"
-                        className="peer sr-only"
-                        checked={card.active}
-                        onChange={() => setDeviceStates((prev) => ({ ...prev, [card.key]: !prev[card.key] }))}
-                      />
-                      <span className="inline-flex h-5 w-10 items-center rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
-                        <span className="inline-block h-4 w-4 translate-x-1 rounded-full bg-white transition peer-checked:translate-x-5" />
-                      </span>
-                    </label>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                    {card.metadata.map((line) => (
-                      <span key={line} className="rounded-full bg-slate-100 px-2 py-1">{line}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      await onAvatarChange(file);
+    } catch {
+      // errors are surfaced via toast
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
 
-          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.12)]">
-            <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.4em] text-slate-400">
-              <span>Thao tác nhanh</span>
-              <span>Vuốt →</span>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {quickActions.map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  className="flex items-center gap-3 rounded-[28px] bg-[#f6fbff] px-3 py-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(15,23,42,0.15)]"
-                  onClick={() => {
-                    const target = quickActionNavMap[action.label] ?? bottomAction;
-                    setBottomAction(target);
-                    if (action.label === 'Báo cáo') {
-                      handleCreateReport();
-                    }
-                  }}
-                >
-                  <span className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${action.accent} text-white`}>
-                    <action.icon className="h-5 w-5" />
-                  </span>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold text-slate-900">{action.label}</p>
-                    <p className="text-[11px] text-slate-500">{action.subLabel}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold">Thông tin cá nhân</h2>
+        <button
+          onClick={() => setIsEditing(!isEditing)}
+          className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+        >
+          <Icons.Edit />
+          <span>{isEditing ? 'Hủy' : 'Chỉnh sửa'}</span>
+        </button>
+      </div>
 
-          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_25px_60px_rgba(15,23,42,0.15)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Thông báo</p>
-                <h3 className="text-lg font-semibold text-slate-900">Cài đặt thông báo</h3>
-              </div>
-              <Badge variant="primary">Realtime</Badge>
-            </div>
-            <div className="mt-4 space-y-3">
-              {notificationItems.map((item) => {
-                const isEnabled = state.notifications[item.key];
-                return (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between gap-3 rounded-[22px] border border-slate-200 bg-gradient-to-b from-white to-[#f6fbff] px-4 py-3 shadow-[0_10px_25px_rgba(15,23,42,0.1)]"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                      <p className="text-[11px] text-slate-500">{item.desc}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={isEnabled ? 'secondary' : 'ghost'}
-                      onClick={() => handleNotifications({ ...state.notifications, [item.key]: !isEnabled })}
-                    >
-                      {isEnabled ? 'Đang bật' : 'Bật lên'}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="rounded-[34px] bg-white px-4 py-4 shadow-[0_30px_70px_rgba(15,23,42,0.12)]">
-            <div className="grid grid-cols-2 gap-3">
-              {metricHighlights.map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-[26px] bg-gradient-to-br from-white to-[#eaf6ff] px-4 py-4 text-center shadow-[0_10px_35px_rgba(59,130,246,0.18)]"
-                >
-                  <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">{metric.label}</p>
-                  <p className="text-2xl font-bold text-slate-900">{metric.value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <RecentActivity items={state.activity} />
-          <UserReportsTable reports={state.reports} onCreate={handleCreateReport} onDelete={handleDeleteReport} />
-          <div ref={watchlistSectionRef}>
-            <WatchlistCard items={state.watchlist} onAdd={handleAddWatch} onRemove={handleRemoveWatch} />
-          </div>
-          <div ref={securitySectionRef} className="relative rounded-[38px] bg-white px-5 py-5 shadow-[0_30px_80px_rgba(15,23,42,0.15)]">
-            <div className="absolute inset-x-4 -top-5 h-24 rounded-[40px] bg-gradient-to-br from-[#e6f7ff] via-white to-white opacity-90 blur-[45px]" aria-hidden="true"></div>
-            <div className="relative z-10 flex items-center justify-between">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.4em] text-slate-400">Kiểm tra bảo mật</h3>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Realtime</span>
-            </div>
-            <div className="relative z-10 mt-4 space-y-3">
-              {checks.map((check) => (
-                <div
-                  key={check.key}
-                  className="flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-gradient-to-b from-white to-[#f3f7ff] px-4 py-3 text-sm shadow-[0_10px_25px_rgba(15,23,42,0.1)]"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{check.label}</p>
-                    <p className="text-[11px] text-slate-500">{check.detail}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-[11px] font-semibold text-slate-500 transition hover:text-slate-700"
-                    onClick={check.onAction}
-                    disabled={check.disabled}
-                  >
-                    {check.actionLabel}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </main>
-      <div className="fixed inset-x-4 bottom-4 flex justify-center pointer-events-none">
-        <div className="relative w-full max-w-[420px]">
-          <div className="flex h-16 items-center justify-between overflow-hidden rounded-[38px] bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-white shadow-[0_30px_60px_rgba(16,185,129,0.45)]">
-            {bottomNavItems.map((item) => {
-              const isActive = bottomAction === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={cn(
-                    'flex flex-1 flex-col items-center justify-center gap-1 rounded-[28px] px-2 py-1 text-[11px] font-semibold transition duration-200',
-                    isActive ? 'pointer-events-auto bg-white text-teal-600' : 'pointer-events-auto text-white/90 hover:text-white/95',
-                    'shadow-[0_2px_6px_rgba(15,23,42,0.18)]'
-                  )}
-                  onClick={() => {
-                    setBottomAction(item.key);
-                    item.action();
-                  }}
-                >
-                  <span
-                    className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-[18px] text-[20px]',
-                      isActive ? 'bg-white text-teal-600' : 'bg-white/15 text-white'
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                  </span>
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+      <div className="flex items-center gap-6 mb-8">
+        <div className="relative">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              <span>{user.name.charAt(0)}</span>
+            )}
           </div>
           <button
+            onClick={handleAvatarClick}
+            className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 disabled:opacity-60"
+            disabled={isUploading}
             type="button"
-            onClick={() => {
-              setBottomAction('baocao');
-              handleCreateReport();
-            }}
-            aria-label="Tạo báo cáo mới"
-            className="pointer-events-auto absolute -top-8 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-white text-emerald-600 shadow-[0_20px_45px_rgba(16,185,129,0.45)]"
           >
-            <Plus className="h-6 w-6" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
+        </div>
+        <div>
+          <h3 className="text-2xl font-bold">{user.name}</h3>
+          <p className="text-slate-500">{user.email}</p>
+          <span className="inline-block mt-2 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-sm font-medium">
+            {user.role}
+          </span>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Họ và tên</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              disabled={!isEditing || isSaving}
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-60"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Số điện thoại</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              disabled={!isEditing || isSaving}
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-60"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Email</label>
+            <input
+              type="email"
+              value={user.email}
+              disabled
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 opacity-60"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Ngày tham gia</label>
+            <input
+              type="text"
+              value={new Date(user.createdAt).toLocaleDateString('vi-VN')}
+              disabled
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 opacity-60"
+            />
+          </div>
+        </div>
+
+        {isEditing && (
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setIsEditing(false)}
+              className="px-6 py-2 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+              disabled={isSaving}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+              disabled={isSaving}
+            >
+              {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </button>
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
+
+// Appearance Tab
+function AppearanceTab({ theme, onThemeChange }: { theme: string; onThemeChange: (theme: string) => Promise<void> }) {
+  const themes = [
+    { id: 'light', name: 'Sáng', description: 'Giao diện màu sáng' },
+    { id: 'dark', name: 'Tối', description: 'Giao diện màu tối' },
+    { id: 'system', name: 'Hệ thống', description: 'Theo cài đặt thiết bị' },
+  ];
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-semibold mb-6">Giao diện</h2>
+
+      <div className="space-y-4">
+        {themes.map((t) => (
+          <label
+            key={t.id}
+            className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              theme === t.id
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center gap-4">
+              <input
+                type="radio"
+                name="theme"
+                value={t.id}
+                checked={theme === t.id}
+                onChange={() => onThemeChange(t.id)}
+                className="w-5 h-5 text-blue-600"
+              />
+              <div>
+                <p className="font-medium">{t.name}</p>
+                <p className="text-sm text-slate-500">{t.description}</p>
+              </div>
+            </div>
+            {theme === t.id && <Icons.Check />}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Notifications Tab
+function NotificationsTab({ settings, onSave }: { settings: NotificationSettings; onSave: (settings: NotificationSettings) => Promise<void> }) {
+  const [localSettings, setLocalSettings] = useState(settings);
+  const [savingKey, setSavingKey] = useState<keyof NotificationSettings | null>(null);
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
+  const handleToggle = async (key: keyof NotificationSettings) => {
+    const updated = { ...localSettings, [key]: !localSettings[key] };
+    const previous = localSettings;
+    setLocalSettings(updated);
+    setSavingKey(key);
+    try {
+      await onSave(updated);
+    } catch {
+      setLocalSettings(previous);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const notificationTypes = [
+    { key: 'email', label: 'Email', description: 'Nhận thông báo qua email' },
+    { key: 'push', label: 'Push', description: 'Nhận thông báo đẩy trên trình duyệt' },
+    { key: 'sms', label: 'SMS', description: 'Nhận thông báo qua tin nhắn SMS' },
+    { key: 'reportUpdates', label: 'Cập nhật báo cáo', description: 'Thông báo khi báo cáo của bạn được cập nhật' },
+    { key: 'weeklyDigest', label: 'Tóm tắt hàng tuần', description: 'Nhận tóm tắt hoạt động hàng tuần' },
+    { key: 'securityAlerts', label: 'Cảnh báo bảo mật', description: 'Thông báo về các hoạt động bảo mật' },
+  ] as const;
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-semibold mb-6">Cài đặt thông báo</h2>
+
+      <div className="space-y-4">
+        {notificationTypes.map((item) => (
+          <div key={item.key} className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+            <div>
+              <p className="font-medium">{item.label}</p>
+              <p className="text-sm text-slate-500">{item.description}</p>
+            </div>
+            <button
+              onClick={() => handleToggle(item.key)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                localSettings[item.key]
+                  ? 'bg-blue-600'
+                  : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+              disabled={savingKey === item.key}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  localSettings[item.key] ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Security Tab
+function SecurityTab({
+  settings,
+  onTwoFactorSetup,
+  onTwoFactorConfirm,
+  onTwoFactorDisable,
+  onTwoFactorBackup,
+  onLoginAlertsChange,
+  onChangePassword,
+}: {
+  settings: SecuritySettings;
+  onTwoFactorSetup: (password: string) => Promise<{ otpauthUrl: string; backupCodes: string[] }>;
+  onTwoFactorConfirm: (code: string, password: string) => Promise<void>;
+  onTwoFactorDisable: (password: string) => Promise<void>;
+  onTwoFactorBackup: (password: string) => Promise<string[]>;
+  onLoginAlertsChange: (enabled: boolean) => Promise<void>;
+  onChangePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<void>;
+}) {
+  const [localSettings, setLocalSettings] = useState(settings);
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
+  const [saving, setSaving] = useState<'twofa' | 'login' | 'password' | null>(null);
+  const [twofaModalOpen, setTwofaModalOpen] = useState(false);
+  const [twofaPassword, setTwofaPassword] = useState('');
+  const [twofaCode, setTwofaCode] = useState('');
+  const [twofaData, setTwofaData] = useState<{ otpauthUrl: string; backupCodes: string[] } | null>(null);
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalAction, setPasswordModalAction] = useState<'setup' | 'disable' | 'backup' | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
+  const openPasswordModal = (action: 'setup' | 'disable' | 'backup') => {
+    setPasswordModalAction(action);
+    setPasswordInput('');
+    setPasswordModalOpen(true);
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModalOpen(false);
+    setPasswordModalAction(null);
+  };
+
+  const runTwoFactorAction = async (action: 'setup' | 'disable' | 'backup', password: string) => {
+    if (action === 'setup') {
+      const data = await onTwoFactorSetup(password);
+      setTwofaPassword(password);
+      setTwofaData({ otpauthUrl: data.otpauthUrl, backupCodes: data.backupCodes });
+      setTwofaCode('');
+      setTwofaModalOpen(true);
+      return;
+    }
+    if (action === 'disable') {
+      await onTwoFactorDisable(password);
+      return;
+    }
+    const codes = await onTwoFactorBackup(password);
+    setBackupCodes(codes);
+    setBackupModalOpen(true);
+  };
+
+  const handlePasswordConfirm = async () => {
+    if (!passwordModalAction) return;
+    setSaving('twofa');
+    try {
+      await runTwoFactorAction(passwordModalAction, passwordInput);
+      closePasswordModal();
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const startTwoFactorSetup = async () => {
+    if (settings.passwordSet) {
+      openPasswordModal('setup');
+      return;
+    }
+    setSaving('twofa');
+    try {
+      await runTwoFactorAction('setup', '');
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const startTwoFactorDisable = async () => {
+    if (settings.passwordSet) {
+      openPasswordModal('disable');
+      return;
+    }
+    setSaving('twofa');
+    try {
+      await runTwoFactorAction('disable', '');
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const startShowBackupCodes = async () => {
+    if (settings.passwordSet) {
+      openPasswordModal('backup');
+      return;
+    }
+    setSaving('twofa');
+    try {
+      await runTwoFactorAction('backup', '');
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleTwoFactorConfirm = async () => {
+    setSaving('twofa');
+    try {
+      await onTwoFactorConfirm(twofaCode, twofaPassword);
+      setTwofaModalOpen(false);
+      setTwofaPassword('');
+      setTwofaData(null);
+      setTwofaCode('');
+    } catch {
+      // errors handled by toast in parent
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const toggleLoginAlerts = async () => {
+    const nextValue = !localSettings.loginAlerts;
+    const previous = localSettings.loginAlerts;
+    setLocalSettings({ ...localSettings, loginAlerts: nextValue });
+    setSaving('login');
+    try {
+      await onLoginAlertsChange(nextValue);
+    } catch {
+      setLocalSettings({ ...localSettings, loginAlerts: previous });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving('password');
+    try {
+      await onChangePassword({
+        currentPassword: passwords.current,
+        newPassword: passwords.next,
+        confirmPassword: passwords.confirm,
+      });
+      setPasswords({ current: '', next: '', confirm: '' });
+    } catch {
+      // errors are surfaced via toast
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const copyBackupCodes = async () => {
+    if (!twofaData?.backupCodes?.length) return;
+    const text = twofaData.backupCodes.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
+
+  const passwordModalTitle =
+    passwordModalAction === 'disable'
+      ? 'Xác nhận tắt 2FA'
+      : passwordModalAction === 'backup'
+      ? 'Xác nhận xem backup codes'
+      : 'Xác nhận bật 2FA';
+
+  const passwordModalDescription =
+    passwordModalAction === 'disable'
+      ? 'Nhập mật khẩu để tắt xác thực 2FA.'
+      : passwordModalAction === 'backup'
+      ? 'Nhập mật khẩu để xem backup codes.'
+      : 'Nhập mật khẩu để tạo mã QR 2FA.';
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+        <h2 className="text-xl font-semibold mb-6">Bảo mật</h2>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600">
+                <Icons.Shield />
+              </div>
+              <div>
+                <p className="font-medium">Xác thực hai yếu tố (2FA)</p>
+                <p className="text-sm text-slate-500">Bảo vệ tài khoản bằng mã OTP</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={`text-xs font-medium ${localSettings.twoFactorEnabled ? 'text-green-600' : 'text-slate-500'}`}>
+                {localSettings.twoFactorEnabled ? 'Đang bật' : 'Chưa bật'}
+              </span>
+              {localSettings.twoFactorEnabled ? (
+                <button
+                  onClick={startTwoFactorDisable}
+                  className="px-3 py-1 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-60"
+                  disabled={saving === 'twofa'}
+                >
+                  Tắt 2FA
+                </button>
+              ) : (
+                <button
+                  onClick={startTwoFactorSetup}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                  disabled={saving === 'twofa'}
+                >
+                  Thiết lập
+                </button>
+              )}
+            </div>
+          </div>
+
+          {localSettings.twoFactorEnabled && (
+            <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-slate-200 dark:bg-slate-700 rounded-lg text-slate-600">
+                  <Icons.Check />
+                </div>
+                <div>
+                  <p className="font-medium">Backup codes</p>
+                  <p className="text-sm text-slate-500">Dùng để đăng nhập khi mất OTP</p>
+                </div>
+              </div>
+              <button
+                onClick={startShowBackupCodes}
+                className="px-3 py-1 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+                disabled={saving === 'twofa'}
+              >
+                Xem backup codes
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600">
+                <Icons.Bell />
+              </div>
+              <div>
+                <p className="font-medium">Cảnh báo đăng nhập</p>
+                <p className="text-sm text-slate-500">Nhận thông báo khi có đăng nhập mới</p>
+              </div>
+            </div>
+            <button
+              onClick={toggleLoginAlerts}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                localSettings.loginAlerts ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+              disabled={saving === 'login'}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  localSettings.loginAlerts ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+        <h2 className="text-xl font-semibold mb-6">Đổi mật khẩu</h2>
+
+        <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+          <div>
+            <label className="block text-sm font-medium mb-2">Mật khẩu hiện tại</label>
+            <input
+              type="password"
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              placeholder="Nhập mật khẩu hiện tại"
+              value={passwords.current}
+              onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+              disabled={saving === 'password'}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Mật khẩu mới</label>
+            <input
+              type="password"
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              placeholder="Nhập mật khẩu mới"
+              value={passwords.next}
+              onChange={(e) => setPasswords({ ...passwords, next: e.target.value })}
+              disabled={saving === 'password'}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Xác nhận mật khẩu</label>
+            <input
+              type="password"
+              className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              placeholder="Xác nhận mật khẩu mới"
+              value={passwords.confirm}
+              onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+              disabled={saving === 'password'}
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+            disabled={saving === 'password'}
+          >
+            {saving === 'password' ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+          </button>
+        </form>
+      </div>
+
+      <AnimatePresence>
+        {twofaModalOpen && twofaData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="w-full max-w-xl bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Xác nhận bật 2FA</h3>
+                <button
+                  onClick={() => setTwofaModalOpen(false)}
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                  disabled={saving === 'twofa'}
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex flex-col md:flex-row gap-6 items-center">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200">
+                    <QRCodeCanvas value={twofaData.otpauthUrl} size={180} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-slate-600 mb-2">Quét mã QR bằng Google Authenticator hoặc Authy.</p>
+                    <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Backup codes</span>
+                        <button
+                          onClick={copyBackupCodes}
+                          className="text-xs text-blue-600 hover:underline"
+                          type="button"
+                        >
+                          Sao chép
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                        {twofaData.backupCodes.map((code) => (
+                          <span key={code} className="bg-white dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-200">
+                            {code}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Mã xác thực (OTP)</label>
+                  <input
+                    type="text"
+                    value={twofaCode}
+                    onChange={(e) => setTwofaCode(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    placeholder="Nhập 6 chữ số"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setTwofaModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+                    type="button"
+                    disabled={saving === 'twofa'}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleTwoFactorConfirm}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                    disabled={saving === 'twofa'}
+                  >
+                    {saving === 'twofa' ? 'Đang xác nhận...' : 'Xác nhận bật 2FA'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {backupModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Backup codes</h3>
+                <button
+                  onClick={() => setBackupModalOpen(false)}
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium">Sao lưu các mã này để dùng khi mất OTP.</span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(backupCodes.join('\n'));
+                      } catch {
+                        // ignore clipboard errors
+                      }
+                    }}
+                    className="text-xs text-blue-600 hover:underline"
+                    type="button"
+                  >
+                    Sao chép
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  {backupCodes.map((code) => (
+                    <span key={code} className="bg-white dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-200">
+                      {code}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {passwordModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">{passwordModalTitle}</h3>
+                <button
+                  onClick={closePasswordModal}
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                  disabled={saving === 'twofa'}
+                >
+                  <Icons.X />
+                </button>
+              </div>
+              <p className="text-sm text-slate-600 mb-4">{passwordModalDescription}</p>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                placeholder="Nhập mật khẩu tài khoản"
+              />
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  onClick={closePasswordModal}
+                  className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+                  type="button"
+                  disabled={saving === 'twofa'}
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handlePasswordConfirm}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                  disabled={saving === 'twofa'}
+                >
+                  {saving === 'twofa' ? 'Đang xử lý...' : 'Xác nhận'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Language Tab
+function LanguageTab({
+  language,
+  timezone,
+  onSave,
+}: {
+  language: string;
+  timezone: string;
+  onSave: (data: { language: string; timezone: string }) => Promise<void>;
+}) {
+  const [localLanguage, setLocalLanguage] = useState(language);
+  const [localTimezone, setLocalTimezone] = useState(timezone);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLocalLanguage(language);
+    setLocalTimezone(timezone);
+  }, [language, timezone]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave({ language: localLanguage, timezone: localTimezone });
+    } catch {
+      // errors are surfaced via toast
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-semibold mb-6">Ngôn ngữ và múi giờ</h2>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Ngôn ngữ</label>
+          <select
+            value={localLanguage}
+            onChange={(e) => setLocalLanguage(e.target.value)}
+            className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+          >
+            <option value="vi">Tiếng Việt</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Múi giờ</label>
+          <select
+            value={localTimezone}
+            onChange={(e) => setLocalTimezone(e.target.value)}
+            className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+          >
+            <option value="Asia/Ho_Chi_Minh">Việt Nam (GMT+7)</option>
+            <option value="Asia/Bangkok">Thái Lan (GMT+7)</option>
+            <option value="Asia/Singapore">Singapore (GMT+8)</option>
+            <option value="Asia/Tokyo">Nhật Bản (GMT+9)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+
+        <button
+          onClick={handleSave}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+          disabled={saving}
+        >
+          {saving ? 'Đang lưu...' : 'Lưu cài đặt'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Devices Tab
+function DevicesTab({ devices, onRevoke }: { devices: Device[]; onRevoke: (id: string) => Promise<void> }) {
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const handleRevoke = async (id: string) => {
+    setRevokingId(id);
+    try {
+      await onRevoke(id);
+    } catch {
+      // errors are surfaced via toast
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-semibold mb-6">Thiết bị đã đăng nhập</h2>
+
+      {devices.length === 0 && (
+        <div className="text-sm text-slate-500">Chưa có thiết bị nào được ghi nhận.</div>
+      )}
+
+      <div className="space-y-4">
+        {devices.map((device) => (
+          <div key={device.id} className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                <Icons.Device />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{device.name}</p>
+                  {device.current && (
+                    <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-600 text-xs rounded-full">
+                      Hiện tại
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-slate-500">{device.browser} • {device.lastActive}</p>
+              </div>
+            </div>
+            {!device.current && (
+              <button
+                onClick={() => handleRevoke(device.id)}
+                className="text-red-500 hover:text-red-600 text-sm disabled:opacity-60"
+                disabled={revokingId === device.id}
+              >
+                {revokingId === device.id ? 'Đang thu hồi...' : 'Thu hồi'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Activity Tab
+function ActivityTab({ activities }: { activities: Activity[] }) {
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'login':
+        return <Icons.User />;
+      case 'report':
+        return <Icons.Edit />;
+      case 'search':
+        return <Icons.Globe />;
+      case 'security':
+        return <Icons.Shield />;
+      default:
+        return <Icons.Clock />;
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-semibold mb-6">Lịch sử hoạt động</h2>
+
+      {activities.length === 0 && (
+        <div className="text-sm text-slate-500">Chưa có hoạt động nào.</div>
+      )}
+
+      <div className="space-y-4">
+        {activities.map((activity) => (
+          <div key={activity.id} className="flex items-start gap-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg">
+              {getActivityIcon(activity.type)}
+            </div>
+            <div className="flex-1">
+              <p className="font-medium">{activity.description}</p>
+              <div className="flex gap-4 mt-1 text-sm text-slate-500 flex-wrap">
+                <span>{activity.device || 'Thiết bị không rõ'}</span>
+                <span>•</span>
+                <span>{activity.ip || '—'}</span>
+                <span>•</span>
+                <span>{activity.timestamp}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Main Profile Page
+export default function ProfilePage() {
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const [activeTab, setActiveTab] = useState('personal');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
+    email: true,
+    push: true,
+    sms: false,
+    reportUpdates: true,
+    weeklyDigest: true,
+    securityAlerts: true,
+  });
+
+  const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
+    twoFactorEnabled: false,
+    loginAlerts: true,
+    trustedDevices: 0,
+    passwordSet: false,
+  });
+
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+  }, []);
+
+  const applyTheme = useCallback((theme: string) => {
+    if (typeof document === 'undefined') return;
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else if (theme === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+
+    const tasks = [
+      apiFetch<any>('/api/user/profile'),
+      apiFetch<any>('/api/user/notifications'),
+      apiFetch<any>('/api/user/security-status'),
+      apiFetch<any>('/api/user/preferences'),
+      apiFetch<any>('/api/user/devices'),
+      apiFetch<any>('/api/user/activity'),
+    ];
+
+    const results = await Promise.allSettled(tasks);
+    const unauthorized = results.some(
+      (res) => res.status === 'rejected' && (res.reason as ApiError)?.status === 401
+    );
+    if (unauthorized) {
+      setLoading(false);
+      router.replace('/login');
+      return;
+    }
+
+    const profileResult = results[0];
+    if (profileResult.status === 'fulfilled') {
+      const profile = profileResult.value?.user;
+      setUser({
+        id: profile?.id || '',
+        name: profile?.name || '',
+        email: profile?.email || '',
+        phone: profile?.phone || '',
+        avatar: profile?.avatar || profile?.image || undefined,
+        role: profile?.role || 'user',
+        createdAt: profile?.createdAt || new Date().toISOString(),
+        lastActive: profile?.lastActive || null,
+      });
+    } else {
+      setLoadError('Không thể tải thông tin tài khoản.');
+    }
+
+    const notificationsResult = results[1];
+    if (notificationsResult.status === 'fulfilled') {
+      const normalized = normalizeNotificationSettings(notificationsResult.value?.settings);
+      setNotificationSettings(normalized);
+      setSecuritySettings((prev) => ({ ...prev, loginAlerts: normalized.securityAlerts }));
+    }
+
+    const securityResult = results[2];
+    if (securityResult.status === 'fulfilled') {
+      const security = securityResult.value?.security;
+      setSecuritySettings((prev) => ({
+        ...prev,
+        twoFactorEnabled: Boolean(security?.twoFactorEnabled),
+        passwordSet: Boolean(security?.passwordSet),
+      }));
+    }
+
+    const preferencesResult = results[3];
+    if (preferencesResult.status === 'fulfilled') {
+      const prefs = preferencesResult.value?.preferences;
+      const theme = prefs?.theme || DEFAULT_PREFERENCES.theme;
+      setPreferences({
+        language: prefs?.language || DEFAULT_PREFERENCES.language,
+        timezone: prefs?.timezone || DEFAULT_PREFERENCES.timezone,
+        theme,
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('theme', theme);
+      }
+      applyTheme(theme);
+    } else if (typeof window !== 'undefined') {
+      const localTheme = localStorage.getItem('theme') || DEFAULT_PREFERENCES.theme;
+      setPreferences({ ...DEFAULT_PREFERENCES, theme: localTheme });
+      applyTheme(localTheme);
+    }
+
+    const devicesResult = results[4];
+    if (devicesResult.status === 'fulfilled') {
+      const items = devicesResult.value?.devices || [];
+      const mapped = items.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        browser: item.browser || item.name,
+        lastActive: formatRelativeTime(item.lastActiveAt),
+        current: Boolean(item.current),
+      }));
+      setDevices(mapped);
+      setSecuritySettings((prev) => ({ ...prev, trustedDevices: mapped.length }));
+    }
+
+    const activityResult = results[5];
+    if (activityResult.status === 'fulfilled') {
+      const items = activityResult.value?.items || [];
+      const mapped = items.map((item: any) => ({
+        id: item.id,
+        type: item.type,
+        description: item.description,
+        timestamp: formatRelativeTime(item.createdAt),
+        device: item.device || null,
+        ip: item.ip || null,
+      }));
+      setActivities(mapped);
+    }
+
+    setLoading(false);
+  }, [applyTheme, router]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    loadData().catch(() => {
+      setLoadError('Không thể tải thông tin tài khoản.');
+      setLoading(false);
+    });
+  }, [mounted, loadData]);
+
+  const handleProfileSave = async (data: { name: string; phone: string }) => {
+    try {
+      const res = await apiFetch<any>('/api/user/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: data.name, phone: data.phone }),
+      });
+      const updated = res?.user || {};
+      setUser((prev) => (prev ? { ...prev, name: updated.name || prev.name, phone: updated.phone || '' } : prev));
+      showToast('Cập nhật thông tin thành công!', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể cập nhật thông tin', 'error');
+      throw error;
+    }
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Không thể đọc tệp'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAvatarChange = async (file: File) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const res = await apiFetch<any>('/api/user/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ avatar: dataUrl }),
+      });
+      const updated = res?.user || {};
+      setUser((prev) => (prev ? { ...prev, avatar: updated.avatar || updated.image || prev.avatar } : prev));
+      showToast('Cập nhật ảnh đại diện thành công!', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể cập nhật ảnh đại diện', 'error');
+      throw error;
+    }
+  };
+
+  const handleNotificationsSave = async (settings: NotificationSettings) => {
+    try {
+      const res = await apiFetch<any>('/api/user/notifications', {
+        method: 'PATCH',
+        body: JSON.stringify(settings),
+      });
+      const normalized = normalizeNotificationSettings(res?.settings || settings);
+      setNotificationSettings(normalized);
+      setSecuritySettings((prev) => ({ ...prev, loginAlerts: normalized.securityAlerts }));
+      showToast('Cập nhật cài đặt thông báo thành công!', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể cập nhật cài đặt thông báo', 'error');
+      throw error;
+    }
+  };
+
+  const handleTwoFactorSetup = async (password: string) => {
+    try {
+      const res = await apiFetch<any>('/api/user/security/twofa/setup', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      showToast('Đã tạo mã 2FA, vui lòng xác nhận', 'info');
+      return { otpauthUrl: res?.otpauthUrl, backupCodes: res?.backupCodes || [] };
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể tạo mã 2FA', 'error');
+      throw error;
+    }
+  };
+
+  const handleTwoFactorConfirm = async (code: string, password: string) => {
+    try {
+      await apiFetch<any>('/api/user/security/twofa/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ code, password }),
+      });
+      setSecuritySettings((prev) => ({ ...prev, twoFactorEnabled: true }));
+      showToast('Đã bật 2FA thành công', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể xác nhận 2FA', 'error');
+      throw error;
+    }
+  };
+
+  const handleTwoFactorDisable = async (password: string) => {
+    try {
+      await apiFetch<any>('/api/user/security/twofa/disable', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      setSecuritySettings((prev) => ({ ...prev, twoFactorEnabled: false }));
+      showToast('Đã tắt 2FA', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể tắt 2FA', 'error');
+      throw error;
+    }
+  };
+
+  const handleTwoFactorBackup = async (password: string) => {
+    try {
+      const res = await apiFetch<any>('/api/user/security/twofa/backup', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      return res?.backupCodes || [];
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể lấy backup codes', 'error');
+      throw error;
+    }
+  };
+
+  const handleLoginAlertsChange = async (enabled: boolean) => {
+    const updated = { ...notificationSettings, securityAlerts: enabled };
+    await handleNotificationsSave(updated);
+  };
+
+  const handleChangePassword = async (data: { currentPassword: string; newPassword: string; confirmPassword: string }) => {
+    if (data.newPassword !== data.confirmPassword) {
+      showToast('Mật khẩu xác nhận không khớp', 'error');
+      throw new Error('Password mismatch');
+    }
+    try {
+      await apiFetch<any>('/api/user/security/password', {
+        method: 'PATCH',
+        body: JSON.stringify({ currentPassword: data.currentPassword, newPassword: data.newPassword }),
+      });
+      showToast('Đổi mật khẩu thành công!', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể đổi mật khẩu', 'error');
+      throw error;
+    }
+  };
+
+  const handlePreferencesSave = async (data: { language: string; timezone: string }) => {
+    const previous = preferences;
+    setPreferences((prev) => ({ ...prev, ...data }));
+    try {
+      const res = await apiFetch<any>('/api/user/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ language: data.language, timezone: data.timezone }),
+      });
+      const prefs = res?.preferences || data;
+      setPreferences((prev) => ({ ...prev, ...prefs }));
+      showToast('Cập nhật ngôn ngữ và múi giờ thành công!', 'success');
+    } catch (error: any) {
+      setPreferences(previous);
+      showToast(error?.message || 'Không thể cập nhật ngôn ngữ và múi giờ', 'error');
+      throw error;
+    }
+  };
+
+  const handleThemeChange = async (theme: string) => {
+    const previous = preferences.theme;
+    setPreferences((prev) => ({ ...prev, theme }));
+    applyTheme(theme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('theme', theme);
+    }
+    try {
+      const res = await apiFetch<any>('/api/user/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ theme }),
+      });
+      const prefs = res?.preferences || {};
+      if (prefs?.theme) {
+        setPreferences((prev) => ({ ...prev, theme: prefs.theme }));
+      }
+      showToast('Đã lưu giao diện', 'success');
+    } catch (error: any) {
+      setPreferences((prev) => ({ ...prev, theme: previous }));
+      applyTheme(previous);
+      showToast(error?.message || 'Không thể lưu giao diện', 'error');
+      throw error;
+    }
+  };
+
+  const handleRevokeDevice = async (id: string) => {
+    try {
+      await apiFetch<any>(`/api/user/devices/${id}`, { method: 'DELETE' });
+      setDevices((prev) => prev.filter((device) => device.id !== id));
+      setSecuritySettings((prev) => ({ ...prev, trustedDevices: Math.max(prev.trustedDevices - 1, 0) }));
+      showToast('Đã thu hồi quyền truy cập thiết bị!', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Không thể thu hồi thiết bị', 'error');
+      throw error;
+    }
+  };
+
+  const tabs = [
+    { id: 'personal', label: 'Thông tin cá nhân', icon: <Icons.User /> },
+    { id: 'appearance', label: 'Giao diện', icon: <Icons.Palette /> },
+    { id: 'notifications', label: 'Thông báo', icon: <Icons.Bell /> },
+    { id: 'security', label: 'Bảo mật', icon: <Icons.Shield /> },
+    { id: 'language', label: 'Ngôn ngữ & Múi giờ', icon: <Icons.Globe /> },
+    { id: 'devices', label: 'Thiết bị', icon: <Icons.Device /> },
+    { id: 'activity', label: 'Lịch sử hoạt động', icon: <Icons.Clock /> },
+  ];
+
+  if (!mounted || loading) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (loadError || !user) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm">
+          <p className="text-slate-700 dark:text-slate-200">{loadError || 'Không thể tải dữ liệu.'}</p>
+          <button
+            onClick={() => loadData()}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+          >
+            Thử lại
           </button>
         </div>
       </div>
-      {/* Modals */}
-      <Modal
-        isOpen={editModalOpen}
-        onClose={() => setEditModalOpen(false)}
-        title="Chỉnh sửa hồ sơ"
-        size="md"
-      >
-        <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
-            Cập nhật tên hiển thị và ảnh đại diện. Thay đổi sẽ áp dụng ngay cho tài khoản của bạn.
-          </div>
+    );
+  }
 
-          <Input
-            label="Tên hiển thị"
-            value={editForm.name}
-            onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="Nhập tên của bạn"
+  return (
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 p-4 md:p-8">
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
           />
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-medium text-text-muted">
-              <span>Avatar (ảnh mới)</span>
-              <span className="text-[11px]">Chấp nhận JPG/PNG up to 3MB</span>
-            </div>
-            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-4">
-              <label
-                htmlFor="avatar-upload"
-                className="cursor-pointer text-sm font-semibold text-primary"
-              >
-                {avatarFile ? avatarFile.name : 'Chọn ảnh từ thiết bị'}
-              </label>
-              <input
-                id="avatar-upload"
-                type="file"
-                className="hidden"
-                accept="image/png,image/jpeg"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  if (file) {
-                    setAvatarFile(file);
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setAvatarPreview(reader.result as string);
-                      setEditForm((f) => ({ ...f, avatar: reader.result as string }));
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-              />
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span>Ảnh hiện tại</span>
-                {avatarPreview && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">xem được</span>
-                )}
-              </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={async () => {
-                          if (!avatarFile) {
-                            showToast('error', 'Chọn ảnh trước khi tải lên');
-                            return;
-                          }
-                          setAvatarUploading(true);
-                          const reader = new FileReader();
-                          reader.onloadend = async () => {
-                            try {
-                              const base64 = reader.result as string;
-                              const res = await fetch('/api/user/profile', {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ avatar: base64 }),
-                              });
-                              const data = await res.json();
-                              if (!res.ok) throw new Error(data.error || 'Không thể cập nhật ảnh');
-                              setState((s) => ({ ...s, user: data.user }));
-                              showToast('success', 'Ảnh đại diện đã được cập nhật');
-                              setAvatarFile(null);
-                            } catch (err: any) {
-                              showToast('error', err?.message || 'Không cập nhật được ảnh');
-                            } finally {
-                              setAvatarUploading(false);
-                            }
-                          };
-                          reader.readAsDataURL(avatarFile);
-                        }}
-                        isLoading={avatarUploading}
-                      >
-                        Tải lên
-                      </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <div className="h-12 w-12 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-              <img
-                src={editForm.avatar || '/favicon.ico'}
-                alt="Avatar preview"
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.src = '/favicon.ico';
-                }}
-              />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-text-main truncate">{editForm.name || '—'}</p>
-              <p className="text-xs text-text-muted truncate">{user?.email || '—'}</p>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setEditModalOpen(false)}>Hủy</Button>
-            <Button onClick={handleUpdateProfile} isLoading={actionLoading === 'profile'}>
-              Lưu thay đổi
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={passwordModalOpen}
-        onClose={() => setPasswordModalOpen(false)}
-        title="Đổi mật khẩu"
-        size="md"
-      >
-        <div className="space-y-4">
-          <Input
-            label="Mật khẩu hiện tại"
-            type="password"
-            value={passwordForm.current}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, current: e.target.value }))}
-            placeholder="Nhập mật khẩu hiện tại"
-          />
-          <Input
-            label="Mật khẩu mới"
-            type="password"
-            value={passwordForm.next}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, next: e.target.value }))}
-            placeholder="Tối thiểu 8 ký tự"
-          />
-          <Input
-            label="Xác nhận mật khẩu mới"
-            type="password"
-            value={passwordForm.confirm}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, confirm: e.target.value }))}
-            placeholder="Nhập lại mật khẩu mới"
-          />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setPasswordModalOpen(false)}>Hủy</Button>
-            <Button
-              onClick={handleSubmitPassword}
-              isLoading={actionLoading === 'password'}
-            >
-              Lưu mật khẩu
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={twofaModalOpen}
-        onClose={() => setTwofaModalOpen(false)}
-        title="Quản lý xác thực 2 lớp"
-        size="lg"
-      >
-        <div className="space-y-4">
-          {/* Password */}
-          <Input
-            label="Nhập mật khẩu để xác thực phiên"
-            type="password"
-            value={twofaPassword}
-            onChange={(e) => setTwofaPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-
-          {twofaStep === 'loading' && (
-            <div className="text-sm text-text-secondary">Đang tải trạng thái 2FA...</div>
-          )}
-
-          {twofaStep === 'overview' && (
-            <Card className="space-y-3">
-              <p className="text-sm text-text-secondary">
-                Bật 2FA để bảo vệ tài khoản khỏi truy cập trái phép. Bạn cần cài đặt Google Authenticator/Microsoft Authenticator.
-              </p>
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm font-semibold text-text-main">Trạng thái</p>
-                  <p className="text-xs text-text-muted">Chưa kích hoạt</p>
-                </div>
-                <Button
-                  onClick={handleStartTwofaSetup}
-                  isLoading={actionLoading === 'twofaSetup'}
-                  disabled={!twofaPassword}
-                >
-                  Bắt đầu kích hoạt
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {twofaStep === 'verify' && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
-              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
-                {twofaInfo?.otpauthUrl ? (
-                  <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
-                ) : (
-                  <div className="text-sm text-text-secondary">Không có QR</div>
-                )}
-                <p className="text-xs text-text-muted text-center">Quét QR trong ứng dụng Authenticator</p>
-              </div>
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <code className="block max-w-full break-all rounded bg-slate-100 px-2 py-1 text-sm font-mono">
-                      {twofaInfo?.secret || '—'}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      leftIcon={<Copy className="h-4 w-4" />}
-                      onClick={() => {
-                        if (twofaInfo?.secret) navigator.clipboard.writeText(twofaInfo.secret);
-                        setCopyMessage('Đã copy');
-                        setTimeout(() => setCopyMessage(''), 2000);
-                      }}
-                    >
-                      Sao chép
-                    </Button>
-                    {copyMessage && <span className="text-xs text-success">{copyMessage}</span>}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-2">Mã dự phòng</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {twofaInfo?.backupCodes?.map((c) => (
-                      <code key={c} className="px-2 py-1 rounded bg-slate-100 text-sm">{c}</code>
-                    ))}
-                  </div>
-                  <p className="text-xs text-warning mt-2">Lưu các mã này ở nơi an toàn; dùng khi mất thiết bị.</p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                  <Input
-                    label="Nhập mã 6 số từ ứng dụng"
-                    value={twofaCode}
-                    onChange={(e) => setTwofaCode(e.target.value)}
-                    placeholder="123456"
-                  />
-                  <Button
-                    onClick={handleConfirmTwofa}
-                    isLoading={actionLoading === 'twofaConfirm'}
-                    disabled={!twofaPassword || !twofaCode}
-                  >
-                    Kích hoạt 2FA
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {twofaStep === 'enabled' && (
-            <div className="space-y-4">
-              <Card className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-text-main">2FA đang bật</p>
-                    <p className="text-xs text-text-muted">Đăng nhập sẽ yêu cầu mã Authenticator.</p>
-                  </div>
-                  <span className="rounded-full bg-success/10 text-success px-3 py-1 text-xs font-semibold">Đang bật</span>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={loadTwofaStatus}
-                    leftIcon={<Sparkles className="h-4 w-4" />}
-                  >
-                    Làm mới
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={handleDisableTwofa}
-                    isLoading={actionLoading === 'twofaDisable'}
-                    disabled={!twofaPassword}
-                  >
-                    Tắt 2FA
-                  </Button>
-                </div>
-              </Card>
-
-              {twofaInfo?.secret && (
-                <Card className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 bg-white">
-                    {twofaInfo?.otpauthUrl ? (
-                      <QRCodeSVG value={twofaInfo.otpauthUrl} size={150} />
-                    ) : (
-                      <div className="text-sm text-text-secondary">Không có QR</div>
-                    )}
-                    <p className="text-xs text-text-muted text-center">Quét QR để thêm thiết bị mới</p>
-                  </div>
-                  <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted mb-1">Mã bí mật</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <code className="block max-w-full break-all rounded bg-slate-100 px-2 py-1 text-sm font-mono">
-                          {twofaInfo.secret}
-                        </code>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leftIcon={<Copy className="h-4 w-4" />}
-                          onClick={() => {
-                            navigator.clipboard.writeText(twofaInfo.secret || '');
-                            setCopyMessage('Đã copy');
-                            setTimeout(() => setCopyMessage(''), 2000);
-                          }}
-                        >
-                          Sao chép
-                        </Button>
-                        {copyMessage && <span className="text-xs text-success">{copyMessage}</span>}
-                      </div>
-                    </div>
-
-                    {twofaInfo.backupCodes && twofaInfo.backupCodes.length > 0 && (
-                      <div className="rounded-xl border border-slate-200 p-3 bg-white space-y-2">
-                        <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Mã dự phòng</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {twofaInfo.backupCodes.map((c) => (
-                            <code key={c} className="px-2 py-1 rounded bg-slate-100 text-sm">{c}</code>
-                          ))}
-                        </div>
-                        <p className="text-xs text-warning">Lưu mã dự phòng để khôi phục khi mất thiết bị.</p>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button variant="ghost" onClick={() => setTwofaModalOpen(false)}>Đóng</Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={oauthModalOpen}
-        onClose={() => setOauthModalOpen(false)}
-        title="Quản lý liên kết OAuth"
-        size="md"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-text-secondary">
-            Kết nối tài khoản mạng xã hội để đăng nhập nhanh và tăng bảo mật. Nhập mật khẩu để xác thực trước khi liên kết / hủy liên kết.
-          </p>
-          {security?.oauthConnected && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
-              Đang liên kết: <span className="font-semibold text-text-main">{linkedOauthLabel}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {[
-              {
-                key: 'google',
-                title: 'Google',
-                desc: 'Đăng nhập bằng Google OAuth',
-                enabled: true,
-                icon: <Chrome className="h-5 w-5 text-[#EA4335]" />,
-                iconBg: 'bg-[#EA4335]/10',
-              },
-              {
-                key: 'facebook',
-                title: 'Facebook',
-                desc: 'Đăng nhập bằng Facebook OAuth',
-                enabled: true,
-                icon: <Facebook className="h-5 w-5 text-[#1877F2]" />,
-                iconBg: 'bg-[#1877F2]/10',
-              },
-              {
-                key: 'twitter',
-                title: 'X (Twitter)',
-                desc: 'Đăng nhập bằng X OAuth 2.0',
-                enabled: true,
-                icon: <Twitter className="h-5 w-5 text-sky-600" />,
-                iconBg: 'bg-sky-500/10',
-              },
-              {
-                key: 'telegram',
-                title: 'Telegram (sắp có)',
-                desc: 'Kết nối bot/Telegram Login',
-                enabled: false,
-                icon: <Send className="h-5 w-5 text-cyan-600" />,
-                iconBg: 'bg-cyan-500/10',
-              },
-            ].map((item) => {
-              const isLinked = Boolean(security?.oauthConnected) && linkedOauthProviderKey === item.key;
-              return (
-                <Card
-                  key={item.key}
-                  className={`space-y-2 border p-4 ${oauthProvider === item.key ? 'border-primary/50 ring-2 ring-primary/10' : 'border-bg-border hover:border-slate-300'} ${!item.enabled ? 'opacity-60' : ''}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl ${item.iconBg}`}>
-                        {item.icon}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-text-main">{item.title}</p>
-                        <p className="text-xs text-text-muted">{item.desc}</p>
-                      </div>
-                    </div>
-                    <input
-                      type="radio"
-                      name="oauth-provider"
-                      checked={oauthProvider === item.key}
-                      onChange={() => setOauthProvider(item.key as any)}
-                      className="h-4 w-4 accent-primary"
-                      disabled={!item.enabled}
-                    />
-                  </div>
-                  {isLinked ? (
-                    <Badge variant="success">Đã liên kết</Badge>
-                  ) : (
-                    <Badge variant={item.enabled ? 'warning' : 'default'}>
-                      {item.enabled ? 'Chưa liên kết' : 'Sắp có'}
-                    </Badge>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-
-          <Input
-            label="Mật khẩu"
-            type="password"
-            value={oauthPassword}
-            onChange={(e) => setOauthPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-
-          <div className="flex flex-wrap gap-3 justify-end">
-            <Button variant="ghost" onClick={() => setOauthModalOpen(false)}>Đóng</Button>
-            {security?.oauthConnected ? (
-              <Button
-                variant="ghost"
-                onClick={() => handleSubmitOAuth(false)}
-                isLoading={actionLoading === 'oauthDisconnect'}
-                disabled={!oauthPassword}
-              >
-                Hủy liên kết
-              </Button>
-            ) : (
-              <Button
-                onClick={() => handleSubmitOAuth(true)}
-                isLoading={actionLoading === 'oauthConnect'}
-                disabled={!oauthPassword || oauthProvider === 'telegram'}
-                leftIcon={selectedOauthIcon}
-              >
-                Liên kết {selectedOauthLabel}
-              </Button>
-            )}
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={emailModalOpen}
-        onClose={() => setEmailModalOpen(false)}
-        title="Xác minh email"
-        size="sm"
-      >
-        {security?.emailVerified ? (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-text-secondary">
-              Email của bạn đã được xác minh. Nếu bạn thay đổi email trong tương lai, hệ thống sẽ yêu cầu xác minh lại.
-            </div>
-            <div className="flex justify-end">
-              <Button variant="ghost" onClick={() => setEmailModalOpen(false)}>Đóng</Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-text-secondary">
-              Gửi mã xác minh tới email của bạn và nhập mã 6 chữ số để hoàn tất.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                onClick={handleSendEmailCode}
-                isLoading={sendingCode}
-                disabled={emailCooldown > 0}
-              >
-                {emailCooldown > 0 ? `Gửi lại (${emailCooldown}s)` : 'Gửi mã'}
-              </Button>
-              {emailDevCode && (
-                <span className="text-xs text-warning">Mã dev: {emailDevCode}</span>
-              )}
-              <span className="text-xs text-text-muted">Hiệu lực 10 phút</span>
-            </div>
-            <Input
-              label="Mã xác minh"
-              value={emailCode}
-              onChange={(e) => setEmailCode(e.target.value)}
-              placeholder="Nhập mã 6 chữ số"
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setEmailModalOpen(false)}>Đóng</Button>
-              <Button
-                onClick={handleVerifyEmailCode}
-                isLoading={verifyingCode}
-                disabled={!emailCode}
-              >
-                Xác minh
-              </Button>
-            </div>
-          </div>
         )}
-      </Modal>
+      </AnimatePresence>
 
-      {/* Search Modal */}
-      <Modal
-        isOpen={searchModalOpen}
-        onClose={() => {
-          setSearchModalOpen(false);
-          setModalSearchTerm('');
-          setModalSearchResults([]);
-          setModalSearched(false);
-        }}
-        title="Tìm kiếm nâng cao"
-        size="lg"
-      >
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Nhập tên miền, email, số điện thoại..."
-                value={modalSearchTerm}
-                onChange={(e) => setModalSearchTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleModalSearch(modalSearchTerm);
-                  }
-                }}
-                className="flex-1 rounded-full border border-slate-200 bg-slate-50 py-2 text-sm"
-              />
-              <Button
-                onClick={() => handleModalSearch(modalSearchTerm)}
-                isLoading={modalIsSearching}
-                className="rounded-full px-4"
-              >
-                <Search className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-              {['Website', 'Điện thoại', 'Email', 'Ngân hàng'].map((option) => (
-                <span key={option} className="rounded-full border border-slate-200 bg-white/60 px-2 py-1 text-[10px] font-medium text-slate-500">
-                  {option}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {modalSearched && (
-            <div className="space-y-2">
-              {modalIsSearching ? (
-                <div className="flex justify-center py-4">
-                  <Skeleton className="w-full h-20" />
-                </div>
-              ) : modalSearchResults.length === 0 ? (
-                <div className="text-center py-6 text-gray-500">
-                  <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Không tìm thấy kết quả</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {modalSearchResults.slice(0, 5).map((result, index) => (
-                    <Card key={result.id || `fallback-${index}`} className={cn(
-                      'p-3 border-l-4',
-                      result.status === 'safe' ? 'border-l-success bg-success/5' :
-                      result.status === 'suspected' ? 'border-l-warning bg-warning/5' :
-                      'border-l-danger bg-danger/5'
-                    )}>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-shrink-0">
-                          {result.icon ? (
-                            <img src={result.icon} alt="icon" className="w-10 h-10 rounded-lg object-cover" onError={(e) => { e.currentTarget.src = 'https://tinnhiemmang.vn/img/icon_web2.png'; }} />
-                          ) : result.status === 'safe' ? (
-                            <ShieldCheck className="w-10 h-10 text-success" />
-                          ) : result.status === 'suspected' ? (
-                            <AlertTriangle className="w-10 h-10 text-warning" />
-                          ) : (
-                            <XCircle className="w-10 h-10 text-danger" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <Globe className="w-3 h-3 text-text-muted flex-shrink-0" />
-                            <span className="font-semibold text-text-main text-sm truncate">{result.name || result.title}</span>
-                          </div>
-                          {result.description && (
-                            <p className="text-xs text-text-secondary truncate">{result.description}</p>
-                          )}
-                        </div>
-                        <div className={cn(
-                          'px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 flex-shrink-0',
-                          result.status === 'safe' ? 'bg-success text-white' :
-                          result.status === 'suspected' ? 'bg-warning text-black' :
-                          'bg-danger text-white'
-                        )}>
-                          {result.status === 'safe' ? <CheckCircle className="w-3 h-3" /> :
-                           result.status === 'suspected' ? <Clock3 className="w-3 h-3" /> :
-                           <XCircle className="w-3 h-3" />}
-                          <span className="hidden sm:inline">
-                            {result.status === 'safe' ? 'An toàn' : result.status === 'suspected' ? 'Nghi ngờ' : 'Nguy hiểm'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 gap-2">
-                        <div className="text-center flex-1">
-                          <p className="text-sm font-bold text-text-main">{result.count_report || 0}</p>
-                          <p className="text-[10px] text-text-muted">Báo cáo</p>
-                        </div>
-                        <div className="text-center flex-1">
-                          <p className="text-xs font-bold text-text-main">{result.created_at ? new Date(result.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : 'N/A'}</p>
-                          <p className="text-[10px] text-text-muted">Ngày tạo</p>
-                        </div>
-                        <div className="text-center flex-1">
-                          <p className="text-xs font-bold text-text-main capitalize">{result.category || 'N/A'}</p>
-                          <p className="text-[10px] text-text-muted">Danh mục</p>
-                        </div>
-                        <div className="text-center flex-1">
-                          <p className="text-xs font-bold text-text-main truncate">{result.source || 'TNM'}</p>
-                          <p className="text-[10px] text-text-muted">Nguồn</p>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Cài đặt tài khoản</h1>
+          <p className="text-slate-500 mt-1">Quản lý thông tin và cài đặt tài khoản của bạn</p>
         </div>
-      </Modal>
 
-      <Footer />
-      <MobileNav />
+        <div className="flex flex-col md:flex-row gap-6">
+          <TabNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+
+          <div className="flex-1">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                {activeTab === 'personal' && (
+                  <PersonalInfoTab
+                    user={user}
+                    onSave={handleProfileSave}
+                    onAvatarChange={handleAvatarChange}
+                  />
+                )}
+                {activeTab === 'appearance' && (
+                  <AppearanceTab theme={preferences.theme} onThemeChange={handleThemeChange} />
+                )}
+                {activeTab === 'notifications' && (
+                  <NotificationsTab
+                    settings={notificationSettings}
+                    onSave={handleNotificationsSave}
+                  />
+                )}
+                {activeTab === 'security' && (
+                  <SecurityTab
+                    settings={securitySettings}
+                    onTwoFactorSetup={handleTwoFactorSetup}
+                    onTwoFactorConfirm={handleTwoFactorConfirm}
+                    onTwoFactorDisable={handleTwoFactorDisable}
+                    onTwoFactorBackup={handleTwoFactorBackup}
+                    onLoginAlertsChange={handleLoginAlertsChange}
+                    onChangePassword={handleChangePassword}
+                  />
+                )}
+                {activeTab === 'language' && (
+                  <LanguageTab
+                    language={preferences.language}
+                    timezone={preferences.timezone}
+                    onSave={handlePreferencesSave}
+                  />
+                )}
+                {activeTab === 'devices' && (
+                  <DevicesTab
+                    devices={devices}
+                    onRevoke={handleRevokeDevice}
+                  />
+                )}
+                {activeTab === 'activity' && <ActivityTab activities={activities} />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

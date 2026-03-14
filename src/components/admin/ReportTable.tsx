@@ -5,12 +5,12 @@ import { ModerationReport, ReportAction, ReportSortKey, SortDirection } from './
 
 const sortableColumns: Array<{ key: ReportSortKey; label: string }> = [
   { key: 'id', label: 'ID' },
-  { key: 'target', label: 'Target' },
-  { key: 'type', label: 'Type' },
-  { key: 'risk', label: 'Risk' },
-  { key: 'status', label: 'Status' },
-  { key: 'reporter', label: 'Reporter' },
-  { key: 'created', label: 'Created' },
+  { key: 'target', label: 'Mục tiêu' },
+  { key: 'type', label: 'Loại' },
+  { key: 'risk', label: 'Rủi ro' },
+  { key: 'status', label: 'Trạng thái' },
+  { key: 'reporter', label: 'Người báo cáo' },
+  { key: 'created', label: 'Ngày tạo' },
 ];
 
 function SortButton({
@@ -76,7 +76,7 @@ export default function ReportTable({
                 />
               </th>
             ))}
-            <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+            <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Thao tác</th>
           </tr>
         </thead>
         <tbody>
@@ -90,7 +90,7 @@ export default function ReportTable({
           {!loading && reports.length === 0 && (
             <tr>
               <td colSpan={9} className="p-8 text-center text-slate-500">
-                No reports match current filters.
+                Không có báo cáo nào phù hợp với bộ lọc hiện tại.
               </td>
             </tr>
           )}

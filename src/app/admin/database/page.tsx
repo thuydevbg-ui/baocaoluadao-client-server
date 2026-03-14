@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Database, ShieldCheck, ShieldX } from 'lucide-react';
+import { AlertTriangle, Database, ShieldCheck, ShieldX, Trash2, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react';
 import StatsCards, { type StatCardItem } from '@/components/admin/StatsCards';
+import ExportButton, { type ExportColumn } from '@/components/admin/ExportButton';
+import BulkActions, { useBulkSelection, type BulkAction } from '@/components/admin/BulkActions';
 
 type ScamType =
   | 'website'
@@ -63,7 +65,7 @@ const typeOptions: Array<{ value: 'all' | ScamType; label: string }> = [
 ];
 
 const statusOptions: Array<{ value: 'all' | ScamStatus; label: string }> = [
-  { value: 'all', label: 'All status' },
+  { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'active', label: 'Active' },
   { value: 'investigating', label: 'Investigating' },
   { value: 'blocked', label: 'Blocked' },
@@ -123,6 +125,17 @@ export default function DatabasePage() {
   const [totalItems, setTotalItems] = useState(0);
   const [selectedItem, setSelectedItem] = useState<ScamItem | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
+
+  // Bulk selection hook
+  const {
+    selectedIds,
+    handleSelectAll,
+    handleDeselectAll,
+    handleToggle,
+    isSelected,
+    allSelected,
+    hasSelection,
+  } = useBulkSelection(items, (item) => item.id);
 
   useEffect(() => {
     setPage(1);
@@ -228,37 +241,129 @@ export default function DatabasePage() {
     }
   };
 
+  // Bulk action handler
+  const handleBulkAction = async (actionId: string, selectedIds: string[]) => {
+    setError('');
+    setLoading(true);
+
+    try {
+      switch (actionId) {
+        case 'delete':
+          // Delete multiple items
+          const deletePromises = selectedIds.map(id => 
+            fetch(`/api/admin/scams/${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+              credentials: 'include',
+            })
+          );
+          await Promise.all(deletePromises);
+          break;
+        case 'activate':
+          // Activate multiple items
+          const activatePromises = selectedIds.map(id =>
+            fetch(`/api/admin/scams/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ status: 'active' }),
+            })
+          );
+          await Promise.all(activatePromises);
+          break;
+        case 'deactivate':
+          // Deactivate multiple items
+          const deactivatePromises = selectedIds.map(id =>
+            fetch(`/api/admin/scams/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ status: 'blocked' }),
+            })
+          );
+          await Promise.all(deactivatePromises);
+          break;
+        default:
+          break;
+      }
+      await loadItems();
+    } catch (bulkError) {
+      setError(bulkError instanceof Error ? bulkError.message : 'Unable to perform bulk action');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Define bulk actions
+  const bulkActions: BulkAction[] = [
+    {
+      id: 'activate',
+      label: 'Kích hoạt',
+      icon: ToggleRight,
+      variant: 'success',
+      requiresConfirmation: false,
+    },
+    {
+      id: 'deactivate',
+      label: 'Vô hiệu hóa',
+      icon: ToggleLeft,
+      variant: 'warning',
+      requiresConfirmation: true,
+      confirmationMessage: 'Bạn có chắc muốn vô hiệu hóa các mục đã chọn?',
+    },
+    {
+      id: 'delete',
+      label: 'Xóa',
+      icon: Trash2,
+      variant: 'danger',
+      requiresConfirmation: true,
+      confirmationMessage: 'Bạn có chắc muốn xóa các mục đã chọn? Hành động này không thể hoàn tác.',
+    },
+  ];
+
+  // Export columns configuration
+  const exportColumns: ExportColumn[] = [
+    { key: 'id', label: 'ID', selected: true },
+    { key: 'type', label: 'Loại', selected: true },
+    { key: 'value', label: 'Giá trị', selected: true },
+    { key: 'status', label: 'Trạng thái', selected: true },
+    { key: 'riskLevel', label: 'Mức độ rủi ro', selected: true },
+    { key: 'reportCount', label: 'Số báo cáo', selected: true },
+    { key: 'source', label: 'Nguồn', selected: false },
+    { key: 'createdAt', label: 'Ngày tạo', selected: true },
+    { key: 'updatedAt', label: 'Ngày cập nhật', selected: false },
+  ];
+
   const statItems = useMemo<StatCardItem[]>(
     () => [
       {
         id: 'db-total',
-        title: 'Total Records',
+        title: 'Tổng số bản ghi',
         value: summary.total,
-        subtitle: 'Tracked entities in moderation DB',
+        subtitle: 'Các thực thể được theo dõi trong DB điều hành',
         icon: Database,
         tone: 'sky',
       },
       {
         id: 'db-active',
-        title: 'Active Signals',
+        title: 'Tín hiệu hoạt động',
         value: summary.active,
-        subtitle: 'Actively monitored entities',
+        subtitle: 'Các thực thể được giám sát tích cực',
         icon: ShieldCheck,
         tone: 'emerald',
       },
       {
         id: 'db-investigating',
-        title: 'Investigating',
+        title: 'Đang điều tra',
         value: summary.investigating,
-        subtitle: 'Pending deeper verification',
+        subtitle: 'Chờ xác minh sâu hơn',
         icon: AlertTriangle,
         tone: 'amber',
       },
       {
         id: 'db-blocked',
-        title: 'Blocked',
+        title: 'Bị chặn',
         value: summary.blocked,
-        subtitle: 'Confirmed scam entities',
+        subtitle: 'Các thực thể lừa đảo đã xác nhận',
         icon: ShieldX,
         tone: 'rose',
       },
@@ -276,18 +381,25 @@ export default function DatabasePage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Entity Database</h2>
+            <h2 className="text-base font-semibold text-slate-900">Cơ sở dữ liệu thực thể</h2>
             <p className="text-xs text-slate-500">
-              Showing {rangeStart}-{rangeEnd} of {totalItems} entities
+              Hiển thị {rangeStart}-{rangeEnd} của {totalItems} thực thể
             </p>
           </div>
-          <button
-            type="button"
-            onClick={loadItems}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            <ExportButton
+              data={items}
+              columns={exportColumns}
+              filename="database_export"
+            />
+            <button
+              type="button"
+              onClick={loadItems}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Làm mới
+            </button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
@@ -295,7 +407,7 @@ export default function DatabasePage() {
             <input
               value={searchValue}
               onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Search by value, type, source, or description..."
+              placeholder="Tìm kiếm theo giá trị, loại, nguồn hoặc mô tả..."
               className="w-full flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-slate-300 focus:bg-white"
             />
 
@@ -341,16 +453,39 @@ export default function DatabasePage() {
           <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
         )}
 
+        {/* Bulk Actions */}
+        {hasSelection && (
+          <div className="mt-3">
+            <BulkActions
+              items={items}
+              selectedIds={selectedIds}
+              onSelectAll={handleSelectAll}
+              onDeselectAll={handleDeselectAll}
+              onAction={handleBulkAction}
+              actions={bulkActions}
+              getId={(item) => item.id}
+            />
+          </div>
+        )}
+
         <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
           <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => allSelected ? handleDeselectAll() : handleSelectAll(items.map(i => i.id))}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-600"
+                  />
+                </th>
                 <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">ID</th>
                 <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Entity</th>
                 <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Type</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Risk</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Reports</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Rủi ro</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Trạng thái</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Báo cáo</th>
                 <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Updated</th>
                 <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
               </tr>
@@ -375,6 +510,14 @@ export default function DatabasePage() {
               {!loading &&
                 items.map((item) => (
                   <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected(item.id)}
+                        onChange={() => handleToggle(item.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-slate-600"
+                      />
+                    </td>
                     <td className="p-3 font-mono text-xs text-slate-500">{item.id}</td>
                     <td className="p-3">
                       <p className="font-medium text-slate-900 break-words">{item.value}</p>
@@ -428,10 +571,10 @@ export default function DatabasePage() {
             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            Previous
+            Trước
           </button>
           <span className="text-xs font-semibold text-slate-600">
-            Page {page} / {totalPages}
+            Trang {page} / {totalPages}
           </span>
           <button
             type="button"
@@ -439,7 +582,7 @@ export default function DatabasePage() {
             onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            Next
+            Sau
           </button>
         </div>
       </section>
@@ -515,7 +658,7 @@ export default function DatabasePage() {
                     ))}
                 </select>
 
-                <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
+                <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">Trạng thái</label>
                 <select
                   value={selectedItem.status}
                   onChange={(event) =>

@@ -46,7 +46,7 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Report Detail</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Chi tiết báo cáo</p>
               <h3 className="text-sm font-semibold text-slate-900 truncate">{report.id}</h3>
             </div>
             <button
@@ -62,43 +62,43 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
           <div className="mx-4 my-4 rounded-xl border border-slate-200">
             <div className="max-h-[90vh] overflow-y-auto p-4">
               <section className="border-b border-slate-100 pb-4">
-                <h4 className="text-sm font-semibold text-slate-900">Basic Info</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Thông tin cơ bản</h4>
                 <dl className="mt-2">
-                  <InfoRow label="Status" value={report.status} />
-                  <InfoRow label="Risk" value={report.riskLevel} />
-                  <InfoRow label="Created" value={formatDate(report.createdAt)} />
-                  <InfoRow label="Updated" value={formatDate(report.updatedAt)} />
-                  <InfoRow label="Reporter" value={`${report.reporter.name} (${report.reporter.email})`} />
+                  <InfoRow label="Trạng thái" value={report.status} />
+                  <InfoRow label="Rủi ro" value={report.riskLevel} />
+                  <InfoRow label="Ngày tạo" value={formatDate(report.createdAt)} />
+                  <InfoRow label="Cập nhật" value={formatDate(report.updatedAt)} />
+                  <InfoRow label="Người báo cáo" value={`${report.reporter.name} (${report.reporter.email})`} />
                 </dl>
               </section>
 
               <section className="border-b border-slate-100 py-4">
-                <h4 className="text-sm font-semibold text-slate-900">Target Entity</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Đối tượng mục tiêu</h4>
                 <dl className="mt-2">
-                  <InfoRow label="Type" value={report.target.type} />
-                  <InfoRow label="Value" value={report.target.value} />
+                  <InfoRow label="Loại" value={report.target.type} />
+                  <InfoRow label="Giá trị" value={report.target.value} />
                   <InfoRow label="IP" value={report.target.ip || 'N/A'} />
-                  <InfoRow label="Platform" value={report.target.platform || 'N/A'} />
+                  <InfoRow label="Nền tảng" value={report.target.platform || 'N/A'} />
                 </dl>
               </section>
 
               <section className="border-b border-slate-100 py-4">
-                <h4 className="text-sm font-semibold text-slate-900">Report Description</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Mô tả báo cáo</h4>
                 <p className="mt-2 text-sm text-slate-700 leading-relaxed break-words whitespace-pre-wrap">
-                  {report.description || 'No report description provided.'}
+                  {report.description || 'Không có mô tả.'}
                 </p>
               </section>
 
               <section className="border-b border-slate-100 py-4">
-                <h4 className="text-sm font-semibold text-slate-900">Evidence</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Bằng chứng</h4>
                 <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                  <li className="rounded-lg bg-slate-50 p-3 break-words">Source: {report.source || 'N/A'}</li>
-                  <li className="rounded-lg bg-slate-50 p-3 break-words">Title: {report.title || 'N/A'}</li>
+                  <li className="rounded-lg bg-slate-50 p-3 break-words">Nguồn: {report.source || 'N/A'}</li>
+                  <li className="rounded-lg bg-slate-50 p-3 break-words">Tiêu đề: {report.title || 'N/A'}</li>
                 </ul>
               </section>
 
               <section className="py-4">
-                <h4 className="text-sm font-semibold text-slate-900">Admin Actions</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Hành động quản trị</h4>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -107,7 +107,7 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                   >
                     <Check className="h-3.5 w-3.5" />
-                    Approve
+                    Xác nhận
                   </button>
                   <button
                     type="button"
@@ -116,7 +116,7 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
                   >
                     <X className="h-3.5 w-3.5" />
-                    Reject
+                    Từ chối
                   </button>
                   <button
                     type="button"
@@ -125,7 +125,7 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
                   >
                     <Flag className="h-3.5 w-3.5" />
-                    Mark Scam
+                    Đánh dấu lừa đảo
                   </button>
                   <button
                     type="button"
@@ -134,16 +134,16 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
                     className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Delete
+                    Xóa
                   </button>
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Admin Notes</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Ghi chú quản trị</label>
                   <textarea
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Add internal notes for other moderators..."
+                    placeholder="Thêm ghi chú nội bộ cho các điều hành viên khác..."
                     rows={4}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 outline-none focus:border-slate-300 focus:bg-white"
                   />
@@ -153,7 +153,7 @@ export default function ReportPanel({ report, actionInProgress, onClose, onActio
                     onClick={() => onSaveNotes(notes)}
                     className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
-                    Save Notes
+                    Lưu ghi chú
                   </button>
                 </div>
               </section>

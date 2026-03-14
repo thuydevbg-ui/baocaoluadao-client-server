@@ -4,14 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, UserRound, Mail, Lock, ShieldPlus, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { Space_Grotesk } from 'next/font/google';
-
-const grotesk = Space_Grotesk({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-grotesk',
-  display: 'swap',
-});
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -79,7 +71,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className={`${grotesk.variable} min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-4 py-10`}>
+    <div className={`min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-4 py-10`}>
       <div className="absolute inset-0 overflow-hidden">
         <div className="pointer-events-none absolute -top-24 right-0 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="pointer-events-none absolute bottom-0 left-0 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />

@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, UserRoundCheck, UserRoundMinus, UsersRound } from 'lucide-react';
+import { ShieldCheck, UserRoundCheck, UserRoundMinus, UsersRound, Trash2, Ban, PlayCircle, RefreshCw } from 'lucide-react';
 import StatsCards, { type StatCardItem } from '@/components/admin/StatsCards';
+import ExportButton, { type ExportColumn } from '@/components/admin/ExportButton';
+import BulkActions, { useBulkSelection, type BulkAction } from '@/components/admin/BulkActions';
 
 type UserRole = 'super_admin' | 'admin' | 'moderator' | 'user';
 type UserStatus = 'active' | 'banned' | 'suspended';
@@ -39,18 +41,18 @@ type UsersResponse = {
 };
 
 const roleOptions: Array<{ value: 'all' | UserRole; label: string }> = [
-  { value: 'all', label: 'All roles' },
-  { value: 'super_admin', label: 'Super Admin' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'moderator', label: 'Moderator' },
-  { value: 'user', label: 'User' },
+  { value: 'all', label: 'Tất cả vai trò' },
+  { value: 'super_admin', label: 'Quản trị viên cao cấp' },
+  { value: 'admin', label: 'Quản trị viên' },
+  { value: 'moderator', label: 'Điều hành viên' },
+  { value: 'user', label: 'Người dùng' },
 ];
 
 const statusOptions: Array<{ value: 'all' | UserStatus; label: string }> = [
-  { value: 'all', label: 'All status' },
-  { value: 'active', label: 'Active' },
-  { value: 'banned', label: 'Banned' },
-  { value: 'suspended', label: 'Suspended' },
+  { value: 'all', label: 'Tất cả trạng thái' },
+  { value: 'active', label: 'Hoạt động' },
+  { value: 'banned', label: 'Bị cấm' },
+  { value: 'suspended', label: 'Bị tạm ngưng' },
 ];
 
 function formatDate(value: string) {
@@ -102,6 +104,17 @@ export default function UsersPage() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
+
+  // Bulk selection hook
+  const {
+    selectedIds,
+    handleSelectAll,
+    handleDeselectAll,
+    handleToggle,
+    isSelected,
+    allSelected,
+    hasSelection,
+  } = useBulkSelection(users, (user) => user.id);
 
   useEffect(() => {
     setPage(1);
@@ -181,37 +194,130 @@ export default function UsersPage() {
     }
   };
 
+  // Bulk action handler
+  const handleBulkAction = async (actionId: string, selectedIds: string[]) => {
+    setError('');
+    setLoading(true);
+
+    try {
+      switch (actionId) {
+        case 'ban':
+          // Ban multiple users
+          const banPromises = selectedIds.map(id =>
+            fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ status: 'banned' }),
+            })
+          );
+          await Promise.all(banPromises);
+          break;
+        case 'unban':
+          // Unban multiple users
+          const unbanPromises = selectedIds.map(id =>
+            fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ status: 'active' }),
+            })
+          );
+          await Promise.all(unbanPromises);
+          break;
+        case 'delete':
+          // Delete multiple users
+          const deletePromises = selectedIds.map(id =>
+            fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+              credentials: 'include',
+            })
+          );
+          await Promise.all(deletePromises);
+          break;
+        default:
+          break;
+      }
+      await loadUsers();
+    } catch (bulkError) {
+      setError(bulkError instanceof Error ? bulkError.message : 'Unable to perform bulk action');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Define bulk actions
+  const bulkActions: BulkAction[] = [
+    {
+      id: 'ban',
+      label: 'Cấm',
+      icon: Ban,
+      variant: 'danger',
+      requiresConfirmation: true,
+      confirmationMessage: 'Bạn có chắc muốn cấm các người dùng đã chọn?',
+    },
+    {
+      id: 'unban',
+      label: 'Bỏ cấm',
+      icon: PlayCircle,
+      variant: 'success',
+      requiresConfirmation: false,
+    },
+    {
+      id: 'delete',
+      label: 'Xóa',
+      icon: Trash2,
+      variant: 'danger',
+      requiresConfirmation: true,
+      confirmationMessage: 'Bạn có chắc muốn xóa các người dùng đã chọn? Hành động này không thể hoàn tác.',
+    },
+  ];
+
+  // Export columns configuration
+  const exportColumns: ExportColumn[] = [
+    { key: 'id', label: 'ID', selected: true },
+    { key: 'name', label: 'Tên', selected: true },
+    { key: 'email', label: 'Email', selected: true },
+    { key: 'phone', label: 'Điện thoại', selected: false },
+    { key: 'role', label: 'Vai trò', selected: true },
+    { key: 'status', label: 'Trạng thái', selected: true },
+    { key: 'reputationScore', label: 'Điểm uy tín', selected: true },
+    { key: 'reportCount', label: 'Số báo cáo', selected: false },
+    { key: 'joinedAt', label: 'Ngày tham gia', selected: true },
+    { key: 'lastActiveAt', label: 'Hoạt động lần cuối', selected: false },
+  ];
+
   const statItems = useMemo<StatCardItem[]>(
     () => [
       {
         id: 'users-total',
-        title: 'Total Users',
+        title: 'Tổng số người dùng',
         value: summary.total,
-        subtitle: 'All moderated accounts',
+        subtitle: 'Tất cả tài khoản',
         icon: UsersRound,
         tone: 'sky',
       },
       {
         id: 'users-active',
-        title: 'Active Users',
+        title: 'Người dùng hoạt động',
         value: summary.active,
-        subtitle: 'Allowed to sign in and report',
+        subtitle: 'Được phép đăng nhập và báo cáo',
         icon: UserRoundCheck,
         tone: 'emerald',
       },
       {
         id: 'users-banned',
-        title: 'Banned Users',
+        title: 'Người dùng bị cấm',
         value: summary.banned,
-        subtitle: 'Hard-blocked accounts',
+        subtitle: 'Tài khoản bị khóa vĩnh viễn',
         icon: UserRoundMinus,
         tone: 'rose',
       },
       {
         id: 'users-suspended',
-        title: 'Suspended Users',
+        title: 'Người dùng bị ngưng',
         value: summary.suspended,
-        subtitle: 'Temporarily restricted',
+        subtitle: 'Tài khoản bị tạm khóa',
         icon: ShieldCheck,
         tone: 'amber',
       },
@@ -229,18 +335,25 @@ export default function UsersPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Users Directory</h2>
+            <h2 className="text-base font-semibold text-slate-900">Danh sách người dùng</h2>
             <p className="text-xs text-slate-500">
-              Showing {rangeStart}-{rangeEnd} of {totalUsers} users
+              Hiển thị {rangeStart}-{rangeEnd} của {totalUsers} người dùng
             </p>
           </div>
-          <button
-            type="button"
-            onClick={loadUsers}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            <ExportButton
+              data={users}
+              columns={exportColumns}
+              filename="users_export"
+            />
+            <button
+              type="button"
+              onClick={loadUsers}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Làm mới
+            </button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
@@ -248,7 +361,7 @@ export default function UsersPage() {
             <input
               value={searchValue}
               onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Search by name, email, phone, or user ID..."
+              placeholder="Tìm kiếm theo tên, email, số điện thoại..."
               className="w-full flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-slate-300 focus:bg-white"
             />
 
@@ -282,25 +395,48 @@ export default function UsersPage() {
           <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
         )}
 
+        {/* Bulk Actions */}
+        {hasSelection && (
+          <div className="mt-3">
+            <BulkActions
+              items={users}
+              selectedIds={selectedIds}
+              onSelectAll={handleSelectAll}
+              onDeselectAll={handleDeselectAll}
+              onAction={handleBulkAction}
+              actions={bulkActions}
+              getId={(user) => user.id}
+            />
+          </div>
+        )}
+
         <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
           <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => allSelected ? handleDeselectAll() : handleSelectAll(users.map(u => u.id))}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-600"
+                  />
+                </th>
                 <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">ID</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">User</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Reputation</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Reports</th>
-                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Joined</th>
-                <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Người dùng</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vai trò</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Trạng thái</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Điểm uy tín</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Báo cáo</th>
+                <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Ngày tham gia</th>
+                <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Hành động</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
                   <td colSpan={8} className="p-6 text-center text-slate-500">
-                    Loading users...
+                    Đang tải người dùng...
                   </td>
                 </tr>
               )}
@@ -316,6 +452,14 @@ export default function UsersPage() {
               {!loading &&
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected(user.id)}
+                        onChange={() => handleToggle(user.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-slate-600"
+                      />
+                    </td>
                     <td className="p-3 font-mono text-xs text-slate-500">{user.id}</td>
                     <td className="p-3">
                       <p className="font-medium text-slate-900 break-words">{user.name}</p>

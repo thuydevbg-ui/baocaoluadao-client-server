@@ -7,6 +7,8 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
+import { assertActiveDevice } from '@/lib/deviceSession';
+import { logUserActivity } from '@/lib/userActivity';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,20 +16,23 @@ async function getUser(email: string) {
   const db = getDb();
   await ensureUserInfra();
   const [rows] = await db.query<any[]>(
-    `SELECT id, email, name, image AS avatar, role, created_at AS createdAt, securityScore
+    `SELECT id, email, name, phone, image AS avatar, role, created_at AS createdAt, securityScore
      FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
   return rows?.[0] || null;
 }
 
-export const GET = withApiObservability(async () => {
+export const GET = withApiObservability(async (req: NextRequest) => {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
+  await ensureUserInfra();
   const user = await getUser(email.toLowerCase());
   if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  const deviceCheck = await assertActiveDevice(req, user.id);
+  if (!deviceCheck.allowed) return deviceCheck.response!;
 
   return NextResponse.json({
     success: true,
@@ -35,6 +40,7 @@ export const GET = withApiObservability(async () => {
       id: user.id,
       email: user.email,
       name: user.name,
+      phone: user.phone || null,
       role: user.role,
       createdAt: user.createdAt,
       avatar: user.avatar,
@@ -48,7 +54,7 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
-  let body: { name?: string; avatar?: string | null } = {};
+  let body: { name?: string; avatar?: string | null; phone?: string | null } = {};
   try {
     body = await req.json();
   } catch {
@@ -56,7 +62,9 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
   }
 
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : undefined;
-  let avatar: string | null = null;
+  const phoneRaw = typeof body.phone === 'string' ? body.phone.trim().slice(0, 30) : undefined;
+  const phone = phoneRaw !== undefined ? (phoneRaw ? phoneRaw : null) : undefined;
+  let avatar: string | null | undefined = undefined;
   if (typeof body.avatar === 'string' && body.avatar.trim()) {
     const raw = body.avatar.trim();
     if (raw.startsWith('data:image/')) {
@@ -76,17 +84,42 @@ export const PATCH = withApiObservability(async (req: NextRequest) => {
     }
   }
 
-  if (!name && body.avatar === undefined) {
+  if (!name && body.avatar === undefined && phone === undefined) {
     return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
   }
 
   const db = getDb();
   await ensureUserInfra();
-  await db.query(
-    `UPDATE users SET name = COALESCE(?, name), image = COALESCE(?, image), updated_at = NOW() WHERE email = ? LIMIT 1`,
-    [name, avatar, email.toLowerCase()]
-  );
+  const existing = await getUser(email.toLowerCase());
+  if (!existing) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  const deviceCheck = await assertActiveDevice(req, existing.id);
+  if (!deviceCheck.allowed) return deviceCheck.response!;
+  const updates: string[] = [];
+  const params: any[] = [];
+  if (name !== undefined) {
+    updates.push('name = ?');
+    params.push(name);
+  }
+  if (phone !== undefined) {
+    updates.push('phone = ?');
+    params.push(phone);
+  }
+  if (body.avatar !== undefined) {
+    updates.push('image = ?');
+    params.push(avatar ?? null);
+  }
+  updates.push('updated_at = NOW()');
+  params.push(email.toLowerCase());
+  await db.query(`UPDATE users SET ${updates.join(', ')} WHERE email = ? LIMIT 1`, params);
 
   const updated = await getUser(email.toLowerCase());
+  if (existing?.id) {
+    const fields: string[] = [];
+    if (name !== undefined) fields.push('tên');
+    if (phone !== undefined) fields.push('số điện thoại');
+    if (body.avatar !== undefined) fields.push('ảnh đại diện');
+    const description = fields.length ? `Cập nhật ${fields.join(', ')}` : 'Cập nhật hồ sơ';
+    await logUserActivity(existing.id, 'profile', description, req).catch(() => {});
+  }
   return NextResponse.json({ success: true, user: updated });
 });

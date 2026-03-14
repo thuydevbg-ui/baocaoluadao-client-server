@@ -24,7 +24,17 @@ export interface DeterministicResult {
   suspiciousPatterns: string[];
 }
 
-async function fetchDomainAgeDays(domain: string): Promise<number | null> {
+export interface DomainRegistrationInfo {
+  registeredAt: string | null;
+  ageDays: number | null;
+}
+
+export interface DomainExpiryInfo {
+  expiresAt: string | null;
+  daysLeft: number | null;
+}
+
+export async function fetchDomainRegistration(domain: string): Promise<DomainRegistrationInfo> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DOMAIN_AGE_TIMEOUT_MS);
 
@@ -36,28 +46,76 @@ async function fetchDomainAgeDays(domain: string): Promise<number | null> {
     });
 
     if (!response.ok) {
-      return null;
+      return { registeredAt: null, ageDays: null };
     }
 
     const payload = await response.json().catch(() => null);
     const events = Array.isArray(payload?.events) ? payload.events : [];
     const registrationEvents = events
-      .filter((event: {eventAction?: string}) => typeof event?.eventAction === 'string' && /\bregistration\b/i.test(event.eventAction))
+      .filter((event: {eventAction?: string}) => {
+        if (typeof event?.eventAction !== 'string') return false;
+        return /\bregistration\b|\bregistered\b|\bcreation\b|\bcreated\b/i.test(event.eventAction);
+      })
       .map((event: {eventDate?: string}) => ({ date: typeof event.eventDate === 'string' ? Date.parse(event.eventDate) : NaN }))
       .filter((event: {date: number}) => Number.isFinite(event.date));
 
     if (!registrationEvents.length) {
-      return null;
+      return { registeredAt: null, ageDays: null };
     }
 
     const earliest = registrationEvents.reduce((prev: {date: number}, current: {date: number}) => (current.date < prev.date ? current : prev));
     const days = Math.max(0, Math.floor((Date.now() - earliest.date) / (1000 * 60 * 60 * 24)));
-    return days;
+    const registeredAt = new Date(earliest.date).toISOString();
+    return { registeredAt, ageDays: days };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return null;
+      return { registeredAt: null, ageDays: null };
     }
-    return null;
+    return { registeredAt: null, ageDays: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchDomainExpiry(domain: string): Promise<DomainExpiryInfo> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DOMAIN_AGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${RDAP_ENDPOINT}${domain}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return { expiresAt: null, daysLeft: null };
+    }
+
+    const payload = await response.json().catch(() => null);
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    const expiryEvents = events
+      .filter((event: {eventAction?: string}) => {
+        if (typeof event?.eventAction !== 'string') return false;
+        return /\bexpiration\b|\bexpiry\b|\bexpires\b/i.test(event.eventAction);
+      })
+      .map((event: {eventDate?: string}) => ({ date: typeof event.eventDate === 'string' ? Date.parse(event.eventDate) : NaN }))
+      .filter((event: {date: number}) => Number.isFinite(event.date));
+
+    if (!expiryEvents.length) {
+      return { expiresAt: null, daysLeft: null };
+    }
+
+    const latest = expiryEvents.reduce((prev: {date: number}, current: {date: number}) => (current.date > prev.date ? current : prev));
+    const diffMs = latest.date - Date.now();
+    const daysLeft = diffMs <= 0 ? 0 : Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const expiresAt = new Date(latest.date).toISOString();
+    return { expiresAt, daysLeft };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { expiresAt: null, daysLeft: null };
+    }
+    return { expiresAt: null, daysLeft: null };
   } finally {
     clearTimeout(timeout);
   }
@@ -103,12 +161,13 @@ export async function evaluateDeterministicRisk(domain: string): Promise<Determi
   const flags = new Set<string>();
   const suspiciousPatterns: string[] = [];
 
-  const [domainAgeDays, ipAddresses, sslValid] = await Promise.all([
-    fetchDomainAgeDays(domain),
+  const [registration, ipAddresses, sslValid] = await Promise.all([
+    fetchDomainRegistration(domain),
     resolveDomainIps(domain),
     checkSslValidity(domain).catch(() => false),
   ]);
 
+  const domainAgeDays = registration.ageDays;
   const dnsResolved = ipAddresses.length > 0;
   if (!dnsResolved) {
     flags.add('dns-resolution-failed');

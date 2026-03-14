@@ -1,91 +1,187 @@
 'use client';
 
-import React from 'react';
-import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
+import { clsx } from 'clsx';
 
 interface SkeletonProps {
   className?: string;
   variant?: 'text' | 'circular' | 'rectangular';
   width?: string | number;
   height?: string | number;
+  animation?: 'pulse' | 'wave' | 'none';
 }
 
-export function Skeleton({ 
-  className, 
-  variant = 'rectangular', 
-  width, 
-  height 
+export function Skeleton({
+  className,
+  variant = 'rectangular',
+  width,
+  height,
+  animation = 'pulse',
 }: SkeletonProps) {
-  const variants = {
-    text: 'rounded h-4',
+  const baseStyles = 'bg-slate-200 dark:bg-slate-700';
+  
+  const variantStyles = {
+    text: 'rounded',
     circular: 'rounded-full',
-    rectangular: 'rounded-button',
+    rectangular: 'rounded-lg',
   };
 
+  const animationStyles = {
+    pulse: {
+      scale: [1, 0.95, 1],
+      opacity: [1, 0.7, 1],
+    },
+    wave: {
+      x: [-1000, 1000],
+    },
+    none: {},
+  };
+
+  const MotionComponent = motion.div;
+
   return (
-    <div
-      className={cn(
-        'shimmer',
-        variants[variant],
-        className
-      )}
+    <MotionComponent
+      className={clsx(baseStyles, variantStyles[variant], className)}
       style={{ width, height }}
+      animate={animation === 'wave' ? undefined : animationStyles[animation]}
+      transition={{
+        duration: animation === 'wave' ? 1.5 : 1.5,
+        repeat: Infinity,
+        ease: 'easeInOut',
+      }}
     />
   );
 }
 
-export function CardSkeleton() {
+export function SkeletonText({
+  lines = 3,
+  className,
+  spacing = 'normal',
+}: {
+  lines?: number;
+  className?: string;
+  spacing?: 'tight' | 'normal' | 'loose';
+}) {
+  const spacingStyles = {
+    tight: 'gap-1',
+    normal: 'gap-2',
+    loose: 'gap-4',
+  };
+
   return (
-    <div className="bg-bg-card border border-bg-border rounded-card p-5 space-y-4">
-      <div className="flex items-center gap-3">
-        <Skeleton variant="circular" width={48} height={48} />
-        <div className="flex-1 space-y-2">
-          <Skeleton variant="text" width="60%" />
-          <Skeleton variant="text" width="40%" />
+    <div className={clsx('flex flex-col', spacingStyles[spacing], className)}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton
+          key={i}
+          variant="text"
+          height="1rem"
+          width={i === lines - 1 ? '60%' : '100%'}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonAvatar({
+  size = 'md',
+  className,
+}: {
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  className?: string;
+}) {
+  const sizeStyles = {
+    sm: 'w-8 h-8',
+    md: 'w-10 h-10',
+    lg: 'w-12 h-12',
+    xl: 'w-16 h-16',
+  };
+
+  return (
+    <Skeleton
+      variant="circular"
+      className={clsx(sizeStyles[size], className)}
+    />
+  );
+}
+
+export function SkeletonButton({
+  className,
+  width = '100px',
+}: {
+  className?: string;
+  width?: string | number;
+}) {
+  return (
+    <Skeleton
+      variant="rectangular"
+      height="2.5rem"
+      width={width}
+      className={className}
+    />
+  );
+}
+
+/**
+ * CardSkeleton - Skeleton for card components
+ */
+export function CardSkeleton({
+  className,
+}: {
+  className?: string;
+}) {
+  return (
+    <div className={clsx('bg-white dark:bg-slate-800 rounded-lg shadow p-4', className)}>
+      <div className="mb-4">
+        <Skeleton height="160px" className="w-full" />
+      </div>
+      <Skeleton variant="text" width="70%" height="1.5rem" className="mb-2" />
+      <SkeletonText lines={3} />
+    </div>
+  );
+}
+
+/**
+ * DetailSkeleton - Skeleton for detail/detail pages
+ */
+export function DetailSkeleton({
+  className,
+}: {
+  className?: string;
+}) {
+  return (
+    <div className={clsx('bg-white dark:bg-slate-800 rounded-lg shadow p-6', className)}>
+      <div className="flex items-center gap-4 mb-6">
+        <SkeletonAvatar size="xl" />
+        <div className="flex-1">
+          <Skeleton variant="text" width="200px" height="1.5rem" className="mb-2" />
+          <Skeleton variant="text" width="150px" height="1rem" />
         </div>
       </div>
-      <Skeleton variant="rectangular" height={80} />
-      <div className="flex gap-2">
-        <Skeleton variant="rectangular" width={60} height={24} />
-        <Skeleton variant="rectangular" width={60} height={24} />
+      <div className="space-y-4">
+        <SkeletonText lines={4} />
+        <Skeleton height="200px" className="w-full" />
+        <SkeletonText lines={2} />
       </div>
     </div>
   );
 }
 
-export function SearchResultSkeleton() {
+/**
+ * SearchResultSkeleton - Skeleton for search results
+ */
+export function SearchResultSkeleton({
+  className,
+}: {
+  className?: string;
+}) {
   return (
-    <div className="flex items-center gap-4 p-4 bg-bg-card border border-bg-border rounded-card">
-      <Skeleton variant="circular" width={44} height={44} />
-      <div className="flex-1 space-y-2">
-        <Skeleton variant="text" width="50%" />
-        <Skeleton variant="text" width="30%" />
+    <div className={clsx('flex gap-4 p-4 border-b border-slate-200 dark:border-slate-700', className)}>
+      <Skeleton variant="rectangular" width="60px" height="60px" className="rounded-lg flex-shrink-0" />
+      <div className="flex-1">
+        <Skeleton variant="text" width="80%" height="1.25rem" className="mb-2" />
+        <SkeletonText lines={2} spacing="tight" />
       </div>
-      <Skeleton variant="rectangular" width={70} height={28} />
-    </div>
-  );
-}
-
-export function DetailSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="bg-bg-card border border-bg-border rounded-card p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <Skeleton variant="text" width={200} height={32} />
-          <Skeleton variant="rectangular" width={80} height={32} />
-        </div>
-        <Skeleton variant="rectangular" height={12} />
-        <div className="grid grid-cols-3 gap-4">
-          <Skeleton variant="rectangular" height={60} />
-          <Skeleton variant="rectangular" height={60} />
-          <Skeleton variant="rectangular" height={60} />
-        </div>
-      </div>
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} variant="rectangular" height={80} />
-        ))}
-      </div>
+      <Skeleton variant="text" width="60px" height="1rem" />
     </div>
   );
 }

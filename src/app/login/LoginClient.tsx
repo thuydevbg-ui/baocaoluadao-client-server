@@ -5,15 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signIn, getProviders, type ClientSafeProvider } from 'next-auth/react';
 import { Mail, Lock, ShieldCheck, Loader2, Sparkles, KeyRound, Wand2, ArrowLeft } from 'lucide-react';
-import { Space_Grotesk } from 'next/font/google';
-
-const grotesk = Space_Grotesk({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-grotesk',
-  display: 'swap',
-});
-
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -84,7 +75,7 @@ export default function LoginClient() {
 
   return (
     <div
-      className={`${grotesk.variable} min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-4 py-10`}
+      className={`min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-4 py-10`}
     >
       <div className='absolute inset-0 overflow-hidden'>
         <div className='pointer-events-none absolute -top-28 -left-10 h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl' />

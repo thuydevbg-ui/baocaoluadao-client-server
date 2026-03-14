@@ -1,38 +1,20 @@
-﻿'use client';
+'use client';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import '@flaticon/flaticon-uicons/css/solid/rounded.css';
+import '@flaticon/flaticon-uicons/css/solid/straight.css';
+import '../../detail.css';
+import '../../detail-new.css';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import {
-  Phone,
-  Building2,
-  Globe,
-  Wallet,
-  AlertTriangle,
-  Clock,
-  Shield,
-  MessageCircle,
-  ThumbsUp,
-  Calendar,
-  Share2,
-  Eye,
-  Flag,
-  Copy,
-  CheckCircle,
-  ExternalLink,
-  ShieldCheck,
-  Star,
-  Loader2,
-  SendHorizonal,
-  AlertOctagon,
-  Bot,
-  FileWarning,
-} from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Card, Button, Chip, RiskBadge, DetailSkeleton } from '@/components/ui';
+import { Card, Button } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/contexts/I18nContext';
-import { cn, type ScamDetail, type RiskLevel, sanitizeHTML, formatNumber } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { DetailContentNew } from '@/components/detail/DetailContentNew';
+import { type ScamDetail, type RiskLevel, sanitizeHTML, formatNumber } from '@/lib/utils';
 
 type ScamKind = 'phone' | 'bank' | 'website' | 'crypto';
 type SourceStatus = 'trusted' | 'confirmed' | 'suspected' | 'unknown';
@@ -47,6 +29,8 @@ interface DetailSourceMeta {
   policySummary?: string;
   firstSeen?: string;
   lastReported?: string;
+  domainRegisteredAt?: string;
+  amount?: string;
   description?: string;
   organization?: string;
   sourceUrl?: string;
@@ -86,6 +70,7 @@ interface CategoryLookupItem {
   description?: string;
   count_report?: string;
   created_at?: string;
+  domain_registered_at?: string;
   link?: string;
   organization?: string;
   icon?: string;
@@ -154,6 +139,43 @@ interface DetailFeedbackResponse {
   ratingStats?: FeedbackStats;
   myRating?: number | null;
   canRate?: boolean;
+  requireAuth?: boolean;
+  accountAgeHours?: number;
+}
+
+interface DomainExpiryResponse {
+  success?: boolean;
+  domain?: string;
+  expiresAt?: string | null;
+  daysLeft?: number | null;
+  isExpired?: boolean | null;
+  checkedAt?: string | null;
+  source?: string;
+  error?: string;
+}
+
+interface ScanSecurityCheck {
+  name: string;
+  status: 'pass' | 'warning' | 'fail';
+  details: string;
+}
+
+interface ScanResultPayload {
+  risk_score?: number;
+  trust_score?: number;
+  verdict?: string;
+  status?: string;
+  source?: string;
+  reports?: number;
+  description?: string;
+  organization?: string;
+  policy_violation?: boolean;
+  policy_source_url?: string;
+  policy_source_title?: string;
+  policy_source_name?: string;
+  policy_updated_at?: string;
+  securityChecks?: ScanSecurityCheck[];
+  error?: string;
 }
 
 const DEFAULT_FEEDBACK_STATS: FeedbackStats = {
@@ -178,6 +200,8 @@ function mergeSourceMeta(base: DetailSourceMeta, override: DetailSourceMeta): De
     policySummary: keepString(override.policySummary, base.policySummary),
     firstSeen: keepString(override.firstSeen, base.firstSeen),
     lastReported: keepString(override.lastReported, base.lastReported),
+    domainRegisteredAt: keepString(override.domainRegisteredAt, base.domainRegisteredAt),
+    amount: keepString(override.amount, base.amount),
     description: keepString(override.description, base.description),
     organization: keepString(override.organization, base.organization),
     source: keepString(override.source, base.source),
@@ -329,11 +353,11 @@ function slugifyForMatch(value: string): string {
     .trim();
 }
 
-function normalizeEpochMs(raw: string | number | null | undefined): number | null {
+function normalizeEpochMs(raw: string | number | null | undefined, now?: number): number | null {
   if (raw === null || raw === undefined) return null;
+  const nowMs = now ?? 0;
+  
   if (typeof raw === 'number' && Number.isFinite(raw)) {
-    const now = Date.now();
-
     // Handle yyyymmddhhmmss written into BIGINT (e.g. 20260306123456)
     if (raw >= 20000101000000 && raw <= 20991231235959) {
       const year = Math.floor(raw / 10000000000);
@@ -349,8 +373,8 @@ function normalizeEpochMs(raw: string | number | null | undefined): number | nul
     // seconds → ms
     if (raw > 0 && raw < 100_000_000_000) return raw * 1000;
 
-    // guard against far-future timestamps
-    if (raw > now + 1000 * 60 * 60 * 24 * 365 * 5) return now;
+    // guard against far-future timestamps - use 0 as default to avoid hydration mismatch
+    if (raw > nowMs + 1000 * 60 * 60 * 24 * 365 * 5) return nowMs;
     return raw;
   }
 
@@ -361,6 +385,32 @@ function normalizeEpochMs(raw: string | number | null | undefined): number | nul
     const numeric = Number.parseInt(text, 10);
     if (!Number.isFinite(numeric)) return null;
     return normalizeEpochMs(numeric);
+  }
+
+  // Handle Vietnamese-style dates: "DD/MM/YYYY" or "D/M/YYYY" (optional time).
+  // Some datasets return dates like "18/2/2025", which Date.parse() treats as invalid.
+  const vnDateMatch = text.match(
+    /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (vnDateMatch) {
+    const day = Number.parseInt(vnDateMatch[1], 10);
+    const month = Number.parseInt(vnDateMatch[2], 10);
+    const year = Number.parseInt(vnDateMatch[3], 10);
+    const hour = vnDateMatch[4] ? Number.parseInt(vnDateMatch[4], 10) : 0;
+    const minute = vnDateMatch[5] ? Number.parseInt(vnDateMatch[5], 10) : 0;
+    const second = vnDateMatch[6] ? Number.parseInt(vnDateMatch[6], 10) : 0;
+    if (
+      Number.isFinite(day) &&
+      Number.isFinite(month) &&
+      Number.isFinite(year) &&
+      day >= 1 &&
+      day <= 31 &&
+      month >= 1 &&
+      month <= 12
+    ) {
+      const utc = Date.UTC(year, month - 1, day, hour, minute, second);
+      return Number.isFinite(utc) ? utc : null;
+    }
   }
 
   // Handle "YYYY-MM-DD HH:mm:ss" (Safari-safe by converting to ISO-ish).
@@ -374,8 +424,25 @@ function normalizeEpochMs(raw: string | number | null | undefined): number | nul
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatRelativeTime(input: string | number, nowMs = Date.now()): string {
-  const target = normalizeEpochMs(input) ?? nowMs;
+function formatAbsoluteDate(input: string | number): string {
+  const target = normalizeEpochMs(input);
+  if (target === null) return '—';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(new Date(target));
+}
+
+function formatTimelineValue(input?: string): string {
+  if (!input?.trim()) return 'Không rõ';
+  const formatted = formatAbsoluteDate(input);
+  return formatted === '—' ? input.trim() : formatted;
+}
+
+function formatRelativeTime(input: string | number, nowMs: number = 0): string {
+  const target = normalizeEpochMs(input, nowMs) ?? nowMs;
 
   const diffMs = nowMs - target;
   if (diffMs < 0) return 'Vừa xong';
@@ -391,7 +458,8 @@ function formatRelativeTime(input: string | number, nowMs = Date.now()): string 
 }
 
 function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
-  const createdAt = normalizeEpochMs(item.createdAt) ?? Date.now();
+  // Use 0 as default to avoid hydration mismatch - will be replaced with actual time after mount
+  const createdAt = normalizeEpochMs(item.createdAt) ?? 0;
   return {
     id: item.id,
     user: item.user,
@@ -399,7 +467,7 @@ function toCommentView(item: FeedbackCommentDto): FeedbackCommentView {
     text: item.text,
     helpful: item.helpful,
     rating: typeof item.rating === 'number' ? item.rating : null,
-    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    createdAt: Number.isFinite(createdAt) ? createdAt : 0,
     verified: Boolean(item.verified),
     helpfulMarked: Boolean(item.helpfulMarked),
     canMarkHelpful: item.canMarkHelpful ?? !item.helpfulMarked,
@@ -577,8 +645,7 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
 
   const firstSeen = sourceMeta.firstSeen || 'Không rõ';
   const lastReported = sourceMeta.lastReported || firstSeen;
-  const estimatedLoss = `${formatNumber((6 + (idHash % 70)) * 1000000)} VND`;
-  const updatedAt = new Date().toLocaleString('vi-VN');
+  const updatedAt = sourceMeta.lastReported || sourceMeta.firstSeen || '—';
 
   const profile = detailByType[kind];
   let statusLabel = getStatusLabel(normalizedStatus, risk === 'unknown' ? 'suspicious' : risk);
@@ -609,8 +676,9 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
     reports,
     firstSeen,
     lastReported,
+    domainRegisteredAt: sourceMeta.domainRegisteredAt,
     description,
-    amount: risk === 'scam' || risk === 'suspicious' ? estimatedLoss : undefined,
+    amount: sourceMeta.amount?.trim() || undefined,
   };
 
   const insight: DetailInsight = {
@@ -623,9 +691,9 @@ function buildDetailProfile(kind: ScamKind, value: string, sourceMeta: DetailSou
       sourceMeta.organization ? `${sourceMeta.organization} liên hệ` : '',
     ].filter(Boolean),
     timeline: [
-      { label: 'Phát hiện lần đầu', value: firstSeen, tone: (risk === 'safe' || risk === 'unknown') ? 'neutral' : 'warning' },
-      { label: 'Cập nhật gần nhất', value: lastReported, tone: risk === 'scam' ? 'danger' : 'neutral' },
-      { label: 'Cập nhật hệ thống', value: updatedAt, tone: 'neutral' },
+      { label: 'Phát hiện lần đầu', value: formatTimelineValue(firstSeen), tone: (risk === 'safe' || risk === 'unknown') ? 'neutral' : 'warning' },
+      { label: 'Cập nhật gần nhất', value: formatTimelineValue(lastReported), tone: risk === 'scam' ? 'danger' : 'neutral' },
+      { label: 'Cập nhật hệ thống', value: formatTimelineValue(updatedAt), tone: 'neutral' },
     ],
     source: `${sourceTitle}${sourceMeta.sourceCategory ? ` • ${sourceMeta.sourceCategory}` : ''}`,
     confidence,
@@ -663,6 +731,8 @@ function parseDetailSourceMeta(params: SearchParamReader): DetailSourceMeta {
     policySummary: params.get('policySummary') || undefined,
     firstSeen: params.get('firstSeen') || undefined,
     lastReported: params.get('lastReported') || undefined,
+    domainRegisteredAt: params.get('domainRegisteredAt') || undefined,
+    amount: params.get('amount') || undefined,
     description: params.get('description') || undefined,
     organization: params.get('organization') || undefined,
     source: source || (hasKnownSource && (normalizedStatus !== 'unknown' || Boolean(sourceLink)) ? 'tinnhiemmang.vn' : undefined),
@@ -720,6 +790,7 @@ async function lookupSourceMetaByValue(kind: ScamKind, value: string): Promise<D
     reports: parsePositiveInt(matched.count_report),
     firstSeen: matched.created_at,
     lastReported: matched.created_at,
+    domainRegisteredAt: matched.domain_registered_at,
     description: matched.description,
     organization: matched.organization,
     source: payload.source || 'tinnhiemmang.vn',
@@ -752,15 +823,14 @@ async function lookupPolicyViolationByValue(value: string): Promise<DetailSource
 export default function DetailPage() {
   const { t } = useI18n();
   const { showToast } = useToast();
+  const { isAuthenticated, accountAge24h } = useAuth();
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const rawType = parseParam(params?.type as string | string[] | undefined);
   const rawId = parseParam(params?.id as string | string[] | undefined);
-  const [isLoading, setIsLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<ScamDetail | null>(null);
-  const [insight, setInsight] = useState<DetailInsight | null>(null);
   const [comment, setComment] = useState('');
   const [copied, setCopied] = useState(false);
   const [comments, setComments] = useState<FeedbackCommentView[]>([]);
@@ -770,23 +840,44 @@ export default function DetailPage() {
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(true);
   const [isRatingSubmitting, setIsRatingSubmitting] = useState(false);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
-  const [policyMetaSnapshot, setPolicyMetaSnapshot] = useState<DetailSourceMeta | null>(null);
   const [helpfulSubmittingId, setHelpfulSubmittingId] = useState<string | null>(null);
   const [commentSort, setCommentSort] = useState<'latest' | 'helpful'>('latest');
-  const [aiScan, setAiScan] = useState<{ loading: boolean; error?: string | null; verdict?: 'safe' | 'scam' | 'unknown'; risk?: number; trust?: number; description?: string }>({ loading: false });
   const [viewCount, setViewCount] = useState<number | null>(null);
-  const [nowTick, setNowTick] = useState(() => Date.now());
+  // Use a fixed default value to avoid hydration mismatch
+  // The actual time will be updated via useEffect after mount
+  const [nowTick, setNowTick] = useState<number>(0);
+  const [expiryInfo, setExpiryInfo] = useState<DomainExpiryResponse | null>(null);
+  const [expiryStatus, setExpiryStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [scanResult, setScanResult] = useState<ScanResultPayload | null>(null);
+  const [scanStatus, setScanStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const decodedValue = useMemo(() => decodeRouteValue(rawId), [rawId]);
   const normalizedType = useMemo(() => normalizeKind(rawType), [rawType]);
   const detailFeedbackKey = useMemo(
-    () => `${normalizedType}:${slugifyForMatch(decodedValue || 'khong-xac-dinh')}`,
+    () => {
+      const baseValue = decodedValue || 'khong-xac-dinh';
+      const canonical = normalizedType === 'website'
+        ? (normalizeDomainKey(baseValue) || baseValue)
+        : baseValue;
+      return `${normalizedType}:${slugifyForMatch(canonical)}`;
+    },
     [normalizedType, decodedValue]
   );
   const searchParamsKey = searchParams.toString();
+  const baseSourceMeta = useMemo(() => parseDetailSourceMeta(searchParams), [searchParamsKey]);
+  const baseProfile = useMemo(
+    () => buildDetailProfile(normalizedType, decodedValue || 'Không xác định', baseSourceMeta),
+    [normalizedType, decodedValue, baseSourceMeta]
+  );
+  const [data, setData] = useState<ScamDetail | null>(baseProfile.detail);
+  const [insight, setInsight] = useState<DetailInsight | null>(baseProfile.insight);
+  const [policyMetaSnapshot, setPolicyMetaSnapshot] = useState<DetailSourceMeta | null>(
+    baseSourceMeta.policyViolation ? baseSourceMeta : null
+  );
   const commentTrimmed = comment.trim();
   const sentenceCount = useMemo(() => countSentences(commentTrimmed), [commentTrimmed]);
   const canSubmitComment =
+    accountAge24h &&
     commentTrimmed.length >= 3 &&
     commentTrimmed.length <= 600 &&
     sentenceCount <= 20 &&
@@ -803,56 +894,97 @@ export default function DetailPage() {
     return comments;
   }, [comments, commentSort]);
 
+  const domainExpiryLabel = useMemo(() => {
+    if (normalizedType !== 'website') return null;
+    if (expiryStatus === 'idle' || expiryStatus === 'loading') {
+      return 'Hết hạn: Đang kiểm tra';
+    }
+    if (expiryStatus === 'error' || !expiryInfo) {
+      return 'Hết hạn: Không rõ';
+    }
+    const expiresAtMs = normalizeEpochMs(expiryInfo.expiresAt ?? null);
+    if (expiresAtMs === null) {
+      return 'Hết hạn: Chưa đăng ký';
+    }
+    const formatted = new Intl.DateTimeFormat('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Asia/Ho_Chi_Minh',
+    }).format(new Date(expiresAtMs));
+    return `Hết hạn: ${formatted}`;
+  }, [normalizedType, expiryInfo, expiryStatus]);
+
   useEffect(() => {
+    // Only update nowTick on client side after hydration
+    setNowTick(Date.now());
+    setMounted(true);
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
+    let cancelled = false;
+
+    const fetchData = () => {
       setError(null);
 
-      try {
-        // Fetch data immediately without artificial delay
-        const sourceMetaFromQuery = parseDetailSourceMeta(searchParams);
-        let sourceMeta = sourceMetaFromQuery;
-        const statusFromQuery = normalizeSourceStatus(sourceMetaFromQuery.status || sourceMetaFromQuery.sourceMode);
+      const sourceMetaFromQuery = parseDetailSourceMeta(searchParams);
+      const statusFromQuery = normalizeSourceStatus(sourceMetaFromQuery.status || sourceMetaFromQuery.sourceMode);
 
-        if (statusFromQuery === 'unknown' && decodedValue) {
-          try {
-            const lookedUpMeta = await lookupSourceMetaByValue(normalizedType, decodedValue);
-            if (lookedUpMeta) {
-              sourceMeta = mergeSourceMeta(lookedUpMeta, sourceMetaFromQuery);
-            }
-          } catch (lookupError) {
-            console.warn('Lookup detail from category source failed:', lookupError);
-          }
-        }
-
-        if (decodedValue && normalizedType === 'website' && !sourceMeta.policyViolation) {
-          try {
-            const policyMeta = await lookupPolicyViolationByValue(decodedValue);
-            if (policyMeta) {
-              sourceMeta = mergeSourceMeta(sourceMeta, policyMeta);
-            }
-          } catch (policyError) {
-            console.warn('Lookup policy violation list failed:', policyError);
-          }
-        }
-
-        const profile = buildDetailProfile(normalizedType, decodedValue || 'Không xác định', sourceMeta);
-        setData(profile.detail);
-        setInsight(profile.insight);
-        setPolicyMetaSnapshot(sourceMeta.policyViolation ? sourceMeta : null);
-      } catch (err) {
-        setError('Không thể tải chi tiết cảnh báo. Vui lòng thử lại.');
-      } finally {
-        setIsLoading(false);
+      // Render immediately with lightweight data first
+      const baseProfile = buildDetailProfile(normalizedType, decodedValue || 'Không xác định', sourceMetaFromQuery);
+      if (!cancelled) {
+        setData(baseProfile.detail);
+        setInsight(baseProfile.insight);
+        setPolicyMetaSnapshot(sourceMetaFromQuery.policyViolation ? sourceMetaFromQuery : null);
       }
+
+      // Enrich in the background (does not block render)
+      void (async () => {
+        try {
+          let enrichedMeta = sourceMetaFromQuery;
+
+          if (statusFromQuery === 'unknown' && decodedValue && normalizedType !== 'website') {
+            try {
+              const lookedUpMeta = await lookupSourceMetaByValue(normalizedType, decodedValue);
+              if (lookedUpMeta) {
+                enrichedMeta = mergeSourceMeta(lookedUpMeta, sourceMetaFromQuery);
+              }
+            } catch (lookupError) {
+              console.warn('Lookup detail from category source failed:', lookupError);
+            }
+          }
+
+          if (decodedValue && normalizedType === 'website' && !enrichedMeta.policyViolation) {
+            try {
+              const policyMeta = await lookupPolicyViolationByValue(decodedValue);
+              if (policyMeta) {
+                enrichedMeta = mergeSourceMeta(enrichedMeta, policyMeta);
+              }
+            } catch (policyError) {
+              console.warn('Lookup policy violation list failed:', policyError);
+            }
+          }
+
+          if (cancelled) return;
+          const updatedProfile = buildDetailProfile(normalizedType, decodedValue || 'Không xác định', enrichedMeta);
+          setData(updatedProfile.detail);
+          setInsight(updatedProfile.insight);
+          setPolicyMetaSnapshot(enrichedMeta.policyViolation ? enrichedMeta : null);
+        } catch (err) {
+          if (!cancelled) {
+            setError('Không thể tải chi tiết cảnh báo. Vui lòng thử lại.');
+          }
+        }
+      })();
     };
 
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [normalizedType, decodedValue, searchParamsKey]);
 
   useEffect(() => {
@@ -898,6 +1030,123 @@ export default function DetailPage() {
       cancelled = true;
     };
   }, [detailFeedbackKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (normalizedType !== 'website') {
+      setExpiryInfo(null);
+      setExpiryStatus('idle');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const domain = normalizeDomainKey(decodedValue || '');
+    if (!domain) {
+      setExpiryInfo(null);
+      setExpiryStatus('idle');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadExpiry = async () => {
+      setExpiryStatus('loading');
+      try {
+        const response = await fetch(`/api/domain-expiry?domain=${encodeURIComponent(domain)}`, { cache: 'no-store' });
+        const payload: DomainExpiryResponse = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error || 'Không thể kiểm tra hạn tên miền.');
+        }
+        setExpiryInfo(payload);
+        setExpiryStatus('success');
+      } catch (error) {
+        if (cancelled) return;
+        setExpiryInfo(null);
+        setExpiryStatus('error');
+      }
+    };
+
+    loadExpiry();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedType, decodedValue]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (normalizedType !== 'website') {
+      setScanResult(null);
+      setScanStatus('idle');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const domain = normalizeDomainKey(decodedValue || '');
+    if (!domain) {
+      setScanResult(null);
+      setScanStatus('idle');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const runScan = async () => {
+      setScanStatus('loading');
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: `https://${domain}` }),
+          cache: 'no-store',
+        });
+        const payload: ScanResultPayload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Không thể quét domain.');
+        }
+        setScanResult(payload);
+        setScanStatus('success');
+      } catch (error) {
+        if (cancelled) return;
+        setScanResult(null);
+        setScanStatus('error');
+      }
+    };
+
+    runScan();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedType, decodedValue]);
+
+  useEffect(() => {
+    if (normalizedType !== 'website' || !decodedValue || !scanResult) return;
+
+    const scanMeta: DetailSourceMeta = {
+      status: scanResult.status || scanResult.verdict,
+      reports: typeof scanResult.reports === 'number' ? scanResult.reports : undefined,
+      riskScore: typeof scanResult.risk_score === 'number' ? scanResult.risk_score : undefined,
+      description: scanResult.description,
+      organization: scanResult.organization,
+      source: scanResult.source,
+      policyViolation: Boolean(scanResult.policy_violation) || scanResult.verdict === 'policy' || scanResult.status === 'policy',
+      policySourceUrl: scanResult.policy_source_url,
+      policySourceTitle: scanResult.policy_source_title || scanResult.policy_source_name,
+    };
+
+    const merged = mergeSourceMeta(baseSourceMeta, scanMeta);
+    const updatedProfile = buildDetailProfile(normalizedType, decodedValue || 'Không xác định', merged);
+    setData(updatedProfile.detail);
+    setInsight(updatedProfile.insight);
+    setPolicyMetaSnapshot(merged.policyViolation ? merged : null);
+  }, [scanResult, normalizedType, decodedValue, baseSourceMeta]);
 
   useEffect(() => {
     let cancelled = false;
@@ -948,79 +1197,6 @@ export default function DetailPage() {
     };
   }, [detailFeedbackKey]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const runAiScan = async () => {
-      if (normalizedType !== 'website' || !decodedValue) return;
-      setAiScan({ loading: true });
-      const statusParam = searchParams.get('status') ?? undefined;
-      const sourceModeParam = searchParams.get('sourceMode') ?? undefined;
-      const sourceStatus = normalizeSourceStatus(statusParam || sourceModeParam);
-
-      let cleanUrl = decodedValue.trim();
-      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl)) {
-        cleanUrl = `https://${cleanUrl}`;
-      }
-      try {
-        const response = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: cleanUrl, sourceStatus }),
-        });
-        if (!response.ok) throw new Error('AI scan failed');
-        const data = await response.json();
-        const riskScore = data.risk_score || data.riskScore || data.score || 0;
-        const verdictRaw = typeof data.verdict === 'string' ? data.verdict.trim().toLowerCase() : '';
-        const verdict: 'safe' | 'scam' | 'unknown' = verdictRaw === 'scam' || verdictRaw === 'safe' || verdictRaw === 'unknown'
-          ? verdictRaw
-          : (riskScore > 50 ? 'scam' : 'safe');
-        const trustRaw = typeof data.trust_score === 'number' ? data.trust_score : data.trustScore;
-        const trustScore = typeof trustRaw === 'number'
-          ? Math.max(0, Math.min(100, Math.round(trustRaw)))
-          : (verdict === 'unknown' ? 50 : Math.max(0, 100 - Math.round(riskScore)));
-        if (!cancelled) {
-          setAiScan({
-            loading: false,
-            verdict,
-            risk: Math.round(riskScore),
-            trust: trustScore,
-            description: data.description || data.summary || '',
-          });
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          // Fallback verdict from source status when AI service is unavailable.
-          if (sourceStatus === 'trusted') {
-            setAiScan({
-              loading: false,
-              verdict: 'safe',
-              risk: 12,
-              trust: 92,
-              description: 'Nguồn dữ liệu xác thực uy tín. AI tạm thời không phản hồi nên dùng hồ sơ nguồn để suy luận.',
-            });
-            return;
-          }
-          if (sourceStatus === 'suspected' || sourceStatus === 'confirmed') {
-            setAiScan({
-              loading: false,
-              verdict: 'scam',
-              risk: sourceStatus === 'confirmed' ? 88 : 64,
-              trust: sourceStatus === 'confirmed' ? 12 : 36,
-              description: 'Nguồn dữ liệu đã gắn cờ rủi ro. AI tạm thời không phản hồi nên dùng hồ sơ nguồn để suy luận.',
-            });
-            return;
-          }
-          setAiScan({ loading: false, error: err?.message || 'AI scan failed' });
-        }
-      }
-    };
-
-    runAiScan();
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizedType, decodedValue, searchParamsKey]);
-
   const applyFeedbackPayload = (payload: DetailFeedbackResponse) => {
     setComments((payload.comments || []).map(toCommentView));
     setRatingStats(payload.ratingStats || DEFAULT_FEEDBACK_STATS);
@@ -1043,6 +1219,14 @@ export default function DetailPage() {
   const handleComment = async () => {
     const text = comment.trim();
     if (!text) return;
+    
+    // Client-side check for authentication
+    if (!isAuthenticated) {
+      showToast('warning', 'Vui lòng đăng nhập để bình luận.');
+      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+      return;
+    }
+    
     if (text.length < 3) {
       showToast('warning', 'Bình luận cần tối thiểu 3 ký tự.');
       return;
@@ -1079,6 +1263,12 @@ export default function DetailPage() {
         applyFeedbackPayload(ratePayload);
 
         if (!rateResponse.ok || !ratePayload.success) {
+          // Check if requires authentication
+          if (ratePayload.requireAuth) {
+            showToast('warning', ratePayload.error || 'Vui lòng đăng nhập để đánh giá.');
+            router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+            return;
+          }
           throw new Error(ratePayload.error || 'Không thể gửi đánh giá sao.');
         }
       }
@@ -1097,6 +1287,12 @@ export default function DetailPage() {
       applyFeedbackPayload(payload);
 
       if (!response.ok || !payload.success) {
+        // Check if requires authentication
+        if (payload.requireAuth) {
+          showToast('warning', payload.error || 'Vui lòng đăng nhập để bình luận.');
+          router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+          return;
+        }
         throw new Error(payload.error || 'Không thể đăng bình luận.');
       }
 
@@ -1183,13 +1379,22 @@ export default function DetailPage() {
     }
   };
 
-  if (isLoading) {
+  // Prevent hydration mismatch - show loading on server and initial state on client before mount
+  if (!mounted) {
     return (
       <div className="min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 pt-20 pb-20 md:pb-8">
-          <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
-            <DetailSkeleton />
+          <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+            <div className="animate-pulse">
+              <div className="h-8 bg-slate-200 rounded w-1/3 mb-4"></div>
+              <div className="h-4 bg-slate-200 rounded w-1/2 mb-8"></div>
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 rounded"></div>
+                <div className="h-4 bg-slate-200 rounded"></div>
+                <div className="h-4 bg-slate-200 rounded w-5/6"></div>
+              </div>
+            </div>
           </div>
         </main>
         <Footer />
@@ -1224,595 +1429,170 @@ export default function DetailPage() {
 
   const reportHref = `/report?type=${normalizedType}&target=${encodeURIComponent(data.value)}`;
   const suggestedSearchQuery = normalizedType === 'website' ? normalizeDomainKey(data.value) || data.value : data.value;
-  const isHighRisk = data.risk === 'scam' || data.risk === 'suspicious' || data.risk === 'policy';
-  const nextSteps = isHighRisk
-    ? [
-        'Dừng tương tác ngay và không cung cấp OTP/mật khẩu.',
-        'Bảo vệ tài khoản: đổi mật khẩu, bật 2FA, khóa thẻ nếu cần.',
-        'Báo cáo và đính kèm bằng chứng để cộng đồng cảnh giác.',
-      ]
-    : data.risk === 'unknown'
-      ? [
-          'Xác minh đường dẫn/tên miền từng ký tự, kiểm tra chứng chỉ bảo mật.',
-          'Tìm báo cáo liên quan và đối chiếu kênh liên hệ chính thức.',
-          'Nếu có dấu hiệu bất thường, hãy báo cáo để hệ thống cập nhật.',
-        ]
-      : [
-          'Ưu tiên giao dịch qua kênh chính thức đã xác thực.',
-          'Lưu thông tin và theo dõi cảnh báo mới để cập nhật rủi ro.',
-          'Chia sẻ trang này để người khác kiểm tra nhanh khi cần.',
-        ];
-  const guidanceTitle = data.risk === 'safe' ? 'Gợi ý sử dụng an toàn' : data.risk === 'unknown' ? 'Cách kiểm tra thêm' : 'Khuyến nghị xử lý ngay';
-  const guidanceIcon =
-    data.risk === 'safe' ? (
-      <ShieldCheck className="w-5 h-5 text-success" />
-    ) : (
-      <AlertTriangle className={cn('w-5 h-5', isHighRisk ? (data.risk === 'scam' ? 'text-danger' : 'text-warning') : 'text-text-secondary')} />
-    );
-  const guidanceNumberTone =
-    data.risk === 'scam'
-      ? 'bg-danger/15 text-danger'
-      : data.risk === 'suspicious' || data.risk === 'policy' || data.risk === 'unknown'
-        ? 'bg-warning/15 text-warning'
-        : 'bg-success/15 text-success';
-  const guidanceCardTone = isHighRisk ? 'to-danger/5' : data.risk === 'unknown' ? 'to-warning/5' : 'to-success/5';
+  const canonicalValue = normalizedType === 'website' ? normalizeDomainKey(data.value) || data.value : data.value;
+  const typeIconClass =
+    normalizedType === 'phone'
+      ? 'fi fi-sr-phone-call'
+      : normalizedType === 'bank'
+        ? 'fi fi-sr-landmark'
+        : normalizedType === 'crypto'
+          ? 'fi fi-sr-bitcoin'
+          : 'fi fi-sr-globe';
+  const hasConfirmedStatus = insight.status === 'confirmed' || Boolean(policyMetaSnapshot?.policyViolation);
+  const hasSuspectedStatus = insight.status === 'suspected';
+  const isConfirmedRisk = hasConfirmedStatus || scanResult?.verdict === 'scam';
+  const isSuspiciousRisk =
+    hasSuspectedStatus ||
+    (!isConfirmedRisk && (data.risk === 'suspicious' || data.risk === 'scam')) ||
+    scanResult?.verdict === 'unknown';
+  const riskTagText =
+    isConfirmedRisk
+      ? 'LỪA ĐẢO'
+      : data.risk === 'policy'
+        ? 'CẢNH BÁO'
+        : isSuspiciousRisk
+          ? 'NGHI NGỜ'
+          : data.risk === 'unknown'
+            ? 'CẦN KIỂM TRA'
+            : null;
+  const derivedRiskScore = Math.max(0, Math.min(100, Math.round(scanResult?.risk_score ?? data.riskScore)));
+  const aiTrustScore = Math.max(
+    0,
+    Math.min(100, Math.round(scanResult?.trust_score ?? (100 - derivedRiskScore)))
+  );
+  const referenceNowMs = nowTick > 0 ? nowTick : normalizeEpochMs(insight.updatedAt) ?? null;
+  const domainRegisteredMs = normalizeEpochMs(data.domainRegisteredAt);
+  const domainAgeDays =
+    domainRegisteredMs && referenceNowMs
+      ? Math.max(0, Math.floor((referenceNowMs - domainRegisteredMs) / (24 * 60 * 60 * 1000)))
+      : null;
+  const expiryDaysLeft =
+    typeof expiryInfo?.daysLeft === 'number'
+      ? expiryInfo.daysLeft
+      : (() => {
+          const expiresAtMs = normalizeEpochMs(expiryInfo?.expiresAt ?? null);
+          if (!expiresAtMs || !referenceNowMs) return null;
+          return Math.ceil((expiresAtMs - referenceNowMs) / (24 * 60 * 60 * 1000));
+        })();
+  const isExpired = expiryInfo?.isExpired === true || (typeof expiryDaysLeft === 'number' && expiryDaysLeft < 0);
+  const objectiveScore = (() => {
+    let score = 100 - derivedRiskScore;
+
+    if (policyMetaSnapshot?.policyViolation || data.risk === 'policy') score -= 20;
+    const reportPenalty = Math.min(20, Math.floor((data.reports || 0) / 2));
+    score -= reportPenalty;
+
+    if (domainAgeDays !== null) {
+      if (domainAgeDays < 30) score -= 15;
+      else if (domainAgeDays < 180) score -= 8;
+      else if (domainAgeDays < 365) score -= 4;
+      else if (domainAgeDays > 365 * 3) score += 4;
+    }
+
+    if (isExpired) score -= 20;
+    else if (expiryDaysLeft !== null) {
+      if (expiryDaysLeft < 30) score -= 10;
+      else if (expiryDaysLeft < 90) score -= 5;
+    }
+
+    return Math.max(0, Math.min(100, Math.round(score)));
+  })();
+  const objectiveTone =
+    objectiveScore >= 70 ? 'safe' : objectiveScore >= 45 ? 'warn' : 'danger';
+  const objectiveLabel =
+    objectiveTone === 'safe' ? 'Rủi ro thấp' : objectiveTone === 'warn' ? 'Cần thận trọng' : 'Rủi ro cao';
+  const objectiveFactors = [
+    {
+      label: 'Tuổi domain',
+      value: domainAgeDays !== null ? `${formatNumber(domainAgeDays)} ngày` : 'Chưa rõ',
+      icon: 'fi fi-sr-calendar',
+    },
+    {
+      label: 'Hạn sử dụng',
+      value: isExpired
+        ? 'Đã hết hạn'
+        : expiryDaysLeft !== null
+          ? `Còn ${formatNumber(Math.max(0, expiryDaysLeft))} ngày`
+          : 'Chưa rõ',
+      icon: 'fi fi-sr-hourglass',
+    },
+    {
+      label: 'Báo cáo',
+      value: `${formatNumber(data.reports || 0)} lượt`,
+      icon: 'fi fi-sr-flag',
+    },
+    {
+      label: 'Pháp lý',
+      value: policyMetaSnapshot?.policyViolation ? 'Có cảnh báo' : 'Không có',
+      icon: 'fi fi-sr-gavel',
+    },
+    {
+      label: 'Nguồn quét',
+      value: scanStatus === 'success'
+        ? (() => {
+            const firstChunk = (scanResult?.source || 'AI').split(/[:;]/)[0];
+            return (firstChunk || 'AI').replace(/^local_db:?/i, 'baocaoluadao.com');
+          })()
+        : 'Chưa quét',
+      icon: 'fi fi-sr-radar',
+      valueClass: 'objective-source-value',
+    },
+  ];
+  const objectiveSources = [
+    scanStatus === 'success' ? 'AI Scan' : null,
+    policyMetaSnapshot?.policyViolation ? 'Policy List' : null,
+    domainRegisteredMs ? 'RDAP' : null,
+    expiryInfo?.source ? expiryInfo.source : null,
+    data.reports ? 'Cộng đồng' : null,
+  ].filter(Boolean) as string[];
+  const similarityScore = (() => {
+    const checks = scanResult?.securityChecks;
+    if (!checks || checks.length === 0) {
+      return Math.min(99, Math.max(5, Math.round(derivedRiskScore * 0.6)));
+    }
+    const weight = checks.reduce((sum, item) => {
+      if (item.status === 'fail') return sum + 2;
+      if (item.status === 'warning') return sum + 1;
+      return sum;
+    }, 0);
+    const score = Math.round((weight / (checks.length * 2)) * 100);
+    return Math.min(99, Math.max(5, score));
+  })();
+  const amountText = (data.amount || '').trim();
+  const amountParts = amountText ? amountText.split(' ') : [];
+  const amountCurrency = amountParts.length > 1 ? (amountParts.pop() as string) : 'VND';
+  const amountNumber = amountParts.join(' ') || '';
   const policySourceHref = policyMetaSnapshot?.policySourceUrl?.trim() || undefined;
   const policySourceTitle = policyMetaSnapshot?.policySourceTitle?.trim() || 'Nguồn công bố chính thức';
-  const inlineRiskTag = (() => {
-    if (insight.status === 'trusted') {
-      return null;
-    }
-    if (data.risk === 'policy') {
-      return { label: 'Cảnh báo pháp lý', tone: 'border-warning/40 bg-warning/10 text-warning' };
-    }
-    if (data.risk === 'scam') {
-      return { label: 'Nguy hiểm', tone: 'border-danger/40 bg-danger/10 text-danger' };
-    }
-    if (data.risk === 'suspicious' || data.risk === 'unknown') {
-      return { label: 'Cần kiểm tra', tone: 'border-warning/40 bg-warning/10 text-warning' };
-    }
-    return null;
+  const scanFindings = (() => {
+    const checks = scanResult?.securityChecks;
+    if (!checks || checks.length === 0) return [];
+    const rank = (status: ScanSecurityCheck['status']) => (status === 'fail' ? 0 : status === 'warning' ? 1 : 2);
+    return [...checks].sort((a, b) => rank(a.status) - rank(b.status));
   })();
+  const primaryFinding = scanFindings[0]?.details;
+  const secondaryFinding = scanFindings[1]?.details;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-
-      <main className="flex-1 pt-20 pb-20 md:pb-8">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <Card className="mb-10 border-primary/20 overflow-visible rounded-[32px] shadow-[0_30px_60px_rgba(15,23,42,0.08)]">
-              <div className="relative overflow-visible rounded-[28px] border border-bg-border/60 bg-gradient-to-r from-primary/10 via-bg-card to-bg-card p-5 md:p-6 pb-10 md:pb-12 space-y-6">
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex items-start gap-3 md:gap-4 min-w-0 flex-1">
-                      <div
-                        className={cn(
-                          'w-14 h-14 rounded-xl flex items-center justify-center shrink-0',
-                          data.risk === 'scam'
-                            ? 'bg-danger/10 text-danger'
-                            : data.risk === 'suspicious'
-                              ? 'bg-warning/10 text-warning'
-                              : data.risk === 'policy'
-                                ? 'bg-warning/10 text-warning'
-                              : data.risk === 'unknown'
-                                ? 'bg-bg-cardHover text-text-secondary'
-                              : 'bg-success/10 text-success'
-                        )}
-                      >
-                        <img
-                          src={insight.sourceIcon || buildDomainFavicon(data.value)}
-                          alt={data.value}
-                          className="w-9 h-9 rounded-lg object-cover"
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            if (!target.dataset.fallbackDomain) {
-                              target.dataset.fallbackDomain = '1';
-                              target.src = buildDomainFavicon(data.value);
-                              return;
-                            }
-                            if (!target.dataset.fallbackDefault) {
-                              target.dataset.fallbackDefault = '1';
-                              target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
-                              return;
-                            }
-                            target.style.display = 'none';
-                          }}
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                              <h1 className="text-lg md:text-3xl font-bold text-text-main leading-tight break-words flex items-center gap-2 flex-wrap">
-                                <span className="break-words">{data.value}</span>
-                                {insight.isTrustedEntity && (
-                                  <span className="inline-flex items-center justify-center -ml-1 align-middle self-center">
-                                    <i className="fi fi-ss-badge-check text-primary text-[1.25em] leading-none block relative top-[1px]" />
-                                  </span>
-                                )}
-                                {inlineRiskTag && (
-                                  <span className="inline-flex items-center justify-center text-[0.75rem] font-black tracking-[0.28em] rounded-[12px] px-3 py-1 border-2 border-danger/80 text-danger bg-white/95 shadow-[0_12px_24px_rgba(15,23,42,0.12)]">
-                                    {inlineRiskTag.label}
-                                  </span>
-                                )}
-                              </h1>
-                              <p className="text-text-secondary mt-1">{insight.typeLabel}</p>
-                            </div>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="px-4"
-                              leftIcon={copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                              onClick={handleCopy}
-                            >
-                              {copied ? 'Đã sao chép' : 'Sao chép'}
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {(() => {
-                              const variant =
-                                data.risk === 'scam'
-                                  ? 'danger'
-                                  : data.risk === 'suspicious' || data.risk === 'policy'
-                                    ? 'warning'
-                                    : data.risk === 'unknown'
-                                      ? 'default'
-                                      : 'success';
-                              return (
-                                <Chip variant={variant} size="md" leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}>
-                                  Độ tin cậy nguồn: {insight.confidence}%
-                                </Chip>
-                              );
-                            })()}
-                            <Chip variant="default" size="md" leftIcon={<Clock className="w-3.5 h-3.5 text-primary" />}>
-                              Cập nhật: {insight.updatedAt}
-                            </Chip>
-                            {viewCount !== null && (
-                              <Chip variant="default" size="md" leftIcon={<Eye className="w-3.5 h-3.5 text-primary" />}>
-                                {formatNumber(viewCount)} lượt xem
-                              </Chip>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {insight.status !== 'trusted' && (
-                      <div className="shrink-0 self-start md:self-auto">
-                        <RiskBadge
-                          risk={data.risk}
-                          label={insight.statusLabel || t(`risk.${data.risk}`)}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-                {data.risk === 'policy' && policyMetaSnapshot && (
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-warning/40 bg-gradient-to-r from-warning/10 via-bg-card to-bg-card px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/15 text-warning border border-warning/30">
-                          <FileWarning className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="font-bold text-text-main text-sm">Cảnh báo pháp lý</p>
-                          <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                            {policyMetaSnapshot.policySummary ||
-                              'Website nằm trong danh sách cảnh báo chính thức; có dấu hiệu vi phạm quảng cáo/đánh bạc không phép.'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-bg-border bg-bg-cardHover/60 px-4 py-3 flex flex-col gap-2">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                        <Globe className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="font-bold text-text-main text-sm">{policySourceTitle}</p>
-                        <p className="mt-1 text-xs text-text-muted line-clamp-2">
-                          {policySourceHref || 'Không có đường dẫn nguồn kèm theo.'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-bg-cardHover rounded-xl p-3 text-center">
-                    {data.risk === 'safe' ? (
-                      <ShieldCheck className="w-4 h-4 text-success mx-auto mb-1.5" />
-                    ) : data.risk === 'unknown' ? (
-                      <AlertTriangle className="w-4 h-4 text-text-secondary mx-auto mb-1.5" />
-                    ) : (
-                      <AlertTriangle className={cn('w-4 h-4 mx-auto mb-1.5', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
-                    )}
-                    <p className="text-xl font-bold text-text-main font-mono">{formatNumber(data.reports)}</p>
-                    <p className="text-xs text-text-muted">
-                      {data.risk === 'safe' ? 'Phản hồi cộng đồng' : data.risk === 'unknown' ? 'Lượt ghi nhận' : t('risk.reports')}
-                    </p>
-                  </div>
-                  <div className="bg-bg-cardHover rounded-xl p-3 text-center">
-                    <Clock className="w-4 h-4 text-primary mx-auto mb-1.5" />
-                    <p className="text-sm text-text-main">{data.firstSeen}</p>
-                    <p className="text-xs text-text-muted">{t('risk.first_seen')}</p>
-                  </div>
-                  <div className="bg-bg-cardHover rounded-xl p-3 text-center">
-                    <Calendar className="w-4 h-4 text-primary mx-auto mb-1.5" />
-                    <p className="text-sm text-text-main">{data.lastReported}</p>
-                    <p className="text-xs text-text-muted">{t('risk.last_reported')}</p>
-                  </div>
-                  <div className="bg-bg-cardHover rounded-xl p-3 text-center">
-                    <Shield className="w-4 h-4 text-warning mx-auto mb-1.5" />
-                    <p className="text-sm text-text-main">{insight.confidence}%</p>
-                    <p className="text-xs text-text-muted">Mức tin cậy</p>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          <div className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="space-y-6"
-            >
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-bg-cardHover/25">
-                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
-                  <Copy className="w-5 h-5 text-primary" />
-                  {t('detail.description')}
-                </h2>
-                <p className="text-text-secondary leading-relaxed">{data.description}</p>
-                {data.amount && (
-                  <div className="mt-4 pt-4 border-t border-bg-border">
-                    <span className="text-text-muted">{t('detail.estimated_loss')}: </span>
-                    <span className="text-danger font-mono font-bold">{data.amount}</span>
-                  </div>
-                )}
-              </Card>
-
-              <Card className={cn('border border-bg-border/80 bg-gradient-to-br from-bg-card', guidanceCardTone)}>
-                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
-                  {guidanceIcon}
-                  {guidanceTitle}
-                </h2>
-                <div className="space-y-2.5">
-                  {insight.recommendations.map((item, index) => (
-                    <div key={item} className="flex items-start gap-2.5 text-sm text-text-secondary rounded-lg bg-bg-cardHover/60 border border-bg-border/70 px-3 py-2">
-                      <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold shrink-0 mt-0.5', guidanceNumberTone)}>
-                        {index + 1}
-                      </span>
-                      <span className="leading-relaxed">{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-info/5">
-                <h2 className="text-xl font-bold text-text-main mb-3 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-primary" />
-                  {t('detail.timeline')}
-                </h2>
-                <div className="space-y-3">
-                  {insight.timeline.map((step) => (
-                    <div key={step.label} className="flex items-center justify-between rounded-lg border border-bg-border bg-bg-cardHover/70 px-3 py-2.5 shadow-sm">
-                      <span className="text-sm text-text-secondary">{step.label}</span>
-                      <span
-                        className={cn(
-                          'text-sm font-medium',
-                          step.tone === 'danger'
-                            ? 'text-danger'
-                            : step.tone === 'warning'
-                              ? 'text-warning'
-                              : 'text-text-main'
-                        )}
-                      >
-                        {step.value}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="space-y-6"
-            >
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
-                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-primary" />
-                  Bước tiếp theo
-                </h3>
-                <div className="space-y-2.5">
-                  {nextSteps.map((step, index) => (
-                    <div key={step} className="flex items-start gap-2.5 rounded-xl border border-bg-border bg-bg-cardHover/70 px-3 py-2 text-sm text-text-secondary">
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold shrink-0 mt-0.5">
-                        {index + 1}
-                      </span>
-                      <span className="leading-relaxed">{step}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    variant={isHighRisk ? 'danger' : 'primary'}
-                    size="sm"
-                    leftIcon={<Flag className="w-4 h-4" />}
-                    onClick={() => router.push(reportHref)}
-                  >
-                    Báo cáo ngay
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftIcon={<Globe className="w-4 h-4" />}
-                    onClick={() => router.push(`/search?q=${encodeURIComponent(suggestedSearchQuery)}`)}
-                  >
-                    Tra cứu liên quan
-                  </Button>
-                  <Button variant="secondary" size="sm" leftIcon={<Share2 className="w-4 h-4" />} onClick={handleShare}>
-                    Chia sẻ
-                  </Button>
-                </div>
-                <p className="mt-3 text-xs text-text-muted">
-                  Mẹo: chỉ cần gửi link/bằng chứng; hệ thống sẽ tổng hợp và cập nhật mức rủi ro theo thời gian.
-                </p>
-              </Card>
-
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
-                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
-                  {data.risk === 'safe' ? (
-                    <ShieldCheck className="w-5 h-5 text-success" />
-                  ) : data.risk === 'unknown' ? (
-                    <AlertTriangle className="w-5 h-5 text-text-secondary" />
-                  ) : (
-                    <AlertTriangle className={cn('w-5 h-5', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
-                  )}
-                  {data.risk === 'safe' ? 'Tín hiệu xác thực' : data.risk === 'unknown' ? 'Cần kiểm tra' : 'Dấu hiệu rủi ro'}
-                </h3>
-                <div className="space-y-2.5">
-                  {insight.riskSignals.map((signal) => (
-                    <div key={signal} className="flex items-start gap-2 text-sm text-text-secondary">
-                      {data.risk === 'safe' ? (
-                        <ShieldCheck className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                      ) : data.risk === 'unknown' ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
-                      ) : (
-                        <AlertTriangle className={cn('w-4 h-4 mt-0.5 shrink-0', data.risk === 'scam' ? 'text-danger' : 'text-warning')} />
-                      )}
-                      <span>{signal}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-warning/5">
-                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
-                  <Flag className="w-5 h-5 text-warning" />
-                  Kênh bị nhắm tới
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {insight.channels.map((channel) => (
-                    <span
-                      key={channel}
-                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-bg-border bg-bg-cardHover text-text-secondary shadow-sm"
-                    >
-                      {channel}
-                    </span>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-bg-cardHover/30">
-                <h3 className="text-lg font-bold text-text-main mb-3 flex items-center gap-2">
-                  <Share2 className="w-5 h-5 text-primary" />
-                  {t('detail.related')}
-                </h3>
-                <div className="space-y-2">
-                  {insight.related.map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => router.push(`/search?q=${encodeURIComponent(item)}`)}
-                      className="w-full text-left rounded-lg border border-bg-border bg-bg-cardHover/70 px-3 py-2 text-sm text-text-secondary hover:text-text-main hover:border-primary/40 transition-colors flex items-center justify-between gap-2"
-                    >
-                      <span className="truncate">{item}</span>
-                      <ExternalLink className="w-4 h-4 shrink-0 text-text-muted" />
-                    </button>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="border border-bg-border/80 bg-gradient-to-br from-bg-card to-primary/5">
-                <h3 className="text-lg font-bold text-text-main mb-2 flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-primary" />
-                  Nguồn dữ liệu
-                </h3>
-                <p className="text-sm text-text-secondary">{insight.source}</p>
-              </Card>
-            </motion.div>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-            className="mt-6 space-y-5"
-          >
-            <Card className="overflow-hidden p-0">
-              <div className="border-b border-bg-border bg-gradient-to-r from-primary/10 via-info/5 to-success/5 p-4 md:p-5">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <h2 className="text-lg md:text-xl font-bold text-text-main">
-                      {t('detail.comments')} ({comments.length})
-                    </h2>
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-bg-border bg-bg-card/85 px-3 py-1.5">
-                      <span className="text-sm font-semibold text-text-main">{ratingStats.average.toFixed(1)}</span>
-                      <div className="flex items-center gap-0.5">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={() => handleRate(star)}
-                            disabled={isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null}
-                            className={cn(
-                              'rounded-sm transition-opacity',
-                              (isFeedbackLoading || isRatingSubmitting || isCommentSubmitting || myRating !== null) && 'cursor-not-allowed opacity-80'
-                            )}
-                            aria-label={`Đánh giá ${star} sao`}
-                          >
-                            <Star
-                              className={cn(
-                                'h-3.5 w-3.5',
-                                (myRating ?? pendingRating ?? ratingStats.average) >= star ? 'text-warning fill-current' : 'text-text-muted/40'
-                              )}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                      <span className="text-xs text-text-muted">{formatNumber(ratingStats.total)} lượt đánh giá</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCommentSort('latest')}
-                      className={cn(
-                        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                        commentSort === 'latest'
-                          ? 'border-primary/50 bg-primary/15 text-primary'
-                          : 'border-bg-border bg-bg-card/80 text-text-muted hover:text-text-main'
-                      )}
-                    >
-                      Mới nhất
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCommentSort('helpful')}
-                      className={cn(
-                        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                        commentSort === 'helpful'
-                          ? 'border-primary/50 bg-primary/15 text-primary'
-                          : 'border-bg-border bg-bg-card/80 text-text-muted hover:text-text-main'
-                      )}
-                    >
-                      Hữu ích nhất
-                    </button>
-                    {isFeedbackLoading && (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Đang tải...
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 md:p-5">
-                <div className="relative">
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder={t('detail.comment_placeholder')}
-                    rows={3}
-                    maxLength={600}
-                    className="w-full rounded-2xl border border-bg-border bg-bg-cardHover pl-3 pr-14 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-primary focus:outline-none resize-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleComment}
-                    disabled={!canSubmitComment}
-                    className={cn(
-                      'absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
-                      canSubmitComment
-                        ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
-                        : 'border-bg-border bg-bg-card text-text-muted cursor-not-allowed'
-                    )}
-                    aria-label="Gui binh luan"
-                  >
-                    {isCommentSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-            </Card>
-
-            <div className="space-y-2.5">
-              {!isFeedbackLoading && comments.length === 0 && (
-                <Card className="py-8 text-center">
-                  <MessageCircle className="mx-auto h-8 w-8 text-text-muted/70" />
-                  <p className="mt-2 text-text-secondary">Chưa có bình luận nào cho cảnh báo này.</p>
-                  <p className="mt-1 text-xs text-text-muted">Hãy là người đầu tiên chia sẻ thông tin xác minh.</p>
-                </Card>
-              )}
-              {displayedComments.map((c, i) => (
-                <motion.div key={c.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + i * 0.04 }}>
-                  <Card hover className="p-4 md:p-5">
-                    <div className="flex gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-sm font-semibold text-white">
-                        {c.avatar}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-text-main">{c.user}</span>
-                          {(() => {
-                            const ratingValue = c.rating ?? 0;
-                            if (ratingValue <= 0) return null;
-                            return (
-                              <span className="inline-flex items-center gap-0.5 rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                  <Star key={`${c.id}-${star}`} className={cn('h-3 w-3', ratingValue >= star ? 'text-warning fill-current' : 'text-text-muted/40')} />
-                                ))}
-                              </span>
-                            );
-                          })()}
-                          <span className="text-xs text-text-muted">{formatRelativeTime(c.createdAt, nowTick)}</span>
-                        </div>
-                        <p className="break-words text-sm text-text-secondary">{sanitizeHTML(c.text)}</p>
-                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleHelpful(c.id)}
-                            disabled={!c.canMarkHelpful || isFeedbackLoading || helpfulSubmittingId === c.id}
-                            className={cn(
-                              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                              c.helpfulMarked
-                                ? 'border-success/40 bg-success/10 text-success'
-                                : 'border-bg-border bg-bg-cardHover text-text-muted hover:border-primary/40 hover:text-text-main',
-                              (!c.canMarkHelpful || isFeedbackLoading || helpfulSubmittingId === c.id) && 'cursor-not-allowed opacity-65'
-                            )}
-                          >
-                            {helpfulSubmittingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
-                            {formatNumber(c.helpful)} {t('detail.helpful')}
-                          </button>
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
-                              c.verified ? 'border-success/40 bg-success/10 text-success' : 'border-bg-border bg-bg-cardHover text-text-muted'
-                            )}
-                          >
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            {c.verified ? 'Đã xác minh' : 'Chưa xác minh'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </main>
-
-      <Footer />
-      <MobileNav />
-    </div>
+    <DetailContentNew
+      data={data}
+      insight={insight}
+      normalizedType={normalizedType}
+      viewCount={viewCount}
+      comments={displayedComments}
+      ratingStats={ratingStats}
+      myRating={myRating}
+      accountAge24h={accountAge24h}
+      isAuthenticated={isAuthenticated}
+      commentSort={commentSort}
+      onCommentSortChange={setCommentSort}
+      onCommentSubmit={handleComment}
+      onRate={handleRate}
+      onHelpful={handleHelpful}
+      onCopy={handleCopy}
+      copied={copied}
+      isCommentSubmitting={isCommentSubmitting}
+      isRatingSubmitting={isRatingSubmitting}
+    />
   );
 }

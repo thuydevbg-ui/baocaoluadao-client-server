@@ -1,391 +1,617 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import Head from 'next/head';
+import Script from 'next/script';
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, CheckCircle, Clock, Eye, Flag, MessageSquare, Shield, Star, Activity, ShieldAlert, BellRing, EyeOff } from 'lucide-react';
-import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { cn } from '@/lib/utils';
-import { useI18n } from '@/contexts/I18nContext';
-import { mockRecentAlerts } from '@/lib/mockData';
+import { useSession } from 'next-auth/react';
 
-interface ScamData {
+// Theme script
+const themeScript = `
+  (function() {
+    try {
+      var theme = localStorage.getItem('theme');
+      if (!theme) {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.classList.add(theme);
+    } catch (e) {}
+  })();
+`;
+
+interface ScamItem {
   id: number;
-  name: string;
   domain: string;
   type: string;
-  icon?: string;
-  reports?: number;
-  views?: number;
-  comments?: number;
-  ratings?: number;
-  status: string;
   date: string;
-  description: string;
-  organization: string;
+  status: string;
+  isScam: boolean;
 }
 
-interface HomeClientProps {
-  trustedSection: React.ReactNode;
-  initialScams?: ScamData[];
-  initialStats?: {
-    total?: number;
-    high?: number;
-    watch?: number;
-    views?: number;
+interface TrustItem {
+  id: number;
+  domain: string;
+  name: string;
+  owner: string;
+  org: string;
+  status: string;
+}
+
+interface StatsData {
+  website: number;
+  organization: number;
+  phone: number;
+  email: number;
+  total: number;
+  categories: Array<{ name: string; slug: string; count: number }>;
+}
+
+interface HomeData {
+  stats: StatsData;
+  recentScams: ScamItem[];
+  trustedOrgs: TrustItem[];
+}
+
+export default function HomeClient() {
+  const [data, setData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [mounted, setMounted] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(100);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const { data: session } = useSession();
+  const isLoggedIn = !!session?.user;
+
+  useEffect(() => {
+    setMounted(true);
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme as 'dark' | 'light');
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      setTheme('light');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    document.documentElement.classList.remove('dark', 'light');
+    document.documentElement.classList.add(theme);
+    localStorage.setItem('theme', theme);
+  }, [theme, mounted]);
+
+  // Fetch real data from APIs
+  const fetchData = useCallback(async (page: number = 1) => {
+    setLoadingPage(true);
+    try {
+      // Fetch stats
+      const statsRes = await fetch('/api/stats');
+      const statsJson = await statsRes.json();
+      
+      // Fetch recent scams with pagination (limit 6)
+      const scamsRes = await fetch(`/api/scams?category=website&limit=6&page=${page}`);
+      const scamsJson = await scamsRes.json();
+      
+      // Update total pages from API response
+      if (scamsJson.pagination?.totalPages) {
+        setTotalPages(scamsJson.pagination.totalPages);
+      }
+      
+      // Fetch trusted organizations (limit 4)
+      const trustedRes = await fetch('/api/scams?category=organization&includeTrusted=true&limit=4&page=1');
+      const trustedJson = await trustedRes.json();
+
+      // Process stats data
+      const stats: StatsData = {
+        website: statsJson.data?.website || statsJson.website || 0,
+        organization: statsJson.data?.organization || statsJson.organization || 0,
+        phone: statsJson.data?.phone || statsJson.phone || 0,
+        email: statsJson.data?.email || statsJson.email || 0,
+        total: statsJson.data?.total || statsJson.total || 0,
+        categories: statsJson.data?.categories || statsJson.categories || []
+      };
+
+      // Process recent scams
+      const recentScams: ScamItem[] = (scamsJson.data || []).map((item: any) => ({
+        id: item.id,
+        domain: item.domain || item.name || item.value || 'Unknown',
+        type: item.type || 'website',
+        date: item.date || '',
+        status: item.status || 'active',
+        isScam: item.is_scam === true || item.is_scam === 1
+      }));
+
+      // Process trusted organizations
+      const trustedOrgs: TrustItem[] = (trustedJson.data || []).map((item: any) => ({
+        id: item.id,
+        domain: item.domain || item.name || item.value || '',
+        name: item.name || '',
+        owner: item.owner || item.description || '',
+        org: item.source || 'Tổ chức',
+        status: item.status === 'trusted' ? 'Uy tín' : 'Chờ xác minh'
+      }));
+
+      setData({
+        stats,
+        recentScams,
+        trustedOrgs
+      });
+      setLoading(false);
+      setLoadingPage(false);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setData({
+        stats: { website: 0, organization: 0, phone: 0, email: 0, total: 0, categories: [] },
+        recentScams: [],
+        trustedOrgs: []
+      });
+      setLoading(false);
+      setLoadingPage(false);
+    }
+  }, []);
+
+  // Call fetchData when mounted or page changes
+  useEffect(() => {
+    if (!mounted) return;
+    fetchData(currentPage);
+  }, [fetchData, mounted, currentPage]);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages && !loadingPage) {
+      setCurrentPage(newPage);
+    }
   };
-}
 
-function renderRiskBadge(status?: string) {
-  const normalized = (status || '').toLowerCase();
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  if (normalized === 'confirmed' || normalized === 'blocked' || normalized === 'scam' || normalized === 'high') {
+  // Calculate stats
+  const totalWarnings = data?.stats.total || 0;
+  const totalScams = data?.stats.website || 0;
+  const totalOrgs = data?.stats.organization || 0;
+  const totalPhones = data?.stats.phone || 0;
+
+  if (!mounted || loading) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-danger/25 bg-gradient-to-r from-danger/10 via-danger/5 to-transparent px-2.5 py-1 text-[11px] font-semibold text-danger shadow-[0_1px_6px_rgba(244,63,94,0.15)]">
-        <AlertTriangle className="h-3.5 w-3.5" />
-        Nguy cơ cao
-      </span>
-    );
-  }
-
-  if (normalized === 'suspected' || normalized === 'warning' || normalized === 'investigating' || normalized === 'processing' || normalized === 'medium') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-warning/25 bg-gradient-to-r from-warning/10 via-warning/5 to-transparent px-2.5 py-1 text-[11px] font-semibold text-warning shadow-[0_1px_6px_rgba(245,158,11,0.15)]">
-        <Clock className="h-3.5 w-3.5" />
-        Cảnh giác
-      </span>
-    );
-  }
-
-  if (normalized === 'trusted' || normalized === 'safe' || normalized === 'low') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-gradient-to-r from-success/10 via-success/5 to-transparent px-2.5 py-1 text-[11px] font-semibold text-success shadow-[0_1px_6px_rgba(52,211,153,0.18)]">
-        <CheckCircle className="h-3.5 w-3.5" />
-        An toàn
-      </span>
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(145deg, #cbd5e1, #d9e2e8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ color: '#5A747B', fontSize: '18px' }}>Đang tải...</div>
+      </div>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-bg-border bg-gradient-to-r from-slate-100 to-transparent px-2.5 py-1 text-[11px] font-semibold text-text-secondary shadow-[0_1px_4px_rgba(0,0,0,0.06)] dark:from-slate-800/60">
-      <Shield className="h-3.5 w-3.5" />
-      Đang theo dõi
-    </span>
-  );
-}
+    <>
+      <Head>
+        <title>BaoCaoLuaDao · Cảnh báo lừa đảo</title>
+      </Head>
+      <Script id="theme-script" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
 
-function getWatermark(status?: string) {
-  const normalized = (status || '').toLowerCase();
-  if (['safe', 'trusted', 'low', 'clean', 'verified'].includes(normalized)) return null;
+      <div className="main-card">
+        {/* HEADER */}
+        <div className="header">
+          <div className="header-left">
+            <div className="icon-box">
+              <i className="fi fi-sr-user-police"></i>
+            </div>
+            <div className="title-group">
+              <h1>BaoCaoLuaDao</h1>
+              <p><i className="fi fi-sr-shield-check"></i> Cảnh báo lừa đảo</p>
+            </div>
+          </div>
+          <div className="date-badge">
+            <i className="fi fi-sr-calendar"></i> {dateStr}
+          </div>
+        </div>
 
-  if (['scam', 'high', 'blocked', 'confirmed'].includes(normalized)) {
-    return { label: 'Nguy hiểm', className: 'bg-danger/15 border-danger/40 text-danger rotate-[-10deg]' };
-  }
+        {/* MENU SECTION */}
+        <div className="menu-section">
+          {/* MOBILE MENU */}
+          <div className="mobile-menu">
+            <Link href="/" className="menu-item active">
+              <i className="fi fi-sr-home"></i>
+              <span>Trang chủ</span>
+            </Link>
+            <Link href="/report" className="menu-item">
+              <i className="fi fi-sr-warning"></i>
+              <span>Tố giác</span>
+            </Link>
+            <Link href="/report-lua-dao" className="menu-item">
+              <i className="fi fi-sr-shield-check"></i>
+              <span>Uy tín</span>
+            </Link>
+            <Link href="/profile" className="menu-item">
+              <i className="fi fi-sr-user"></i>
+              <span>Cá nhân</span>
+            </Link>
+          </div>
 
-  return { label: 'Nghi vấn', className: 'bg-warning/20 border-warning/40 text-warning rotate-[-10deg]' };
-}
-
-function getIconUrl(alert: any) {
-  if (alert.sourceIcon || alert.icon) return alert.sourceIcon || alert.icon;
-  const domain = alert.domain || alert.value || alert.name || '';
-  if (domain) {
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
-  }
-  return 'https://tinnhiemmang.vn/img/icon_web2.png';
-}
-
-function formatCompactNumber(value: number) {
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 0 : 1)}B`;
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-  return value.toString();
-}
-
-export default function HomeClient({ trustedSection, initialScams = [], initialStats }: HomeClientProps) {
-  const { t } = useI18n();
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [scamData, setScamData] = useState<ScamData[]>(initialScams);
-  const PAGE_SIZE = 6;
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
-
-  useEffect(() => {
-    if (initialScams.length > 0) return; // đã có dữ liệu server cung cấp, không fetch lại
-    let cancelled = false;
-    async function fetchScamData() {
-      try {
-        const normalizedType =
-          activeFilter === 'all' ? '' : activeFilter === 'web' ? 'website' : activeFilter;
-        const typeParam = normalizedType ? `&type=${encodeURIComponent(normalizedType)}` : '';
-        const response = await fetch(`/api/scams?page=${page}&limit=${PAGE_SIZE}${typeParam}`, {
-          cache: 'no-store',
-        });
-        const data = await response.json();
-        if (!cancelled && data.success && data.data) {
-          setScamData(data.data);
-          if (data.pagination) {
-            setPagination({
-              page: data.pagination.page ?? page,
-              limit: data.pagination.limit ?? PAGE_SIZE,
-              total: data.pagination.total ?? 0,
-              totalPages: data.pagination.totalPages ?? 1,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch scam data:', error);
-      }
-    }
-    fetchScamData();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialScams.length, activeFilter, page]);
-
-  const baseAlerts = scamData.length > 0 ? scamData : mockRecentAlerts;
-  const filteredAlerts =
-    activeFilter === 'all'
-      ? baseAlerts
-      : baseAlerts.filter((alert: any) => {
-          const alertType = alert.type === 'web' ? 'website' : alert.type;
-          return alertType === activeFilter;
-        });
-
-  const dedupedAlerts = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredAlerts.filter((alert: any) => {
-      const key = alert.domain || alert.value;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }, [filteredAlerts]);
-
-  const alertsSource = dedupedAlerts.length ? dedupedAlerts : mockRecentAlerts;
-  const totalPages = Math.max(1, pagination.totalPages || 1);
-  const safePage = Math.min(page, totalPages);
-  const alertsToShow = alertsSource;
-  const showEmptyAlerts = alertsSource.length === 0;
-  const dataset = scamData.length > 0 ? scamData : initialScams.length > 0 ? initialScams : mockRecentAlerts;
-  const totalCount = initialStats?.total ?? (pagination.total || dataset.length);
-  const highCount =
-    initialStats?.high ??
-    dataset.filter((a: any) =>
-      ['scam', 'high', 'blocked', 'confirmed'].includes(String(a.status || '').toLowerCase())
-    ).length;
-  const watchCount =
-    initialStats?.watch ??
-    dataset.filter((a: any) =>
-      ['suspected', 'warning', 'investigating', 'processing'].includes(String(a.status || '').toLowerCase())
-    ).length;
-  const viewTotal =
-    initialStats?.views ?? dataset.reduce((sum: number, a: any) => sum + Number(a.views || a.viewCount || 0), 0);
-  const commentTotal = dataset.reduce((sum: number, a: any) => sum + Number(a.comments || a.commentCount || 0), 0);
-
-  useEffect(() => {
-    setPage(1);
-  }, [activeFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) {
-      setPage(safePage);
-    }
-  }, [page, safePage]);
-
-  return (
-    <div className="flex min-h-screen flex-col bg-[#f6f8fb] dark:bg-slate-950">
-      <Navbar />
-
-      <main className="flex-1 bg-[#f6f8fb] pb-24 pt-20 dark:bg-slate-950 md:pb-8">
-        <div className="home-shell home-flow">
-          <section className="home-main-grid">
-            <div className="home-card card-stack-lg">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-[20px] font-semibold text-text-main">Recent Scam Reports</h2>
-                <Link href="/report-lua-dao" className="inline-flex items-center gap-1 text-sm font-semibold text-primary transition-colors hover:text-primary-hover">
-                  Xem tất cả
-                  <ArrowRight className="h-4 w-4" />
+          {/* PC MENU */}
+          <div className="pc-menu">
+            <div className="pc-menu-left">
+              <Link href="/" className="menu-item active">
+                <i className="fi fi-sr-home"></i> Trang chủ
+              </Link>
+              <Link href="/report" className="menu-item">
+                <i className="fi fi-sr-warning"></i> Tố giác
+              </Link>
+              <Link href="/report-lua-dao" className="menu-item">
+                <i className="fi fi-sr-shield-check"></i> Uy tín
+              </Link>
+              <Link href="/search" className="menu-item">
+                <i className="fi fi-sr-search"></i> Tra cứu
+              </Link>
+            </div>
+            <div className="pc-menu-right">
+              {isLoggedIn ? (
+                <Link href="/profile" className="menu-item user-item">
+                  <i className="fi fi-sr-user"></i> Tài khoản
                 </Link>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
-                {[
-                  { label: 'Cảnh báo', value: totalCount, accent: 'text-primary', bg: 'from-primary/10 via-white to-primary/5', Icon: Activity },
-                  { label: 'Nguy hiểm', value: highCount, accent: 'text-danger', bg: 'from-danger/10 via-white to-danger/5', Icon: ShieldAlert },
-                  { label: 'Theo dõi', value: watchCount, accent: 'text-warning', bg: 'from-warning/10 via-white to-warning/5', Icon: BellRing },
-                  { label: 'Lượt xem', value: viewTotal, accent: 'text-text-main', bg: 'from-slate-100 via-white to-slate-50', Icon: EyeOff },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl border border-bg-border/60 bg-gradient-to-br px-3 py-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/70"
-                    style={{ backgroundImage: undefined }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/70 text-primary dark:bg-slate-800/60">
-                        <item.Icon className="h-4 w-4" />
-                      </span>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">{item.label}</p>
-                      <p className={`text-lg font-bold ${item.accent}`}>{formatCompactNumber(item.value)}</p>
-                    </div>
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-bg-border/60">
-                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.min(100, Math.max(18, (Number(item.value) / Math.max(1, totalCount || 1)) * 100))}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/80 text-primary shadow-sm dark:bg-slate-900/70">
-                  <AlertTriangle className="h-4 w-4" />
-                </span>
-                <p className="text-[12px] leading-5 text-primary">
-                  Mẹo: Luôn kiểm tra tên miền thật kỹ trước khi giao dịch.
-                </p>
-              </div>
-
-              {showEmptyAlerts ? (
-                <div className="rounded-2xl border border-dashed border-bg-border bg-white p-6 text-center dark:bg-slate-950/40">
-                  <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-primary dark:bg-slate-800">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                  <p className="text-sm font-semibold text-text-main">Chưa có cảnh báo mới</p>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    Hãy gửi báo cáo hoặc tra cứu để góp phần bảo vệ cộng đồng.
-                  </p>
-                </div>
               ) : (
-                <div className="space-y-3">
-                  {alertsToShow.map((alert: any) => {
-                    const alertValue = alert.domain || alert.value;
-                    const alertIcon = getIconUrl(alert);
-                    const reportsCount = Number(alert.reports || 0);
-                    const viewsCount = Number(alert.views || alert.viewCount || 0);
-                    const commentsCount = Number(alert.comments || alert.commentCount || 0);
-                    const ratingValueRaw = Number(alert.rating ?? alert.ratings ?? 0);
-                    const hasRating = Number.isFinite(ratingValueRaw) && ratingValueRaw > 0;
-                    const ratingValue = hasRating ? Math.min(5, Math.max(0, ratingValueRaw)) : 0;
-                    const ratingPercent = hasRating ? Math.round((ratingValue / 5) * 100) : null;
-                    const watermark = getWatermark(alert.status);
-
-                    return (
-                      <Link key={alert.id} href={`/detail/${alert.type}/${encodeURIComponent(alertValue)}`}>
-                        <article className="relative w-full overflow-hidden rounded-2xl border border-bg-border/60 bg-white/95 p-4 shadow-[0_4px_18px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:bg-slate-950/50">
-                          <div className="grid grid-cols-[auto_1fr] items-start gap-3 md:grid-cols-[auto_1fr_auto]">
-                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-bg-border/70 bg-white">
-                              <img
-                                src={alertIcon}
-                                alt={alertValue}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  const target = e.currentTarget;
-                                  if (target.dataset.fallback) {
-                                    target.style.display = 'none';
-                                    return;
-                                  }
-                                  target.dataset.fallback = '1';
-                                  target.src = 'https://tinnhiemmang.vn/img/icon_web2.png';
-                                }}
-                              />
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="truncate font-mono text-sm font-semibold text-text-main">{alertValue}</p>
-                                <span className="flex items-center gap-1 text-amber-500 text-xs font-semibold flex-shrink-0">
-                                  <Star className="h-4 w-4 text-amber-400" />
-                                  <span className="text-text-main text-[12px]">{hasRating ? ratingValue.toFixed(1) : '—'}</span>
-                                </span>
-                              </div>
-                              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                                {String(alert.type || 'website').toUpperCase()}
-                                {alert.date ? ` • ${alert.date}` : ''}
-                              </p>
-                            </div>
-
-                            <div className="col-span-2 flex items-center gap-2 md:col-span-1 md:row-span-2 md:justify-self-end">
-                              {watermark ? (
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] shadow-sm ${watermark.className}`}
-                                  style={{ transform: 'rotate(-10deg)' }}
-                                >
-                                  {watermark.label}
-                                </span>
-                              ) : null}
-                              {renderRiskBadge(alert.status)}
-                            </div>
-                          </div>
-
-                          <div className="mt-3 flex w-full flex-wrap items-center gap-2 rounded-xl border border-bg-border/60 bg-slate-50/80 px-3 py-2 text-[11px] font-semibold text-text-muted dark:bg-slate-900/60 sm:flex-nowrap">
-                            <div className="group flex items-center gap-2 rounded-lg bg-white/80 px-2 py-1 shadow-sm dark:bg-slate-800/60">
-                              <span className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Điểm</span>
-                              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-900 md:w-28">
-                                <div
-                                  className="h-full rounded-full bg-gradient-to-r from-primary to-primary/70 transition-[width]"
-                                  style={{ width: ratingPercent !== null ? `${ratingPercent}%` : '0%' }}
-                                />
-                              </div>
-                              <span className="text-text-main">{ratingPercent !== null ? `${ratingPercent}%` : '—%'}</span>
-                            </div>
-
-                            <div
-                              className="group flex items-center gap-1 rounded-lg bg-white/80 px-2 py-1 shadow-sm dark:bg-slate-800/60 sm:ml-auto"
-                              title={`${viewsCount.toLocaleString('vi-VN')} lượt xem`}
-                            >
-                              <Eye className="h-4 w-4 text-text-muted" />
-                              <span className="text-text-main">{formatCompactNumber(viewsCount)}</span>
-                            </div>
-
-                            <div
-                              className="group flex items-center gap-1 rounded-lg bg-white/80 px-2 py-1 shadow-sm dark:bg-slate-800/60"
-                              title={`${commentsCount.toLocaleString('vi-VN')} bình luận`}
-                            >
-                              <MessageSquare className="h-4 w-4 text-text-muted" />
-                              <span className="text-text-main">{formatCompactNumber(commentsCount)}</span>
-                            </div>
-                          </div>
-                        </article>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-
-              {!showEmptyAlerts && totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    disabled={safePage <= 1}
-                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                    className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Trang trước
-                  </button>
-
-                  <span className="px-3 py-2 text-sm text-text-secondary">
-                    Trang {safePage}/{totalPages}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                    className="px-4 py-2 rounded-button bg-bg-card border border-bg-border text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Trang sau
-                  </button>
-                </div>
+                <>
+                  <Link href="/register" className="menu-item auth-item">
+                    <i className="fi fi-sr-user-add"></i> Đăng ký
+                  </Link>
+                  <Link href="/login" className="menu-item auth-item">
+                    <i className="fi fi-sr-sign-in-alt"></i> Đăng nhập
+                  </Link>
+                </>
               )}
             </div>
-
-            {trustedSection}
-          </section>
+          </div>
         </div>
-      </main>
 
-      <Footer />
-      <MobileNav />
-    </div>
+        {/* STATS - REAL DATA */}
+        <div className="stats-grid">
+          <div className="stat-item">
+            {/* NOTE: Some Flaticon icon names differ by version; shield-exclamation renders reliably here. */}
+            <i className="fi fi-sr-shield-exclamation"></i>
+            <div className="stat-label">CẢNH BÁO</div>
+            <div className="stat-value">{totalWarnings.toLocaleString('vi-VN')}</div>
+          </div>
+          <div className="stat-item">
+            <i className="fi fi-sr-globe"></i>
+            <div className="stat-label">WEBSITE</div>
+            <div className="stat-value">{totalScams.toLocaleString('vi-VN')}</div>
+          </div>
+          <div className="stat-item">
+            <i className="fi fi-sr-building"></i>
+            <div className="stat-label">TỔ CHỨC</div>
+            <div className="stat-value">{totalOrgs.toLocaleString('vi-VN')}</div>
+          </div>
+          <div className="stat-item">
+            <i className="fi fi-sr-phone"></i>
+            <div className="stat-label">ĐIỆN THOẠI</div>
+            <div className="stat-value">{totalPhones.toLocaleString('vi-VN')}</div>
+          </div>
+        </div>
+
+        {/* TIP */}
+        <div className="tip-box">
+          <div className="tip-icon">
+            <i className="fi fi-rr-megaphone"></i>
+          </div>
+          <div className="tip-text">
+            <strong>Mẹo:</strong> Luôn kiểm tra tên miền thật kỹ trước khi giao dịch.
+          </div>
+        </div>
+
+        {/* SCAM LIST - REAL DATA */}
+        <div className="section-head">
+          <h2><i className="fi fi-sr-warning"></i> Tố giác gần đây</h2>
+          <Link href="/report-lua-dao" className="view-all">Xem tất cả</Link>
+        </div>
+        <div className="scam-list">
+          {(data?.recentScams && data.recentScams.length > 0) ? (
+            data.recentScams.map((scam) => (
+              <Link key={scam.id} href={`/detail/website/${encodeURIComponent(scam.domain)}`} className="scam-row">
+                <div className="scam-content">
+                  <span className="domain-name">{scam.domain}</span>
+                  <span className={`badge ${scam.isScam ? 'badge-scam' : 'badge-safe'}`}>
+                    <i className={`fi ${scam.isScam ? 'fi-sr-exclamation-circle' : 'fi-sr-check-circle'}`}></i> 
+                    {scam.isScam ? 'LỪA ĐẢO' : 'UY TÍN'}
+                  </span>
+                  <span className="date-info">
+                    <i className="fi fi-sr-calendar"></i> {scam.date}
+                  </span>
+                </div>
+                <div className="police-icon">
+                  <i className="fi fi-sr-user-police"></i>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <div className="scam-row">
+              <div className="scam-content">
+                <span className="domain-name">Chưa có dữ liệu</span>
+                <span className="badge">Đang cập nhật...</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* TRUST LIST - REAL DATA */}
+        <div className="section-head">
+          <h2><i className="fi fi-sr-shield-check"></i> Danh sách uy tín</h2>
+          <Link href="/report" className="view-all">Xem tất cả</Link>
+        </div>
+        <div className="trust-list">
+          {(data?.trustedOrgs && data.trustedOrgs.length > 0) ? (
+            data.trustedOrgs.map((org) => (
+              <Link key={org.id} href={`/detail/organization/${encodeURIComponent(org.domain)}`} className="trust-item">
+                <div className="trust-header">
+                  <span className="trust-domain">
+                    {org.name || org.domain}
+                    <span>UY TÍN</span>
+                  </span>
+                </div>
+                <div className="trust-owner">
+                  <i className="fi fi-sr-building"></i> {org.owner || 'Tổ chức đã xác minh'}
+                </div>
+                <div className="trust-footer">
+                  <span className="trust-org">{org.org}</span>
+                  <span className="trust-status">
+                    <i className="fi fi-sr-badge-check"></i> {org.status}
+                  </span>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <div className="trust-item">
+              <div className="trust-header">
+                <span className="trust-domain">Chưa có dữ liệu</span>
+              </div>
+              <div className="trust-owner">
+                <i className="fi fi-sr-building"></i> Đang cập nhật...
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* BRAND */}
+        <div className="brand-bar">
+          <div className="brand-icon">
+            <i className="fi fi-sr-shield-exclamation"></i>
+          </div>
+          <div className="brand-name">BaoCaoLuaDao</div>
+        </div>
+
+        {/* PAGINATION */}
+        <div className="pagination">
+          <button 
+            className="page-btn" 
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage <= 1 || loadingPage}
+            aria-label="Trang trước"
+          >
+            <i className="fi fi-sr-angle-left"></i>
+          </button>
+          <div className="page-info">
+            <span>{currentPage}</span> / {totalPages}
+          </div>
+          <button 
+            className="page-btn" 
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage >= totalPages || loadingPage}
+            aria-label="Trang sau"
+          >
+            <i className="fi fi-sr-angle-right"></i>
+          </button>
+        </div>
+
+        {/* FOOTER */}
+        <div className="footer">
+          <i className="fi fi-sr-refresh"></i>
+          <span>Cập nhật liên tục 24/7</span>
+        </div>
+      </div>
+
+      {/* STYLES */}
+      <style jsx global>{`
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+          background: linear-gradient(145deg, #cbd5e1, #d9e2e8);
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 16px;
+          color: #0F343D;
+        }
+
+        :root {
+          --bg-dark: #0F343D;
+          --grad-light: #5A747B;
+          --accent: #22C55E;
+          --border-light: #E5E7EB;
+          --card-bg: #153E47;
+          --card-hover: #1F5663;
+          --text-light: #E2EFF3;
+        }
+
+        .main-card {
+          width: 100%;
+          max-width: 500px;
+          background: var(--bg-dark);
+          border-radius: 40px;
+          box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.5);
+          overflow: hidden;
+          padding: 24px 20px 28px;
+          border: 1px solid var(--grad-light);
+        }
+
+        @media (min-width: 800px) {
+          .main-card { max-width: 1100px; padding: 32px 40px; border-radius: 60px; }
+        }
+
+        /* Header */
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+          padding-bottom: 18px;
+          border-bottom: 2px solid var(--grad-light);
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .header-left { display: flex; align-items: center; gap: 14px; }
+        .icon-box {
+          width: 52px; height: 52px;
+          background: var(--accent);
+          border-radius: 18px;
+          display: flex; align-items: center; justify-content: center;
+          color: var(--bg-dark); font-size: 28px;
+          box-shadow: 0 10px 20px rgba(34,197,94,0.3);
+        }
+        .title-group h1 { font-size: 24px; font-weight: 800; color: white; line-height: 1.2; }
+        .title-group p { font-size: 12px; color: #B0C9D2; display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+        .date-badge {
+          background: #1C4A57; padding: 8px 18px; border-radius: 60px;
+          font-size: 14px; font-weight: 600; color: white;
+          display: flex; align-items: center; gap: 8px;
+          border: 1px solid var(--grad-light);
+        }
+        .date-badge i { color: var(--accent); }
+
+        /* Menu */
+        .menu-section { margin-bottom: 28px; }
+        
+        .mobile-menu {
+          display: flex;
+          background: rgba(21,62,71,0.9);
+          backdrop-filter: blur(10px);
+          border-radius: 40px;
+          padding: 6px;
+          border: 1px solid rgba(90,116,123,0.5);
+          margin-bottom: 20px;
+        }
+        .mobile-menu .menu-item {
+          flex: 1; text-align: center; padding: 10px 4px;
+          border-radius: 34px; font-weight: 600; font-size: 12px;
+          color: rgba(255,255,255,0.7);
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          text-decoration: none;
+          transition: all 0.25s;
+        }
+        .mobile-menu .menu-item i { color: var(--accent); font-size: 20px; }
+        .mobile-menu .menu-item.active { background: var(--accent); color: var(--bg-dark); transform: translateY(-2px); }
+        .mobile-menu .menu-item.active i { color: var(--bg-dark); }
+
+        .pc-menu { display: none; background: rgba(21,62,71,0.95); backdrop-filter: blur(10px); border-radius: 60px; padding: 8px 12px; border: 1px solid var(--grad-light); margin-bottom: 28px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+        .pc-menu-left { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pc-menu-right { display: flex; gap: 8px; margin-left: auto; }
+        .pc-menu .menu-item {
+          padding: 12px 20px; border-radius: 50px; font-weight: 600; font-size: 15px;
+          color: #E0EEF5; display: inline-flex; align-items: center; gap: 10px;
+          cursor: pointer; transition: all 0.25s; white-space: nowrap; text-decoration: none;
+        }
+        .pc-menu .menu-item i { color: var(--accent); font-size: 18px; transition: all 0.2s; }
+        .pc-menu .menu-item.active { background: var(--accent); color: var(--bg-dark); box-shadow: 0 6px 15px rgba(34,197,94,0.5); }
+        .pc-menu .menu-item.active i { color: var(--bg-dark); }
+        .pc-menu .menu-item:not(.active):hover { background: rgba(34,197,94,0.2); color: white; transform: translateY(-2px); }
+        
+        .auth-item { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); padding: 10px 22px; border-radius: 40px; color: white; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .auth-item i { color: var(--accent); }
+        .auth-item:hover { background: var(--accent); color: var(--bg-dark); }
+        .auth-item:hover i { color: var(--bg-dark); }
+
+        @media (max-width: 799px) { .mobile-menu { display: flex; } .pc-menu { display: none; } }
+        @media (min-width: 800px) { .mobile-menu { display: none; } .pc-menu { display: flex; } }
+
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+        .stat-item { background: var(--card-bg); border-radius: 24px; padding: 14px 6px; text-align: center; border: 1px solid var(--grad-light); }
+        .stat-item i { font-size: 22px; color: var(--accent); margin-bottom: 6px; }
+        .stat-label { font-size: 10px; font-weight: 700; color: #A1BDC7; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+        .stat-value { font-size: 24px; font-weight: 800; color: white; }
+
+        /* Tip */
+        .tip-box { background: #1C4A57; border-radius: 30px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 28px; border: 1px solid var(--grad-light); }
+        .tip-icon { width: 46px; height: 46px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--bg-dark); font-size: 24px; flex-shrink: 0; }
+        .tip-text { font-size: 15px; color: #EAF4F8; line-height: 1.45; font-weight: 500; }
+        .tip-text strong { color: var(--accent); }
+
+        /* Section */
+        .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .section-head h2 { font-size: 20px; font-weight: 700; color: white; display: flex; align-items: center; gap: 8px; }
+        .section-head h2 i { color: var(--accent); font-size: 22px; }
+        .view-all { color: var(--bg-dark); font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 20px; background: var(--accent); border-radius: 40px; transition: all 0.2s; box-shadow: 0 5px 12px rgba(34,197,94,0.3); white-space: nowrap; border: none; text-decoration: none; display: inline-block; }
+        .view-all:hover { background: #1CA850; transform: scale(1.02); }
+
+        /* Scam List */
+        .scam-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+        .scam-row { background: var(--card-bg); border-radius: 28px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--grad-light); cursor: pointer; transition: all 0.25s; text-decoration: none; }
+        .scam-row:hover { border-color: var(--accent); background: var(--card-hover); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(34,197,94,0.2); }
+        .scam-content { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; flex: 1; min-width: 0; }
+        .domain-name { font-size: 15px; font-weight: 600; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .badge { background: #1E505E; color: var(--accent); font-size: 10px; font-weight: 800; padding: 5px 10px; border-radius: 40px; display: inline-flex; align-items: center; gap: 5px; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; border: 1px solid var(--grad-light); }
+        .badge-scam { background: #dc2626; color: white; border-color: #ef4444; }
+        .badge-safe { background: #16a34a; color: white; border-color: #22c55e; }
+        .date-info { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #C2D9E2; white-space: nowrap; flex-shrink: 0; background: #1C4A57; padding: 4px 12px; border-radius: 40px; }
+        .date-info i { color: var(--accent); font-size: 11px; }
+        .police-icon { width: 42px; height: 42px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--bg-dark); font-size: 20px; flex-shrink: 0; margin-left: 8px; }
+
+        /* Trust List */
+        .trust-list { display: flex; flex-direction: column; gap: 12px; margin: 24px 0 20px; }
+        .trust-item { background: var(--card-bg); border-radius: 24px; padding: 16px 18px; border: 1px solid var(--grad-light); transition: all 0.2s; text-decoration: none; display: block; }
+        .trust-item:hover { border-color: var(--accent); background: var(--card-hover); transform: translateY(-2px); }
+        .trust-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .trust-domain { font-size: 16px; font-weight: 700; color: white; letter-spacing: -0.2px; }
+        .trust-domain span { color: var(--accent); font-weight: 800; background: #1E505E; padding: 2px 8px; border-radius: 20px; font-size: 12px; margin-left: 6px; border: 1px solid var(--grad-light); }
+        .trust-owner { font-size: 13px; color: #B0CDD8; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .trust-owner i { color: var(--accent); font-size: 13px; }
+        .trust-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; flex-wrap: wrap; gap: 8px; }
+        .trust-org { font-size: 13px; color: #C2D9E2; background: #1C4A57; padding: 4px 12px; border-radius: 30px; border: 1px solid var(--grad-light); }
+        .trust-status { display: flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; font-size: 13px; background: #1A4A55; padding: 4px 14px; border-radius: 30px; border: 1px solid var(--grad-light); }
+        .trust-status i { font-size: 14px; }
+
+        /* Brand */
+        .brand-bar { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 20px 0 22px; padding: 18px 0; border-top: 2px dashed var(--grad-light); border-bottom: 2px dashed var(--grad-light); }
+        .brand-icon { width: 56px; height: 56px; background: linear-gradient(145deg, var(--accent), #169946); border-radius: 20px; display: flex; align-items: center; justify-content: center; color: var(--bg-dark); font-size: 30px; transform: rotate(-3deg); box-shadow: 0 8px 18px rgba(34,197,94,0.4); }
+        .brand-name { font-size: 32px; font-weight: 800; background: linear-gradient(135deg, var(--border-light), #FFFFFF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+
+        /* Pagination */
+        .pagination { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 20px 0 14px; }
+        .page-btn { width: 46px; height: 46px; border-radius: 46px; background: #1C4A57; border: 1px solid var(--grad-light); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; font-size: 20px; transition: all 0.2s; }
+        .page-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg-dark); border-color: var(--accent); transform: scale(1.05); }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .page-info { font-size: 16px; font-weight: 600; color: var(--border-light); }
+        .page-info span { color: var(--bg-dark); font-weight: 800; background: var(--accent); padding: 6px 16px; border-radius: 40px; margin: 0 6px; }
+
+        /* Footer */
+        .footer { display: flex; align-items: center; justify-content: center; gap: 10px; color: #A6C3CE; font-size: 13px; margin-top: 12px; flex-wrap: wrap; }
+        .footer i { color: var(--accent); font-size: 15px; animation: spin 4s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* Responsive */
+        @media (min-width: 800px) { .domain-name { max-width: 300px; font-size: 16px; } .trust-domain { font-size: 18px; } }
+        @media (max-width: 420px) { 
+          .main-card { padding: 20px 16px; } 
+          .domain-name { max-width: 110px; font-size: 13px; } 
+          .trust-domain { font-size: 14px; } 
+          .mobile-menu .menu-item { font-size: 11px; }
+          .pagination { gap: 12px; }
+          .page-btn { width: 38px; height: 38px; font-size: 16px; }
+          .page-info { font-size: 13px; }
+          .page-info span { padding: 4px 10px; }
+        }
+        @media (min-width: 1200px) {
+          .main-card { max-width: 900px; }
+        }
+        @media (min-width: 1400px) {
+          .main-card { max-width: 1000px; }
+        }
+      `}</style>
+    </>
   );
 }

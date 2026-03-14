@@ -1,19 +1,11 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
+import Script from 'next/script';
 
-const inter = Inter({ 
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-});
+// Use system fonts to avoid external font fetch during build
+const inter = { variable: '' };
+const jetbrainsMono = { variable: '' };
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -30,6 +22,19 @@ export const metadata: Metadata = {
   },
 };
 
+// Theme script to run before React hydrates
+const themeScript = `
+  (function() {
+    try {
+      var theme = localStorage.getItem('theme');
+      if (!theme) {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.classList.add(theme);
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -38,9 +43,11 @@ export default function RootLayout({
   return (
     <html lang="vi" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} min-h-screen bg-bg-main text-text-main antialiased font-body`}>
+        {/* Theme script - runs before React hydrates */}
+        <Script id="theme-script" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
+        
         {/* Ensure admin pages default to light before React hydrates to avoid flash */}
         <script
-          // Runs early in the page load to remove unwanted .dark class for admin
           dangerouslySetInnerHTML={{
             __html: `try{ if(location && location.pathname && location.pathname.startsWith('/admin')){ const a=localStorage.getItem('adminTheme'); if(a!=='dark'){ document.documentElement.classList.remove('dark'); } } }catch(e){};`
           }}

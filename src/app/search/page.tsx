@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { Suspense, useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
@@ -133,6 +133,7 @@ function getMatchScore(queryKey: string, querySlug: string, item: CategoryApiIte
 
 function SearchPageContent() {
   const { t } = useI18n();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const query = (searchParams.get('q') || '').trim();
   const category = searchParams.get('category') || '';
@@ -143,8 +144,14 @@ function SearchPageContent() {
   const [scanResult, setScanResult] = useState<any | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [searchValue, setSearchValue] = useState(query);
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isIdle = !query && !category;
+
+  useEffect(() => {
+    setSearchValue(query);
+  }, [query]);
 
   const mapCategoryType = (key: string): SearchResult['type'] => {
     switch (key) {
@@ -322,7 +329,11 @@ function SearchPageContent() {
     const runScan = async () => {
       if (!query) return;
       let cleanUrl = query.trim();
+
+      // Only scan nếu trông giống domain/URL
+      const looksLikeDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(cleanUrl.replace(/^https?:\/\//, '').split('/')[0]);
       const isFullUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleanUrl);
+      if (!looksLikeDomain) return; // tránh gửi chuỗi không phải URL (ví/telegram...) gây 400
       if (!isFullUrl) cleanUrl = 'https://' + cleanUrl;
 
       setIsScanning(true);
@@ -389,12 +400,97 @@ function SearchPageContent() {
     return 'An toàn';
   };
 
+  const quickHints = [
+    { label: 'Website', value: 'shop-sale-xyz.com', icon: Globe },
+    { label: 'SĐT', value: '0900 000 000', icon: Phone },
+    { label: 'Tài khoản', value: 'VCB 0123456789', icon: Building2 },
+    { label: 'Ví crypto', value: '0x1234...abcd', icon: Wallet },
+  ];
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = searchValue.trim();
+    if (!next) return;
+    router.push(`/search?q=${encodeURIComponent(next)}`);
+  };
+
+  const handleCategory = (key: string) => {
+    router.push(`/search?category=${encodeURIComponent(key)}`);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
 
       <main className="flex-1 pt-20 pb-20 md:pb-8">
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-8">
+          <div className="rounded-[28px] border border-bg-border bg-white/80 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-text-main">Tra cứu cảnh báo</h1>
+                <p className="text-text-secondary text-sm mt-1">
+                  Nhập website, số điện thoại, tài khoản ngân hàng hoặc ví crypto để kiểm tra ngay.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-bg-border bg-bg-cardHover px-3 py-1 text-xs font-semibold text-text-secondary">
+                <ShieldCheck className="w-4 h-4 text-success" /> Nguồn cộng đồng + quét AI
+              </span>
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-3 md:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" />
+                <input
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  placeholder="Ví dụ: shopee-sale.com, 0908xxxxxx, VCB 0123..."
+                  className="w-full rounded-full border border-bg-border bg-white py-3 pl-12 pr-4 text-sm text-text-main shadow-[0_6px_16px_rgba(15,23,42,0.08)] outline-none transition focus:border-primary/60"
+                />
+              </div>
+              <button
+                type="submit"
+                className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.25)] transition hover:bg-primary/90"
+              >
+                Tra cứu ngay
+              </button>
+            </form>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {quickHints.map((hint) => {
+                const Icon = hint.icon;
+                return (
+                  <button
+                    type="button"
+                    key={hint.label}
+                    onClick={() => setSearchValue(hint.value)}
+                    className="inline-flex items-center gap-2 rounded-full border border-bg-border bg-white px-3 py-1 text-xs font-semibold text-text-secondary transition hover:border-primary/40 hover:text-primary"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {hint.label}: {hint.value}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {SEARCH_CATEGORIES.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleCategory(key)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                    category === key
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-bg-border bg-bg-cardHover text-text-secondary hover:border-primary/30 hover:text-primary'
+                  )}
+                >
+                  {CATEGORY_NAMES[key]?.title || key}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="mb-8">
             {category && CATEGORY_NAMES[category] ? (
               <>
@@ -424,7 +520,38 @@ function SearchPageContent() {
             </Card>
           )}
 
-          {isLoading ? (
+          {isIdle ? (
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-text-main font-semibold">
+                  <Search className="w-4 h-4 text-primary" /> 3 bước tra cứu
+                </div>
+                <ol className="mt-2 space-y-2 text-sm text-text-secondary">
+                  <li>1. Nhập website/số điện thoại.</li>
+                  <li>2. Đối chiếu cảnh báo cộng đồng.</li>
+                  <li>3. Xem đánh giá kỹ thuật & nguồn.</li>
+                </ol>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-text-main font-semibold">
+                  <AlertTriangle className="w-4 h-4 text-warning" /> Lưu ý nhanh
+                </div>
+                <ul className="mt-2 space-y-2 text-sm text-text-secondary">
+                  <li>• Domain mới đăng ký thường rủi ro cao.</li>
+                  <li>• Cẩn thận ưu đãi quá lớn, yêu cầu OTP.</li>
+                  <li>• Kiểm tra link chính thức trước khi giao dịch.</li>
+                </ul>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-text-main font-semibold">
+                  <ShieldCheck className="w-4 h-4 text-success" /> Cam kết
+                </div>
+                <p className="mt-2 text-sm text-text-secondary">
+                  Dữ liệu tổng hợp từ báo cáo cộng đồng, danh sách pháp lý và quét kỹ thuật AI.
+                </p>
+              </Card>
+            </div>
+          ) : isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <SearchResultSkeleton key={i} />

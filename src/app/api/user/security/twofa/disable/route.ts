@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/nextAuthOptions';
 import { withApiObservability } from '@/lib/apiHandler';
 import { ensureUserInfra } from '@/lib/userInfra';
 import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import { logUserActivity } from '@/lib/userActivity';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,7 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     [session.user.email]
   );
   const record = rows?.[0];
+  if (!record?.id) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
   if (record?.password_hash) {
     const ok = await bcrypt.compare(body.password || '', record.password_hash);
     if (!ok) return NextResponse.json({ success: false, error: 'Mật khẩu xác thực không đúng' }, { status: 400 });
@@ -33,14 +34,7 @@ export const POST = withApiObservability(async (req: NextRequest) => {
     [session.user.email]
   );
 
-  if (record?.id) {
-    await db
-      .query(
-        `INSERT INTO user_activity (id, userId, type, description, createdAt) VALUES (?, ?, 'security', ?, NOW())`,
-        [crypto.randomUUID(), record.id, 'Tắt 2FA']
-      )
-      .catch(() => {});
-  }
+  await logUserActivity(record.id, 'security', 'Tắt 2FA', req).catch(() => {});
 
   return NextResponse.json({ success: true });
 });

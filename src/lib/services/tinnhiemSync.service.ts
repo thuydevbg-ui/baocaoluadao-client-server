@@ -806,6 +806,8 @@ export async function runTinnhiemFullSync(): Promise<SyncSummary> {
 
 export async function ensureTinnhiemScamsSynced(): Promise<EnsureSyncResult> {
   const now = Date.now();
+  const disableAutoSync =
+    process.env.STATIC_DATA_MODE === '1' || process.env.TINNHIEM_DISABLE_AUTO_SYNC === '1';
 
   // Avoid hammering DB state checks on high traffic.
   if (lastEnsureSnapshot && now - lastEnsureCheckAt < 10_000) {
@@ -820,15 +822,19 @@ export async function ensureTinnhiemScamsSynced(): Promise<EnsureSyncResult> {
 
   if (totalRecords === 0) {
     try {
-      await runTinnhiemFullSync();
+      if (!disableAutoSync) {
+        await runTinnhiemFullSync();
+      }
     } catch (error) {
       console.error('[tinnhiem-sync] Initial full sync failed:', error);
     }
   } else if (stale && !syncInFlight) {
     // Fire-and-forget scheduled refresh.
-    void runTinnhiemFullSync().catch((error) => {
-      console.error('[tinnhiem-sync] Background refresh failed:', error);
-    });
+    if (!disableAutoSync) {
+      void runTinnhiemFullSync().catch((error) => {
+        console.error('[tinnhiem-sync] Background refresh failed:', error);
+      });
+    }
   }
 
   const snapshot: EnsureSyncResult = {
