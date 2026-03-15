@@ -14,6 +14,7 @@ interface MobileSearchResultProps {
   sourceOrganization?: string;
   sourceStatus?: string;
   href: string;
+  selected?: boolean;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -60,6 +61,7 @@ export function MobileSearchResult({
   sourceIcon,
   sourceOrganization,
   href,
+  selected = false,
 }: MobileSearchResultProps) {
   const config = riskConfig[risk as keyof typeof riskConfig] || riskConfig.safe;
   const TypeIcon = typeIcons[type] || <Globe className="w-5 h-5" />;
@@ -72,7 +74,8 @@ export function MobileSearchResult({
         'flex items-center gap-3 p-3 rounded-xl border transition-all active:scale-[0.98]',
         'min-h-[64px] touch-manipulation',
         config.bg,
-        config.border
+        config.border,
+        selected && 'ring-2 ring-primary ring-offset-2 bg-primary/5'
       )}
     >
       {/* Icon/Image - Fixed size 44px */}

@@ -110,6 +110,60 @@ function slugifySearchKey(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
+// Enhanced fuzzy matching for Vietnamese
+function levenshteinDistance(a: string, b: string): number {
+  if (!a || !b) return Math.max(a.length, b.length);
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+// Calculate similarity ratio (0-100)
+function similarityRatio(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 100;
+  const distance = levenshteinDistance(a, b);
+  return Math.round((1 - distance / maxLen) * 100);
+}
+
+// Check if query is a substring with potential typos
+function isFuzzyMatch(text: string, query: string, maxDistance: number = 2): boolean {
+  const normalizedText = normalizeSearchKey(text);
+  const normalizedQuery = normalizeSearchKey(query);
+  
+  // Direct substring
+  if (normalizedText.includes(normalizedQuery)) return true;
+  
+  // Word-by-word matching
+  const queryWords = normalizedQuery.split(' ').filter(w => w.length > 0);
+  const textWords = normalizedText.split(' ').filter(w => w.length > 0);
+  
+  for (const qw of queryWords) {
+    for (const tw of textWords) {
+      if (qw.length < 2 || tw.length < 2) continue;
+      const distance = levenshteinDistance(qw, tw);
+      if (distance <= maxDistance) return true;
+    }
+  }
+  
+  return false;
+}
+
 function isTrustedSource(mode?: string, status?: string): boolean {
   const normalizedMode = (mode || '').trim().toLowerCase();
   const normalizedStatus = (status || '').trim().toLowerCase();
@@ -118,17 +172,72 @@ function isTrustedSource(mode?: string, status?: string): boolean {
 
 function getMatchScore(queryKey: string, querySlug: string, item: CategoryApiItem): number {
   const nameKey = normalizeSearchKey(item.name || '');
+  const nameNormalized = repairMojibake(item.name || '').toLowerCase();
   const link = (item.link || '').toLowerCase();
+  const reportCount = Number(item.count_report) || 0;
+  
   let score = 0;
+  const queryWords = queryKey.split(' ').filter(w => w.length > 0);
+  const nameWords = nameKey.split(' ').filter(w => w.length > 0);
 
   if (!queryKey) return 0;
-  if (nameKey === queryKey) score = Math.max(score, 120);
-  if (nameKey.startsWith(queryKey) || queryKey.startsWith(nameKey)) score = Math.max(score, 100);
-  if (nameKey.includes(queryKey) || queryKey.includes(nameKey)) score = Math.max(score, 80);
-  if (querySlug && link.includes(`/${querySlug}`)) score = Math.max(score, 130);
-  if (querySlug && link.includes(querySlug)) score = Math.max(score, 110);
 
-  return score;
+  // === Exact Match (Highest Priority) ===
+  if (nameKey === queryKey) score = Math.max(score, 150);
+  
+  // === Starts With / Prefix Match ===
+  if (nameKey.startsWith(queryKey)) score = Math.max(score, 130);
+  if (queryKey.startsWith(nameKey) && queryKey.length > nameKey.length) score = Math.max(score, 120);
+  
+  // === Contains / Substring Match ===
+  if (nameKey.includes(queryKey)) score = Math.max(score, 110);
+  if (queryKey.includes(nameKey)) score = Math.max(score, 100);
+  
+  // === Word Boundary Match (for multi-word queries) ===
+  const allWordsMatch = queryWords.every(qw => 
+    nameWords.some(nw => nw.includes(qw) || qw.includes(nw))
+  );
+  if (allWordsMatch && queryWords.length > 1) score = Math.max(score, 105);
+
+  // === Fuzzy Match (typo tolerance) ===
+  const fuzzyThreshold = queryKey.length >= 4 ? 0 : 1;
+  if (isFuzzyMatch(nameKey, queryKey, fuzzyThreshold) && score < 80) {
+    score = Math.max(score, 70);
+  }
+
+  // === Similarity Score ===
+  const simRatio = similarityRatio(nameKey, queryKey);
+  if (simRatio >= 80) score = Math.max(score, 90);
+  else if (simRatio >= 60) score = Math.max(score, 60);
+
+  // === URL/Domain Match ===
+  if (querySlug && link) {
+    if (link.includes(`/${querySlug}`) || link.includes(`?${querySlug}`)) score = Math.max(score, 140);
+    else if (link.includes(querySlug)) score = Math.max(score, 115);
+    
+    // Check domain without TLD
+    const domainMatch = link.match(/([a-z0-9-]+)\./);
+    if (domainMatch && domainMatch[1].includes(querySlug.replace(/-/g, ''))) {
+      score = Math.max(score, 100);
+    }
+  }
+
+  // === Report Count Boost ===
+  const isTrusted = isTrustedSource(item.status);
+  if (reportCount > 0) {
+    const reportBoost = Math.min(Math.log10(reportCount + 1) * 5, 25);
+    score += isTrusted ? reportBoost * 1.5 : reportBoost;
+  }
+
+  // === Trusted Source Boost ===
+  if (isTrusted) score = Math.max(score, 85);
+
+  // === Status Priority ===
+  const statusLower = (item.status || '').toLowerCase();
+  if (statusLower === 'confirmed' || statusLower === 'scam') score = Math.max(score, 95);
+  else if (statusLower === 'suspected' || statusLower === 'warning') score = Math.max(score, 75);
+
+  return Math.round(score);
 }
 
 function SearchPageContent() {
@@ -145,6 +254,8 @@ function SearchPageContent() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [searchValue, setSearchValue] = useState(query);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isIdle = !query && !category;
@@ -283,6 +394,7 @@ function SearchPageContent() {
             .map((entry) => entry.item);
 
           setResults(mapped);
+          setSelectedIndex(-1);
         } else if (category) {
           const response = await fetch('/api/categories', {
             method: 'POST',
@@ -300,8 +412,10 @@ function SearchPageContent() {
             .map((item, index) => mapApiItemToResult(item, index, category, data.mode));
 
           setResults(mapped);
+          setSelectedIndex(-1);
         } else {
           setResults([]);
+          setSelectedIndex(-1);
         }
       } catch (err) {
         setError('Failed to fetch results. Please try again.');
@@ -418,6 +532,37 @@ function SearchPageContent() {
     router.push(`/search?category=${encodeURIComponent(key)}`);
   };
 
+  // Keyboard navigation handler
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (results.length === 0) return;
+    
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : 0));
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        setSelectedIndex(prev => (prev > 0 ? prev - 1 : results.length - 1));
+        break;
+      case 'Enter':
+        if (selectedIndex >= 0 && results[selectedIndex]) {
+          event.preventDefault();
+          const selected = results[selectedIndex];
+          router.push(buildDetailHref(selected));
+        }
+        break;
+      case 'Escape':
+        setSelectedIndex(-1);
+        break;
+    }
+  };
+
+  // Handle result click to update selected index
+  const handleResultClick = (index: number) => {
+    setSelectedIndex(index);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -450,7 +595,11 @@ function SearchPageContent() {
                     }
                   }}
                   value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
+                  onChange={(event) => {
+                    setSearchValue(event.target.value);
+                    setSelectedIndex(-1);
+                  }}
+                  onKeyDown={handleKeyDown}
                   placeholder="Ví dụ: shopee-sale.com, 0908xxxxxx, VCB 0123..."
                   className="w-full rounded-full border border-bg-border bg-white py-3 pl-12 pr-4 text-sm text-text-main shadow-[0_6px_16px_rgba(15,23,42,0.08)] outline-none transition focus:border-primary/60"
                 />
@@ -576,11 +725,20 @@ function SearchPageContent() {
                     </>
                   )}
                 </p>
+                {results.length > 0 && (
+                  <span className="hidden sm:inline-flex items-center gap-1 text-xs text-text-muted">
+                    <kbd className="px-1.5 py-0.5 rounded bg-bg-border text-text-secondary font-mono">↑</kbd>
+                    <kbd className="px-1.5 py-0.5 rounded bg-bg-border text-text-secondary font-mono">↓</kbd>
+                    <span className="ml-1">điều hướng</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-bg-border text-text-secondary font-mono ml-2">Enter</kbd>
+                    <span className="ml-1">chọn</span>
+                  </span>
+                )}
               </div>
 
               {/* Mobile Layout - Compact */}
               <div className="sm:hidden space-y-2" data-mobile-card-list>
-                {results.map((result) => (
+                {results.map((result, index) => (
                   <MobileSearchResult
                     key={String(result.id)}
                     id={String(result.id)}
@@ -591,6 +749,7 @@ function SearchPageContent() {
                     sourceIcon={result.sourceIcon}
                     sourceOrganization={result.sourceOrganization}
                     href={buildDetailHref(result)}
+                    selected={selectedIndex === index}
                   />
                 ))}
               </div>
@@ -608,7 +767,10 @@ function SearchPageContent() {
                       transition={{ delay: i * 0.1 }}
                     >
                       <Link href={buildDetailHref(result)}>
-                        <Card hover className="flex items-center gap-4">
+                        <Card hover className={cn(
+                          "flex items-center gap-4",
+                          selectedIndex === i && "ring-2 ring-primary ring-offset-2 bg-primary/5"
+                        )}>
                           <div className={cn(
                             'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden',
                             result.risk === 'scam' ? 'bg-danger/10 text-danger' :
