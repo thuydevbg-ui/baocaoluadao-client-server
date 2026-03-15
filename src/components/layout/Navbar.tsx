@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Menu, X, Home, Search, FileText, AlertTriangle, LifeBuoy, User, ShieldCheck, LogOut } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -27,6 +27,7 @@ export function Navbar() {
   const adminRoles = ['admin', 'super_admin', 'moderator'];
   const isAdmin = adminRoles.includes(String(session?.user?.role || '').toLowerCase());
   const isAuthed = Boolean(session?.user?.email);
+  const mobilePanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -48,6 +49,37 @@ export function Navbar() {
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
   };
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    closeMobileMenu();
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const handleClick = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!mobilePanelRef.current || !target) return;
+      if (!mobilePanelRef.current.contains(target)) {
+        closeMobileMenu();
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [isMobileMenuOpen]);
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-bg-border/70 bg-white/80 backdrop-blur-xl shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:border-slate-800/70 dark:bg-slate-950/70">
@@ -136,25 +168,36 @@ export function Navbar() {
 
       <div
         className={cn(
-          'fixed inset-0 z-40 transition-opacity duration-200',
+          'fixed inset-0 z-[100] transition-opacity duration-200',
           isMobileMenuOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         )}
         aria-hidden={!isMobileMenuOpen}
       >
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-md" onClick={closeMobileMenu} />
         <div
+          className="absolute inset-0 bg-slate-900/55"
+          onClick={closeMobileMenu}
+          onTouchStart={closeMobileMenu}
+        />
+        <div
+          ref={mobilePanelRef}
           className={cn(
-            'absolute inset-y-0 right-0 flex w-full max-w-[22rem] flex-col rounded-tl-[28px] rounded-bl-[28px] p-5 transition-transform duration-200 ease-out',
-            'border border-slate-200/70 bg-white/95 shadow-[0_30px_80px_rgba(15,23,42,0.35)] ring-1 ring-black/5',
-            'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-2xl supports-[backdrop-filter]:backdrop-saturate-150',
-            'dark:border-slate-800/70 dark:bg-slate-950/90 dark:ring-white/10',
-            'dark:supports-[backdrop-filter]:bg-slate-950/55',
+            'absolute inset-y-0 right-0 z-[110] flex w-[86vw] max-w-[360px] flex-col rounded-tl-[24px] rounded-bl-[24px] p-5 transition-transform duration-200 ease-out',
+            'border border-slate-200/90 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.35)]',
+            'dark:border-slate-800/90 dark:bg-slate-950',
+            'overflow-y-auto overscroll-contain',
             isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
           )}
         >
-          <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-900/10 dark:bg-white/10" />
-          <div className="mb-6 flex items-end justify-between">
-            <span className="text-sm font-semibold text-text-secondary">Menu</span>
+          <div className="mb-5 flex items-center justify-between rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-slate-800/90 dark:bg-slate-950">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-emerald-400 text-white shadow-lg shadow-blue-500/30">
+                SG
+              </span>
+              <div>
+                <div className="text-sm font-semibold text-text-main">ScamGuard</div>
+                <div className="text-xs text-text-secondary">Menu nhanh</div>
+              </div>
+            </div>
             <button
               type="button"
               onClick={closeMobileMenu}
@@ -174,12 +217,11 @@ export function Navbar() {
                   href={link.href}
                   onClick={closeMobileMenu}
                   className={cn(
-                    'flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-medium transition-shadow duration-200',
-                    'border-slate-200/70 bg-white/90 shadow-sm shadow-slate-900/10 ring-1 ring-black/5',
-                    'supports-[backdrop-filter]:bg-white/55 supports-[backdrop-filter]:backdrop-blur-xl',
+                    'flex items-center gap-3 rounded-2xl border px-4 py-4 text-base font-semibold transition-all duration-200',
+                    'border-slate-200/90 bg-white shadow-sm',
                     isActive
-                      ? 'border-primary/25 bg-primary text-white shadow-[0_18px_40px_rgba(37,99,235,0.28)] ring-0'
-                      : 'text-text-main hover:bg-white hover:shadow-[0_18px_36px_rgba(15,23,42,0.14)] dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100 dark:ring-white/10 dark:hover:bg-slate-950/75'
+                      ? 'border-primary/40 bg-gradient-to-r from-primary to-emerald-500 text-white shadow-[0_14px_30px_rgba(37,99,235,0.3)]'
+                      : 'text-text-main hover:-translate-y-0.5 hover:bg-slate-50 dark:border-slate-800/90 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900'
                   )}
                 >
                   <link.icon className={cn('h-4 w-4', isActive ? 'text-white' : 'text-primary')} />
@@ -213,8 +255,8 @@ export function Navbar() {
             </div>
           )}
 
-          <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-dashed border-bg-border p-4 bg-white/80 dark:bg-[#0d1322]/80">
-            <span className="text-sm font-medium text-text-secondary">Giao diện</span>
+          <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-dashed border-bg-border p-4 bg-white dark:bg-slate-950">
+            <span className="text-sm font-semibold text-text-secondary">Giao diện</span>
             <ThemeToggle className="ml-auto" />
           </div>
           {isAuthed && (

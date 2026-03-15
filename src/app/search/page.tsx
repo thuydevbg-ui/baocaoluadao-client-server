@@ -441,6 +441,14 @@ function SearchPageContent() {
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" />
                 <input
+                  ref={(el) => {
+                    if (el && query) {
+                      el.focus();
+                      // Move cursor to end
+                      const length = el.value.length;
+                      el.setSelectionRange(length, length);
+                    }
+                  }}
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder="Ví dụ: shopee-sale.com, 0908xxxxxx, VCB 0123..."
@@ -449,7 +457,8 @@ function SearchPageContent() {
               </div>
               <button
                 type="submit"
-                className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.25)] transition hover:bg-primary/90"
+                disabled={!searchValue.trim()}
+                className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.25)] transition hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Tra cứu ngay
               </button>
@@ -559,6 +568,16 @@ function SearchPageContent() {
             </div>
           ) : results.length > 0 ? (
             <>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-text-secondary">
+                  Tìm thấy <span className="font-semibold text-primary">{results.length}</span> kết quả
+                  {query && (
+                    <> cho "<span className="text-primary font-medium">{query}</span>"
+                    </>
+                  )}
+                </p>
+              </div>
+
               {/* Mobile Layout - Compact */}
               <div className="sm:hidden space-y-2" data-mobile-card-list>
                 {results.map((result) => (
@@ -764,10 +783,17 @@ function SearchPageContent() {
           ) : (
             <Card className="text-center py-12">
               <Search className="w-12 h-12 text-text-muted mx-auto mb-4" />
-              <p className="text-text-secondary mb-2">{t('home.no_results')}</p>
-              <p className="text-text-muted text-sm">
-                Be the first to report this!
+              <p className="text-text-secondary mb-2">Không tìm thấy kết quả nào</p>
+              <p className="text-text-muted text-sm mb-4">
+                Hãy là người đầu tiên báo cáo "{query}" nếu đây là trang lừa đảo!
               </p>
+              <Link
+                href="/report"
+                className="inline-flex items-center gap-2 rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white hover:bg-danger/90 transition"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Báo cáo ngay
+              </Link>
             </Card>
           )}
         </div>
