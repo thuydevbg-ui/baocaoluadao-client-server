@@ -3,8 +3,29 @@
 # MySQL Backup Script for baocaoluadao.com
 # Creates compressed backup with date format (YYYYMMDD)
 # Usage: ./scripts/backup-mysql.sh
+# 
+# For cron job, set ENV_FILE env var or it will auto-detect:
+#   ENV_FILE=/var/www/baocaoluadao.com/.env.production ./scripts/backup-mysql.sh
 
-set -e
+set -euo pipefail
+
+# Detect script directory for env file location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Try to load env file if not already loaded
+if [ -z "${DB_HOST:-}" ] || [ -z "${DB_USER:-}" ]; then
+    # Check common env file locations
+    for env_file in "$PROJECT_DIR/.env.production" "$PROJECT_DIR/.env" ".env.production" ".env"; do
+        if [ -f "$env_file" ]; then
+            echo "Loading environment from $env_file"
+            set -a
+            source "$env_file"
+            set +a
+            break
+        fi
+    done
+fi
 
 # Configuration - can be overridden by environment variables
 DB_HOST="${DB_HOST:-localhost}"
@@ -13,8 +34,13 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 DB_NAME="${DB_NAME:-baocaoluadao}"
 DB_PORT="${DB_PORT:-3306}"
 
-# Backup directory
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
+# Backup directory - use project backups dir for non-root, /var/backups for production
+if [ "$(id -u)" = "0" ]; then
+    BACKUP_DIR="${BACKUP_DIR:-/var/backups/baocaoluadao}"
+else
+    BACKUP_DIR="${BACKUP_DIR:-$PROJECT_DIR/backups}"
+fi
+
 DATE_FORMAT="%Y%m%d"
 TIMESTAMP=$(date +"$DATE_FORMAT")
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_${TIMESTAMP}.sql.gz"

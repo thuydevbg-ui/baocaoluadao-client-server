@@ -50,23 +50,25 @@ export function Navbar() {
   };
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 bg-gradient-to-r from-white/80 via-white/70 to-white/80 dark:from-slate-900/80 dark:via-slate-950/80 dark:to-slate-900/80 backdrop-blur border-b border-bg-border shadow-sm">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-bg-border/70 bg-white/80 backdrop-blur-xl shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:border-slate-800/70 dark:bg-slate-950/70">
       <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          <span className="w-10 h-10 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-lg">SG</span>
-          <span className="text-text-main">ScamGuard</span>
+          <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-emerald-400 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
+            SG
+          </span>
+          <span className="text-text-main tracking-tight">ScamGuard</span>
         </Link>
 
-          <nav className="hidden md:flex items-center gap-3">
+          <nav className="hidden md:flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/80 px-2 py-1 shadow-sm shadow-slate-900/10 ring-1 ring-black/5 backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/70 dark:ring-white/10">
             {navItems.slice(0, 4).map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors duration-200',
+                'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
                 link.isActive
-                  ? 'bg-primary text-white shadow-inner shadow-primary/40'
-                  : 'text-text-secondary hover:bg-primary/10 hover:text-primary'
+                  ? 'bg-gradient-to-r from-primary to-emerald-500 text-white shadow-[0_8px_20px_rgba(37,99,235,0.35)]'
+                  : 'text-text-secondary hover:-translate-y-0.5 hover:bg-primary/10 hover:text-primary'
               )}
             >
               <link.icon className="h-4 w-4" />
@@ -76,24 +78,27 @@ export function Navbar() {
           <Link
             href="/faq"
             className={cn(
-              'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors duration-200',
+              'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
               pathname === '/faq'
-                ? 'bg-primary text-white shadow-inner shadow-primary/40'
-                : 'text-text-secondary hover:bg-primary/10 hover:text-primary'
+                ? 'bg-gradient-to-r from-primary to-emerald-500 text-white shadow-[0_8px_20px_rgba(37,99,235,0.35)]'
+                : 'text-text-secondary hover:-translate-y-0.5 hover:bg-primary/10 hover:text-primary'
             )}
           >
             <LifeBuoy className="h-4 w-4" /> FAQ
           </Link>
           {isAdmin && (
-            <Link href="/admin" className="flex items-center gap-1 rounded-full border border-bg-border px-3 py-2 text-sm font-medium text-green-700 bg-emerald-50 hover:bg-emerald-100">
+            <Link
+              href="/admin"
+              className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
+            >
               <ShieldCheck className="h-4 w-4" />
               Admin
             </Link>
           )}
-          <ThemeToggle className="ml-2" />
+          <ThemeToggle className="ml-1" />
           <Link
             href="/profile"
-            className="flex items-center justify-center h-10 w-10 rounded-full bg-bg-card border border-bg-border shadow-sm"
+            className="flex items-center justify-center h-10 w-10 rounded-full bg-bg-card border border-bg-border shadow-sm ring-1 ring-black/5"
             aria-label="Hồ sơ của bạn">
             <User className="h-5 w-5 text-text-secondary" />
           </Link>
@@ -101,7 +106,7 @@ export function Navbar() {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: '/' })}
-              className="flex items-center gap-2 rounded-full border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              className="flex items-center gap-2 rounded-full border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 shadow-sm hover:-translate-y-0.5 hover:bg-red-50"
             >
               <LogOut className="h-4 w-4" />
               Đăng xuất
