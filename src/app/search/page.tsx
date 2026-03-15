@@ -21,7 +21,7 @@ import {
   FileWarning,
 } from 'lucide-react';
 import { Navbar, MobileNav, Footer } from '@/components/layout';
-import { Card, SearchResultSkeleton, RiskBadge, MobileSearchResult } from '@/components/ui';
+import { Card, SearchResultSkeleton, RiskBadge, MobileSearchResult, SearchProgressBar } from '@/components/ui';
 import { useI18n } from '@/contexts/I18nContext';
 import { cn, type SearchResult } from '@/lib/utils';
 
@@ -717,6 +717,13 @@ function SearchPageContent() {
             </div>
           ) : results.length > 0 ? (
             <>
+              {/* Progress bar during search */}
+              <SearchProgressBar 
+                isSearching={isLoading} 
+                message="Đang tra cứu cơ sở dữ liệu..."
+                className="mb-4"
+              />
+
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-text-secondary">
                   Tìm thấy <span className="font-semibold text-primary">{results.length}</span> kết quả

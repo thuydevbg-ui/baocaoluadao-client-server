@@ -23,6 +23,10 @@ export const env = {
   NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || '',
   AUTH_COOKIE_SECRET: process.env.AUTH_COOKIE_SECRET || '',
   DB_MANAGER_KEY: process.env.DB_MANAGER_KEY || '',
+  // Data source configuration
+  DATA_SOURCE_NAME: process.env.DATA_SOURCE_NAME || 'tinnhiemmang.vn',
+  DATA_SOURCE_URL: process.env.DATA_SOURCE_URL || 'https://tinnhiemmang.vn',
+  DATA_SOURCE_ICON: process.env.DATA_SOURCE_ICON || 'https://tinnhiemmang.vn/img/icon_web2.png',
 };
 
 export function ensureRequiredEnv() {

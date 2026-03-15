@@ -8,3 +8,4 @@ export { Card, GlassCard } from './Card';
 export { FiIcon } from './FiIcon';
 export { MobileSearchResult, MobileResultList } from './MobileSearchResult';
 export { Tooltip } from './Tooltip';
+export { SearchProgressBar } from './SearchProgressBar';
